@@ -216,7 +216,7 @@ TN.registerMinigame({
   },
 
   // ------------------------------------------------------------------ 3D (câmera fixa)
-  camera: { pos: [480, 720, 880], target: [480, 0, 300], fov: 37 },
+  camera: { pos: [480, 600, 950], target: [480, 0, 282], fov: 39 },
   env: { ambient: 0.55, sun: 1.9, sunDir: [-0.3, 1, 0.45] },
 
   // cano horizontal (cilindro deitado) centrado em x,z, apontando para o ângulo `ang` da lógica
@@ -260,24 +260,24 @@ TN.registerMinigame({
   draw3d(g, r) {
     const a = g.arena, d = g.data, U = TN.util;
     const blink = Math.round((0.5 + 0.5 * Math.sin(g.time * 7)) * 8) / 8; // quantizado: o motor guarda 1 material por opacidade
-    // chão: concreto escuro + piso da fábrica
-    r.plane(480, -1, 290, 1700, 1200, '#0f1215');
+    // oficina de trabalho prisional em volta + piso da fábrica
+    const zp = a.y - 60;   // parede do fundo da oficina
+    r.room(a.x - 90, zp, a.x + a.w + 90, a.y + a.h + 60, { estilo: 'oficina' });
     const TX = a.w / 8, TZ = a.h / 4;
     for (let i = 0; i < 8; i++) for (let j = 0; j < 4; j++) {
       r.plane(a.x + TX * (i + 0.5), 0, a.y + TZ * (j + 0.5), TX - 2, TZ - 2, (i + j) % 2 ? '#2f343a' : '#2a2f34', { rough: 0.9 });
     }
-    // paredes: fundo alto com tubulação, laterais e frente baixas
-    r.box(480, 0, a.y - 12, a.w + 60, 130, 20, '#3b4148', { metal: 0.3 });
+    // muretas da linha de montagem (fundo, laterais e frente) e tubulação na parede da oficina
+    r.box(480, 0, a.y - 12, a.w + 60, 40, 20, '#454c54', { metal: 0.3 });
     r.box(a.x - 12, 0, a.y + a.h / 2, 20, 40, a.h + 4, '#454c54', { metal: 0.3 });
     r.box(a.x + a.w + 12, 0, a.y + a.h / 2, 20, 40, a.h + 4, '#454c54', { metal: 0.3 });
     r.box(480, 0, a.y + a.h + 10, a.w + 44, 16, 16, '#454c54', { metal: 0.3 });
-    r.beam(a.x - 20, 104, a.y - 1, a.x + a.w + 20, 104, a.y - 1, 9, '#6b7480', { metal: 0.8, rough: 0.3 });
-    r.beam(a.x - 20, 88, a.y - 1, a.x + a.w + 20, 88, a.y - 1, 6, '#8a5a2a', { metal: 0.6, rough: 0.4 });
+    r.beam(a.x - 90, 150, zp + 6, a.x + a.w + 90, 150, zp + 6, 9, '#6b7480', { metal: 0.8, rough: 0.3 });
+    r.beam(a.x - 90, 134, zp + 6, a.x + a.w + 90, 134, zp + 6, 6, '#8a5a2a', { metal: 0.6, rough: 0.4 });
     for (let i = 0; i < 9; i++) r.box(a.x + 6 + i * (a.w - 12) / 8, 0, a.y - 1, 26, 4, 2, i % 2 ? '#111' : '#f5c400', { shadow: false });
-    // luminárias de parede (brilho) + placa
-    for (const lx of [a.x + 120, 480, a.x + a.w - 120]) r.box(lx, 116, a.y - 1, 46, 6, 3, '#ffe2b0', { glow: true });
-    r.box(480, 52, a.y - 1, 210, 26, 2, '#15181c');
-    r.label(480, 65, a.y, 'ESTOQUE DE PEÇAS', '#f5c400', 13);
+    // placa na parede da oficina
+    r.box(480, 92, zp + 1, 210, 26, 2, '#15181c');
+    r.label(480, 105, zp + 2, 'ESTOQUE DE PEÇAS', '#f5c400', 13);
     // área de peças marcada no chão (faixas amarelas)
     const sx0 = a.x + 160, sx1 = a.x + a.w - 160, sz0 = a.y + 80, sz1 = a.y + a.h - 80;
     const ln = { opacity: 0.6, glow: true };

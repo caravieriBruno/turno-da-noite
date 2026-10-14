@@ -331,23 +331,12 @@ TN.registerMinigame({
     const dark = d.phase !== 'search';
     const fade = dark ? Math.min(1, d.phase === 'grace' ? d.phaseT * 3 : 1) : 0;
     if (dark) r.env({ bg: '#020306', fog: [1100, 2400], ambient: U.lerp(0.65, 0.07, fade), sun: U.lerp(1.7, 0.06, fade), sunDir: [-0.3, 1, 0.5], sunColor: '#8fa6d8', hemiSky: '#4a5a80', hemiGround: '#0a0806' });
-    // ---- piso, rodapé e paredes ----
-    r.plane(480, -1, 290, 2000, 1400, '#07080a');
-    r.plane(a.x + a.w / 2, 0, a.y + a.h / 2, a.w, a.h, '#2c3542', { rough: 0.85 });
-    for (let x = a.x + 80; x < a.x + a.w; x += 80) r.plane(x, 0.2, a.y + a.h / 2, 1.5, a.h, '#232a35');
-    for (let z = a.y + 80; z < a.y + a.h; z += 80) r.plane(a.x + a.w / 2, 0.2, z, a.w, 1.5, '#232a35');
-    r.plane(a.x + a.w / 2, 0.3, a.y + 197, a.w - 140, 58, '#5a2626', { rough: 1 });    // tapete do corredor
-    const wall = '#59616c';
-    r.box(a.x + a.w / 2, 0, a.y - 8, a.w + 32, 130, 16, '#4b525c', { rough: 0.9 });
-    r.box(a.x - 8, 0, a.y + a.h / 2, 16, 130, a.h, wall, { rough: 0.9 });
-    r.box(a.x + a.w + 8, 0, a.y + a.h / 2, 16, 130, a.h, wall, { rough: 0.9 });
-    r.box(a.x + a.w / 2, 0, a.y + a.h + 8, a.w + 32, 18, 16, wall, { rough: 0.9 });
+    // ---- sala da administração: taco, meia-parede de madeira, janelas com persiana; mureta na frente ----
+    // (sem pendentes do r.room: ficariam pendurados sobre os móveis; as luminárias de parede apagam no breu)
+    r.room(a.x, a.y, a.x + a.w, a.y + a.h, { estilo: 'escritorio', h: 130, windows: 4, lamps: 0, props: false });
+    r.plane(a.x + a.w / 2, 0.3, a.y + 197, a.w - 140, 58, '#5a2626', { rough: 1, tex: 'tecido' });    // tapete do corredor
+    r.box(a.x + a.w / 2, 0, a.y + a.h + 8, a.w + 32, 18, 16, '#6e4f33', { tex: 'madeira' });
     r.box(a.x + a.w / 2, 18, a.y + a.h + 8, a.w + 32, 2, 18, '#2a2f36');
-    // janelas noturnas e luminárias na parede do fundo
-    for (const wx of [210, 390, 570, 750]) {
-      r.box(wx, 62, a.y + 0.5, 70, 46, 2, '#1d2c48', { glow: true });
-      r.box(wx, 84, a.y + 1.5, 70, 2, 2, '#2a2f36');
-    }
     for (const lx of [130, 480, 830]) r.box(lx, 116, a.y + 2, 60, 5, 6, dark ? '#2a2a2a' : '#fff4dc', dark ? {} : { glow: true });
     // ---- móveis ----
     const hi = new Set();

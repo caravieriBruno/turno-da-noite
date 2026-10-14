@@ -181,14 +181,11 @@ TN.registerMinigame({
   draw3d(g, r) {
     const d = g.data, P = this.PLATE, p = d.active, T = this.TOP;
     const q10 = (v) => Math.round(v * 10) / 10;   // opacidades quantizadas (o motor guarda 1 material por valor)
-    // galpão
-    r.plane(480, -1, 300, 1800, 1300, '#0e1013');
+    // serralheria da oficina
+    r.room(-60, 34, 1020, 560, { estilo: 'oficina' });
     for (let i = 0; i < 6; i++) for (let j = 0; j < 4; j++) {
-      r.plane(80 + i * 160, 0, 60 + j * 150, 158, 148, (i + j) % 2 ? '#25292e' : '#212529', { rough: 0.95 });
+      r.plane(80 + i * 160, 0, 60 + j * 150, 158, 148, (i + j) % 2 ? '#3a3a37' : '#353532', { rough: 0.95 });
     }
-    r.box(480, 0, 22, 1100, 150, 24, '#363b42', { metal: 0.3 });
-    for (let i = 0; i < 12; i++) r.box(-60 + i * 98, 0, 35, 40, 5, 2, i % 2 ? '#111' : '#f5c400', { shadow: false });
-    for (const lx of [200, 480, 760]) r.box(lx, 128, 35, 60, 7, 3, '#ffe2b0', { glow: true });
     r.light(480, 330, P.y + P.h / 2, '#ffe2bf', 0.9, 800);
     r.light(140, 240, 420, '#ffd9a8', 0.5, 500);
     r.light(820, 240, 420, '#ffd9a8', 0.5, 500);
