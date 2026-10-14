@@ -1,5 +1,6 @@
 // CENÁRIOS DE CADEIA: peças prontas de cenário para o draw3d.
 //   r.room(x1, z1, x2, z2, o)  ambientes internos: o.estilo = cela | oficina | refeitorio | subsolo | escritorio
+//   r.yard(x1, z1, x2, z2, o)  pátio externo à noite (muros, arame farpado, guarita com holofote, postes)
 //   r.prop(nome, x, z, o)     objetos (beliche, vaso, banco, mesa, tambor, pneu, colchao, grade, poste, arquivo)
 // Usam só as primitivas públicas da API do draw3d (box, tube, light...), então rodam igual no navegador
 // e no validador do tools/simular.js. Regras:
@@ -201,5 +202,66 @@
     f(montador(r, x, z, o), o);
   }
 
-  TN.cenarios = { room, prop };
+  // arame farpado no topo de um muro: hastes em V e três fios
+  function arame(r, xa, za, xb, zb, H) {
+    const len = Math.hypot(xb - xa, zb - za);
+    if (len < 1) return;
+    const n = Math.max(1, Math.round(len / 70)), ux = (xb - xa) / len, uz = (zb - za) / len;
+    for (let i = 0; i <= n; i++) {
+      const px = xa + ux * len * i / n, pz = za + uz * len * i / n;
+      r.beam(px, H, pz, px - uz * 14, H + 30, pz + ux * 14, 2, '#2c2c2a');
+      r.beam(px, H, pz, px + uz * 14, H + 30, pz - ux * 14, 2, '#2c2c2a');
+    }
+    for (const [off, hy] of [[-14, 30], [0, 18], [14, 30]]) r.beam(xa - uz * off, H + hy, za + ux * off, xb - uz * off, H + hy, zb + ux * off, 1.2, '#55534d');
+  }
+
+  // Pátio à noite: chão com linhas de quadra apagadas, muros com arame farpado no fundo e nas laterais,
+  // postes de vapor de sódio e guarita com holofote que varre o pátio (só depende de r.time).
+  // o: { h, floor, wall, quadra, guarita: true|false|'esquerda'|'direita', holofote, postes, frente }
+  function yard(r, x1, z1, x2, z2, o = {}) {
+    ({ x1, z1, x2, z2 } = rect(x1, z1, x2, z2));
+    const H = o.h ?? 260, T = 24, w = x2 - x1, d = z2 - z1, cx = (x1 + x2) / 2, mz = (z1 + z2) / 2, t = r.time || 0;
+    const zFront = z2 + (o.frente ?? 500), sideD = zFront - z1, sideZ = (z1 + zFront) / 2, muro = o.wall ?? '#5f5c55';
+    r.plane(cx, -1.5, sideZ, w + 1600, sideD + 1000, o.floor ?? '#3b3934');
+    if (o.quadra !== false && w > 120 && d > 120) {   // linhas de quadra apagadas
+      const m = 40, lc = '#77735f', y = -1.2, L = { tex: false, opacity: 0.5 };
+      const ix1 = x1 + m, ix2 = x2 - m, iz1 = z1 + m, iz2 = z2 - m;
+      r.plane(cx, y, iz1, ix2 - ix1, 4, lc, L); r.plane(cx, y, iz2, ix2 - ix1, 4, lc, L);
+      r.plane(ix1, y, mz, 4, iz2 - iz1, lc, L); r.plane(ix2, y, mz, 4, iz2 - iz1, lc, L);
+      r.plane(cx, y, mz, 4, iz2 - iz1, lc, L);
+      r.ring(cx, y, mz, 56, 60, lc, L);
+    }
+    r.box(cx, 0, z1 - T / 2, w + T * 2, H, T, muro);
+    r.box(x1 - T / 2, 0, sideZ, T, H, sideD, muro);
+    r.box(x2 + T / 2, 0, sideZ, T, H, sideD, muro);
+    arame(r, x1 - T / 2, z1 - T / 2, x2 + T / 2, z1 - T / 2, H);
+    arame(r, x1 - T / 2, z1 - T / 2, x1 - T / 2, zFront, H);
+    arame(r, x2 + T / 2, z1 - T / 2, x2 + T / 2, zFront, H);
+    // postes de vapor de sódio alternando os lados; só o primeiro acende luz de verdade
+    const np = o.postes ?? 2;
+    for (let i = 0; i < np; i++) {
+      const esq = i % 2 === 0, fila = Math.floor(i / 2), filas = Math.ceil(np / 2);
+      r.prop('poste', esq ? x1 + 20 : x2 - 20, z1 + d * (fila + 0.5) / filas, { rotY: esq ? 0 : Math.PI, luz: i === 0 });
+    }
+    if (o.guarita !== false) {
+      const gx = o.guarita === 'esquerda' ? x1 + 30 : x2 - 30, gz = z1 + 30, gh = H + 40;
+      for (const [dx, dz] of [[-22, -22], [22, -22], [-22, 22], [22, 22]]) r.box(gx + dx, 0, gz + dz, 6, gh, 6, '#4a4843', { metal: 0.4 });
+      r.box(gx, gh, gz, 70, 46, 70, '#6a675f');
+      r.box(gx, gh + 16, gz + 35.5, 56, 20, 1, '#0b0d0e', { tex: false });
+      r.box(gx, gh + 46, gz, 84, 6, 84, '#3a3936', { metal: 0.4 });
+      if (o.holofote !== false) {
+        const lx = gx + (gx > cx ? -36 : 36), ly = gh + 30, lz = gz + 36;
+        const tx = cx + Math.sin(t * 0.5) * w * 0.38, tz = mz + Math.cos(t * 0.37) * d * 0.3;
+        r.cyl(lx, ly - 6, lz, 7, 12, '#2a2a2a', { metal: 0.6 });
+        r.sphere(lx, ly, lz, 6, '#fff6d8', { glow: true });
+        // facho: cone com a base no chão e o vértice no holofote (rotZ inclina, rotY aponta)
+        const dx = lx - tx, dy = ly, dz = lz - tz, len = Math.hypot(dx, dy, dz);
+        r.cone(tx, 0, tz, 70, len, '#fff2c8', { glow: true, additive: true, opacity: 0.1, shadow: false, rotZ: Math.acos(dy / len), rotY: Math.atan2(dz, -dx) });
+        r.disc(tx, 0.6, tz, 70, '#fff2c8', { glow: true, additive: true, opacity: 0.15 });
+        r.light(tx, 60, tz, '#fff0d0', 1.2, 260, { fundo: true });
+      }
+    }
+  }
+
+  TN.cenarios = { room, prop, yard };
 })();

@@ -140,6 +140,7 @@ Os minigames são desenhados em **3D com câmera fixa**, como no Machine Party. 
 | `r.label(x, y, z, texto, cor, tamanho)` | texto 2D preso a um ponto 3D |
 | `r.character(p, o)` | **personagem** (detento de uniforme na cor do jogador), animado sozinho (veja abaixo) |
 | `r.room(x1, z1, x2, z2, o)` | ambiente interno de cadeia em volta da arena (chão, paredes do fundo e laterais, detalhes, luminárias); `o.estilo`: `cela` (padrão), `oficina`, `refeitorio`, `subsolo`, `escritorio`; outras opções: `h`, `paint`, `top`, `floor`, `windows`, `lamps`, `lights`, `bars`, `frente`, `props: false`. Deixe ~60 de margem entre `z1` e a arena (objetos de canto). Acende até 2 luzes de fundo |
+| `r.yard(x1, z1, x2, z2, o)` | pátio de cadeia à noite (muros com arame farpado, postes de vapor de sódio, guarita com holofote que varre); opções: `h`, `floor`, `wall`, `quadra: false`, `guarita: false \| 'esquerda' \| 'direita'`, `holofote: false`, `postes`, `frente`. Acende até 2 luzes de fundo |
 | `r.prop(nome, x, z, o)` | objeto de cenário: `beliche`, `vaso`, `banco`, `mesa`, `tambor`, `pneu`, `colchao`, `grade` (`o.w`, `o.h`), `poste` (`o.luz`), `arquivo`; `o: { rotY, scale, y, color }` |
 | `r.camera(pos, target, fov)` | muda a câmera neste quadro (ex.: tremor, foco); normalmente use `def.camera` |
 | `r.project(x, y, z)` | converte para a posição na tela 2D: `{x, y}` |

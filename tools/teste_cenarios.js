@@ -59,5 +59,13 @@ for (const estilo of ['cela', 'oficina', 'refeitorio', 'subsolo', 'escritorio'])
 deveFalhar('room com estilo errado', (r) => r.room(0, 0, 100, 100, { estilo: 'cozinha' }), 'refeitorio');
 ok(!mesmas(trace((r) => r.room(40, 20, 920, 520, { estilo: 'subsolo' }), 0), trace((r) => r.room(40, 20, 920, 520, { estilo: 'subsolo' }), 0.4)), 'room subsolo: giroflex muda com o tempo');
 
+// --- r.yard ---
+cenarioValido('yard padrão', (r) => r.yard(40, 20, 920, 520));
+cenarioValido('yard sem guarita, 4 postes', (r) => r.yard(40, 20, 920, 520, { guarita: false, postes: 4 }));
+cenarioValido('yard guarita à esquerda', (r) => r.yard(40, 20, 920, 520, { guarita: 'esquerda' }));
+ok(mesmas(trace((r) => r.yard(920, 520, 40, 20)), trace((r) => r.yard(40, 20, 920, 520))), 'yard com cantos invertidos = cantos na ordem');
+cenarioValido('yard degenerado (largura 0)', (r) => r.yard(300, 100, 300, 100));
+ok(!mesmas(trace((r) => r.yard(40, 20, 920, 520), 1), trace((r) => r.yard(40, 20, 920, 520), 3)), 'yard: holofote varre com o tempo');
+
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
