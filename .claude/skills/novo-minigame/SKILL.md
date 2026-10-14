@@ -20,7 +20,7 @@ Entrada: a ideia do usuário, que pode ser só uma frase.
    - Crie `minigames/<id>.js`, com o id em snake_case sem acentos, a partir de `minigames/_modelo.js`.
    - Textos em pt-BR, tom sombrio-cômico.
    - Use `icon` e `color`.
-   - Desenhe só com Canvas 2D.
+   - Desenhe em **3D** com `draw3d(g, r)` e câmera fixa (`camera`). Use `drawOverlay` para medidores, textos e placares fixos na tela. Siga o estilo de `minigames/aspiradores.js`: instalação industrial escura, luzes quentes e o personagem `r.character`.
    - Escreva um bot competente.
 4. **Registro.** Acrescente `'<id>.js'` em `minigames/manifest.js`.
 5. **Validação.** Ambos os comandos precisam passar:
@@ -31,5 +31,5 @@ Entrada: a ideia do usuário, que pode ser só uma frase.
 6. **Checagem visual.**
    - Suba o servidor em background: `node tools/servidor.js 8765`.
    - Rode `bash tools/screenshot.sh <id> 8 a.png` e `bash tools/screenshot.sh <id> 20 b.png`.
-   - Leia os PNGs e corrija o que estiver feio. Uma faixa vermelha "ERRO" na tela indica exceção.
+   - Leia os PNGs e corrija o que estiver feio: composição, personagens visíveis e câmera enquadrando a ação. Uma faixa vermelha "ERRO" na tela indica exceção.
 7. **Resposta ao usuário.** Inclua as regras finais, os controles, como testar (`index.html?game=<id>`) e as decisões de design que você tomou.

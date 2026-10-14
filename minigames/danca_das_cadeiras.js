@@ -195,7 +195,158 @@ TN.registerMinigame({
     return go(d.cx + 80, d.cy);
   },
 
-  // ---------- desenho ----------
+  // ---------- desenho 3D (câmera fixa) ----------
+  camera: { pos: [480, 640, 790], target: [480, 0, 285], fov: 40 },
+  env: { bg: '#08070b', fog: [1100, 2600], ambient: 0.5, sun: 1.8, sunDir: [-0.3, 1, 0.55], sunColor: '#ffe6d0' },
+  PIT: 420,
+
+  // quanto o piso já afundou neste ponto (0 = no lugar); abre do centro para fora
+  sink(g, x, z) {
+    const d = g.data;
+    if (d.open <= 0) return 0;
+    const k = TN.util.clamp(d.open * 1.9 - TN.util.dist(x, z, d.cx, d.cy) / 650, 0, 1);
+    return k * k * this.PIT;
+  },
+
+  // item low-poly: forma e cor diferentes por tipo; base em y, s = escala, rot = direção (rad)
+  drawItem3d(r, kind, x, y, z, s, rot, o = {}) {
+    const ca = Math.cos(rot), sa = Math.sin(rot), ry = -rot;
+    const P = (fx, sx) => [x + (ca * fx - sa * sx) * s, z + (sa * fx + ca * sx) * s];
+    const em = o.emissive;
+    switch (kind) {
+      case 0: { // chave inglesa
+        r.box(x, y + 2 * s, z, 24 * s, 3 * s, 5 * s, '#b9c2cc', { rotY: ry, metal: 0.85, rough: 0.25, emissive: em });
+        const [jx, jz] = P(13, 0); r.box(jx, y + 1 * s, jz, 7 * s, 5 * s, 13 * s, '#9aa3ad', { rotY: ry, metal: 0.85, rough: 0.25, emissive: em });
+        const [cx2, cz2] = P(15, 0); r.box(cx2, y + 1.5 * s, cz2, 5 * s, 5.5 * s, 4 * s, '#2a2f36', { rotY: ry });
+        break;
+      }
+      case 1: { // caneca
+        r.cyl(x, y, z, 7 * s, 14 * s, '#e94f4f', { rough: 0.5, emissive: em });
+        r.cyl(x, y + 14 * s, z, 5.6 * s, 0.6 * s, '#3a1d0e', {});
+        const [hx, hz] = P(8.5, 0); r.box(hx, y + 3 * s, hz, 3 * s, 8 * s, 2.5 * s, '#e94f4f', { rotY: ry, emissive: em });
+        break;
+      }
+      case 2: // lâmpada
+        r.cyl(x, y, z, 4.2 * s, 6 * s, '#8d939a', { metal: 0.8, rough: 0.3 });
+        r.sphere(x, y + 12 * s, z, 8 * s, '#ffe36b', { emissive: '#a07c00', rough: 0.2 });
+        break;
+      case 3: { // patinho
+        r.sphere(x, y + 6 * s, z, 8 * s, '#ffd21f', { rough: 0.45, emissive: em });
+        const [hx, hz] = P(4.5, 0); r.sphere(hx, y + 15 * s, hz, 5 * s, '#ffd21f', { rough: 0.45, emissive: em });
+        const [bx, bz] = P(8.5, 0); r.cone(bx, y + 14 * s, bz, 2.4 * s, 5 * s, '#ff8a00', { rotY: ry, rotZ: -Math.PI / 2 });
+        break;
+      }
+      case 4: // cone de sinalização
+        r.box(x, y, z, 19 * s, 2.5 * s, 19 * s, '#ff7a1a', { rotY: ry, emissive: em });
+        r.cone(x, y + 2.5 * s, z, 8.5 * s, 20 * s, '#ff7a1a', { rough: 0.5, emissive: em });
+        r.cyl(x, y + 9 * s, z, 5.9 * s, 3 * s, '#f2f2f2', {});
+        break;
+      case 5: { // disquete
+        r.box(x, y, z, 20 * s, 3 * s, 20 * s, '#3b6fd8', { rotY: ry, rough: 0.4, emissive: em });
+        const [sx2, sz2] = P(-6, 0); r.box(sx2, y + 0.2 * s, sz2, 7 * s, 3.3 * s, 11 * s, '#c8ccd4', { rotY: ry, metal: 0.8, rough: 0.3 });
+        const [lx, lz] = P(4, 0); r.box(lx, y + 0.2 * s, lz, 9 * s, 3.3 * s, 14 * s, '#eeeeee', { rotY: ry });
+        break;
+      }
+    }
+  },
+
+  draw3d(g, r) {
+    const a = g.arena, d = g.data, t = g.time, PIT = this.PIT;
+    const warn = d.phase === 'play' && d.timer < 3 && Math.floor(t * 6) % 2 === 0;
+    // fundo do poço e entorno
+    for (const [px, pz, pw, ph] of [[480, a.y - 400, 1800, 800], [480, a.y + a.h + 400, 1800, 800], [a.x - 400, a.y + a.h / 2, 800, a.h], [a.x + a.w + 400, a.y + a.h / 2, 800, a.h]]) r.plane(px, -1, pz, pw, ph, '#0d0c10');
+    if (d.open > 0) {
+      // fundo do poço: triturador com rolos dentados e grade vermelha brilhando
+      r.plane(a.x + a.w / 2, -PIT, a.y + a.h / 2, a.w, a.h, '#1e1416', { rough: 0.9 });
+      for (let k = 1; k < 8; k++) r.plane(a.x + (a.w * k) / 8, -PIT + 0.5, a.y + a.h / 2, 3, a.h, '#ff2a2a', { glow: true, opacity: 0.6 });
+      for (let k = 0; k < 4; k++) {
+        const rz = a.y + 50 + k * 105, ph = t * 6 * (k % 2 ? 1 : -1);
+        r.cyl(a.x, -PIT + 22, rz, 22, a.w, '#4a4d55', { rotZ: -Math.PI / 2, metal: 0.8, rough: 0.35, sides: 10 });
+        for (let s = 0; s < 6; s++) r.box(a.x + 70 + s * 150, -PIT + 22 + Math.sin(ph + s) * 22, rz + Math.cos(ph + s) * 22, 10, 8, 8, '#8a8f99', { metal: 0.9 });
+      }
+      r.light(d.cx, -PIT + 120, d.cy, '#ff2a2a', 2.5 * d.open, 900);
+    }
+    // frestas do alçapão: vermelho piscando nos 3 s finais
+    if (d.open <= 0) r.plane(a.x + a.w / 2, -0.6, a.y + a.h / 2, a.w, a.h, warn ? '#ff2a2a' : '#050506', warn ? { glow: true } : {});
+    // piso em placas que despencam quando o chão se abre
+    const T = 55;
+    for (let i = 0; i * T < a.w; i++) for (let j = 0; j * T < a.h; j++) {
+      const x0 = a.x + i * T, z0 = a.y + j * T, w = Math.min(T, a.x + a.w - x0), h = Math.min(T, a.y + a.h - z0);
+      const tx = x0 + w / 2, tz = z0 + h / 2, s = this.sink(g, tx, tz);
+      if (s >= PIT - 10) continue;
+      r.box(tx, -6 - s, tz, w - 3, 6, h - 3, (i + j) % 2 ? '#2e2a36' : '#2a2631', { rough: 0.85, rotX: s ? Math.sin(i * 3.1 + j) * s * 0.0012 : 0 });
+    }
+    // paredes que descem até o fundo do poço + faixa de perigo
+    const H = 34, Wd = 14;
+    r.box(a.x + a.w / 2, -PIT, a.y - Wd / 2, a.w + Wd * 2, H + PIT, Wd, '#45404d', { metal: 0.25 });
+    r.box(a.x + a.w / 2, -PIT, a.y + a.h + Wd / 2, a.w + Wd * 2, H * 0.6 + PIT, Wd, '#45404d', { metal: 0.25 });
+    r.box(a.x - Wd / 2, -PIT, a.y + a.h / 2, Wd, H + PIT, a.h, '#45404d', { metal: 0.25 });
+    r.box(a.x + a.w + Wd / 2, -PIT, a.y + a.h / 2, Wd, H + PIT, a.h, '#45404d', { metal: 0.25 });
+    for (let i = 0; i < 22; i++) r.box(a.x + 20 + i * 40, 10, a.y - 0.5, 20, 14, 1.5, i % 2 ? '#111' : '#f5c400', { shadow: false });
+    // luzes de emergência nas paredes laterais (giram em vermelho nos 3 s finais / chão aberto)
+    for (const lx of [a.x - 4, a.x + a.w + 4]) {
+      const on = warn || d.open > 0;
+      r.box(lx, 36, a.y + a.h / 2, 10, 10, 18, on ? '#ff2a2a' : '#3a1414', on ? { glow: true } : {});
+    }
+    // plataformas seguras: colunas que ficam de pé quando o chão some
+    const padGlow = d.phase === 'play' && d.timer < 5 ? 0.6 + 0.4 * Math.sin(t * 10) : 0.85;
+    for (const pd of d.pads) {
+      const px = pd.x + pd.w / 2, pz = pd.y + pd.h / 2;
+      r.box(px, -PIT, pz, pd.w, PIT + 3, pd.h, '#1d3325', { rough: 0.8 });
+      r.plane(px, 3.1, pz, pd.w, pd.h, '#46e27b', { glow: true, opacity: padGlow });
+      r.plane(px, 3.3, pz, pd.w - 7, pd.h - 7, '#16301f', { rough: 0.6, emissive: '#06200e' });
+      for (let k = 12; k < pd.w - 6; k += 12) r.plane(pd.x + k, 3.5, pz, 1.5, pd.h - 12, '#46e27b', { glow: true, opacity: 0.35 });
+    }
+    // núcleo central: coluna com faixa de perigo e holograma do item-alvo girando
+    const R = this.CORE_R;
+    r.cyl(d.cx, -PIT, d.cy, R + 6, PIT + 14, '#2a2733', { metal: 0.5, rough: 0.5, sides: 12 });
+    r.cyl(d.cx, 8, d.cy, R + 7, 6, '#f5c400', { sides: 12 });
+    for (let k = 0; k < 12; k += 2) { const an = (k + 0.5) / 12 * Math.PI * 2; r.box(d.cx + Math.cos(an) * (R + 6.5), 7.9, d.cy + Math.sin(an) * (R + 6.5), 4, 6.2, 22, '#111', { rotY: -an }); }
+    r.cyl(d.cx, 14, d.cy, R, 6, '#1d1430', { metal: 0.4, rough: 0.4, emissive: '#1a0830' });
+    r.ring(d.cx, 20.2, d.cy, R - 6, R - 1, '#c77dff', { glow: true });
+    r.cone(d.cx, 92, d.cy, 34, 70, '#c77dff', { glow: true, opacity: 0.1, rotX: Math.PI, shadow: false });
+    if (d.target !== undefined) this.drawItem3d(r, d.target, d.cx, 66 + Math.sin(t * 2) * 3, d.cy, 1.9, t * 1.2, { emissive: '#3a1660' });
+    r.label(d.cx, 122, d.cy, 'ALVO', '#c77dff', 12);
+    r.light(d.cx, 110, d.cy, '#c77dff', 0.9, 320);
+    // lâmpadas do teto
+    r.light(260, 280, 200, '#ffd9a8', 0.8, 720);
+    r.light(700, 280, 380, '#ffd9a8', 0.8, 720);
+    // itens soltos (afundam junto com o chão)
+    for (const it of d.items) if (!it.holder) {
+      const s = this.sink(g, it.x, it.y);
+      if (s >= PIT - 20) continue;
+      const tgt = it.kind === d.target;
+      if (tgt && !s) r.ring(it.x, 0.6, it.y, 16, 20, '#c77dff', { glow: true, opacity: 0.5 + 0.3 * Math.sin(it.bob) });
+      this.drawItem3d(r, it.kind, it.x, 1 + Math.sin(it.bob) * 1.5 - s, it.y, 1.4, it.bob * 0.3, tgt ? { emissive: '#2a1040' } : {});
+    }
+    // jogadores: quem cai despenca no poço girando
+    for (const p of g.players) {
+      if (!p.alive) {
+        const f = p.data.fall, y = -f * f * 520;
+        if (y > -PIT + 30) r.character(p, { pose: 'fall', y, label: false });
+        continue;
+      }
+      const it = p.data.hold;
+      r.character(p, { pose: it ? 'arms' : 'auto', flash: Math.hypot(p.vx, p.vy) > 40 });
+      if (it) this.drawItem3d(r, it.kind, it.x, 36, it.y, 0.95, p.dir, {});
+    }
+  },
+
+  // faixa de status e aviso de quem caiu (fixos na tela)
+  drawOverlay(g, c) {
+    if (!g.uses3d()) return;
+    const a = g.arena, D = TN.draw, d = g.data, U = TN.util;
+    const t = d.phase === 'play' ? d.timer : 0;
+    D.text(c, `TURNO ${d.sub}`, a.x, 52, { size: 16, color: '#c77dff' });
+    D.text(c, U.formatTime(t), g.W / 2, 52, { size: 24, color: t < 5 && d.phase === 'play' ? '#f55' : '#fff', align: 'center' });
+    D.text(c, `ALVO: ${this.ITEMS[d.target]}  ·  CÓPIAS: ${d.copies}`, a.x + a.w, 52, { size: 13, color: '#bbb', align: 'right' });
+    if (d.banner) {
+      D.panel(c, g.W / 2 - 220, a.y + a.h - 70, 440, 46, { stroke: d.banner.color });
+      D.text(c, d.banner.text, g.W / 2, a.y + a.h - 47, { size: 20, color: d.banner.color, align: 'center' });
+    }
+  },
+
+  // ---------- desenho 2D (alternativa sem WebGL) ----------
   drawIcon(c, kind, x, y, s = 1) {
     c.save(); c.translate(x, y); c.scale(s, s);
     c.lineWidth = 2; c.strokeStyle = '#111';

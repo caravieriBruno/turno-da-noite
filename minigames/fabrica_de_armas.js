@@ -215,7 +215,196 @@ TN.registerMinigame({
     return { x: mx, y: my, a, b: bb };
   },
 
-  // ------------------------------------------------------------------ desenho
+  // ------------------------------------------------------------------ 3D (câmera fixa)
+  camera: { pos: [480, 720, 880], target: [480, 0, 300], fov: 37 },
+  env: { ambient: 0.55, sun: 1.9, sunDir: [-0.3, 1, 0.45] },
+
+  // cano horizontal (cilindro deitado) centrado em x,z, apontando para o ângulo `ang` da lógica
+  pipe3d(r, x, y, z, len, rad, ang, color, o = {}) {
+    const dx = Math.cos(ang), dz = Math.sin(ang);
+    r.cyl(x - dx * len / 2, y, z - dz * len / 2, rad, len, color, { metal: 0.7, rough: 0.35, ...o, rotZ: Math.PI / 2, rotY: Math.PI - ang });
+  },
+
+  // peça 3D low-poly (base em y). k = escala, rot = giro no chão
+  part3d(r, type, x, y, z, k = 1, rot = 0) {
+    if (type === 'engrenagem') {
+      r.cyl(x, y, z, 8 * k, 4 * k, '#b8c0c8', { metal: 0.85, rough: 0.3 });
+      for (let i = 0; i < 3; i++) r.box(x, y, z, 21 * k, 4 * k, 4 * k, '#a9b1b9', { metal: 0.85, rough: 0.3, rotY: rot + (i * Math.PI) / 3 });
+      r.cyl(x, y + 4 * k, z, 3 * k, 1, '#2a2d31');
+    } else if (type === 'cano') {
+      this.pipe3d(r, x, y + 4 * k, z, 26 * k, 4 * k, rot, '#55606d');
+      r.cyl(x + Math.cos(rot) * 12 * k, y + 4 * k, z + Math.sin(rot) * 12 * k, 2.4 * k, 1, '#0c0c0c', { rotZ: Math.PI / 2, rotY: Math.PI - rot });
+    } else if (type === 'cola') {
+      r.cyl(x, y, z, 5 * k, 12 * k, '#f2ead0', { rough: 0.5 });
+      r.cyl(x, y + 4.5 * k, z, 5.4 * k, 3.5 * k, '#ff7a1a');
+      r.cone(x, y + 12 * k, z, 3 * k, 6 * k, '#ff7a1a');
+    } else if (type === 'chapa') {
+      r.box(x, y, z, 22 * k, 2.5 * k, 17 * k, '#6f9ccf', { metal: 0.75, rough: 0.3, rotY: rot });
+      r.box(x, y + 2.5 * k, z, 15 * k, 0.6, 10 * k, '#d6e6f7', { metal: 0.6, rough: 0.3, rotY: rot });
+    } else {
+      r.box(x, y, z, 20 * k, 6 * k, 16 * k, '#1f9d55', { rotY: rot });
+      r.box(x, y + 6 * k, z, 8 * k, 2 * k, 8 * k, '#111', { rotY: rot });
+      r.box(x, y + 6 * k, z, 19 * k, 0.8, 2 * k, '#ffd23f', { rotY: rot, glow: true });
+    }
+  },
+
+  // arma montada (corpo + cano + faixa + cabo), apontando para `dir`
+  gun3d(r, x, y, z, dir, k = 1) {
+    const fx = Math.cos(dir), fz = Math.sin(dir);
+    r.box(x, y, z, 22 * k, 7 * k, 7 * k, '#2b2f36', { rotY: -dir, metal: 0.6, rough: 0.4 });
+    this.pipe3d(r, x + fx * 15 * k, y + 3.5 * k, z + fz * 15 * k, 14 * k, 2 * k, dir, '#1a1c20');
+    r.box(x, y + 7 * k, z, 9 * k, 1, 4 * k, '#ffb02e', { rotY: -dir, glow: true });
+    r.box(x - fx * 6 * k, y - 8 * k, z - fz * 6 * k, 5 * k, 8 * k, 5 * k, '#2b2f36', { rotY: -dir });
+  },
+
+  draw3d(g, r) {
+    const a = g.arena, d = g.data, U = TN.util;
+    const blink = Math.round((0.5 + 0.5 * Math.sin(g.time * 7)) * 8) / 8; // quantizado: o motor guarda 1 material por opacidade
+    // chão: concreto escuro + piso da fábrica
+    r.plane(480, -1, 290, 1700, 1200, '#0f1215');
+    const TX = a.w / 8, TZ = a.h / 4;
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 4; j++) {
+      r.plane(a.x + TX * (i + 0.5), 0, a.y + TZ * (j + 0.5), TX - 2, TZ - 2, (i + j) % 2 ? '#2f343a' : '#2a2f34', { rough: 0.9 });
+    }
+    // paredes: fundo alto com tubulação, laterais e frente baixas
+    r.box(480, 0, a.y - 12, a.w + 60, 130, 20, '#3b4148', { metal: 0.3 });
+    r.box(a.x - 12, 0, a.y + a.h / 2, 20, 40, a.h + 4, '#454c54', { metal: 0.3 });
+    r.box(a.x + a.w + 12, 0, a.y + a.h / 2, 20, 40, a.h + 4, '#454c54', { metal: 0.3 });
+    r.box(480, 0, a.y + a.h + 10, a.w + 44, 16, 16, '#454c54', { metal: 0.3 });
+    r.beam(a.x - 20, 104, a.y - 1, a.x + a.w + 20, 104, a.y - 1, 9, '#6b7480', { metal: 0.8, rough: 0.3 });
+    r.beam(a.x - 20, 88, a.y - 1, a.x + a.w + 20, 88, a.y - 1, 6, '#8a5a2a', { metal: 0.6, rough: 0.4 });
+    for (let i = 0; i < 9; i++) r.box(a.x + 6 + i * (a.w - 12) / 8, 0, a.y - 1, 26, 4, 2, i % 2 ? '#111' : '#f5c400', { shadow: false });
+    // luminárias de parede (brilho) + placa
+    for (const lx of [a.x + 120, 480, a.x + a.w - 120]) r.box(lx, 116, a.y - 1, 46, 6, 3, '#ffe2b0', { glow: true });
+    r.box(480, 52, a.y - 1, 210, 26, 2, '#15181c');
+    r.label(480, 65, a.y, 'ESTOQUE DE PEÇAS', '#f5c400', 13);
+    // área de peças marcada no chão (faixas amarelas)
+    const sx0 = a.x + 160, sx1 = a.x + a.w - 160, sz0 = a.y + 80, sz1 = a.y + a.h - 80;
+    const ln = { opacity: 0.6, glow: true };
+    r.plane((sx0 + sx1) / 2, 0.5, sz0, sx1 - sx0, 3, '#f5c400', ln);
+    r.plane((sx0 + sx1) / 2, 0.5, sz1, sx1 - sx0, 3, '#f5c400', ln);
+    r.plane(sx0, 0.5, (sz0 + sz1) / 2, 3, sz1 - sz0, '#f5c400', ln);
+    r.plane(sx1, 0.5, (sz0 + sz1) / 2, 3, sz1 - sz0, '#f5c400', ln);
+    // luz quente de teto sobre as bancadas
+    r.light(a.x + 200, 230, a.y + 120, '#ffd9a8', 0.85, 620);
+    r.light(a.x + a.w - 200, 230, a.y + 120, '#ffd9a8', 0.85, 620);
+    r.light(a.x + 200, 230, a.y + a.h - 100, '#ffd9a8', 0.75, 620);
+    r.light(a.x + a.w - 200, 230, a.y + a.h - 100, '#ffd9a8', 0.75, 620);
+
+    // bancadas
+    for (const b of d.benches) {
+      const p = g.players[b.owner];
+      if (!p) continue;
+      const s = p.data, cx = b.x + b.w / 2, cz = b.y + b.h / 2, top = b.owner < 2;
+      const own = p.alive ? p.color : '#555';
+      const sideZ = top ? b.y + b.h : b.y;            // lado onde o dono trabalha
+      const backZ = top ? b.y : b.y + b.h;
+      r.box(cx, 0, cz, b.w - 8, 28, b.h - 8, '#2c3137', { metal: 0.4, rough: 0.6 });
+      const topCol = s.wrong > 0 ? '#6a2020' : s.okFlash > 0 ? '#205a33' : '#4a5058';
+      r.box(cx, 28, cz, b.w + 4, 4, b.h + 4, topCol, { metal: 0.55, rough: 0.4 });
+      r.box(cx, 14, sideZ + (top ? 1 : -1), b.w - 10, 6, 2, own, { emissive: own, emissiveIntensity: 0.5 });
+      r.box(cx, 32, backZ + (top ? 4 : -4), b.w, 1.2, 4, own, { glow: true });
+      r.plane(cx, 0.6, sideZ + (top ? 20 : -20), b.w, 36, own, { opacity: 0.16 });
+      // lâmpada de status
+      const lamp = s.wrong > 0 ? '#ff2a2a' : s.okFlash > 0 ? '#46e27b' : s.gunReady ? '#ffb02e' : p.alive ? own : '#333';
+      r.cyl(b.x + 8, 32, backZ + (top ? 8 : -8), 2, 14, '#222');
+      r.sphere(b.x + 8, 48, backZ + (top ? 8 : -8), 4.5, lamp, { glow: true });
+      if (s.gunReady) {
+        r.plane(cx, 32.4, cz, b.w - 12, b.h - 12, '#ffb02e', { glow: true, opacity: 0.2 + 0.25 * blink });
+        this.gun3d(r, cx, 41 + 3 * blink, cz, top ? Math.PI / 2 : -Math.PI / 2, 1.5);
+        continue;
+      }
+      // encaixes da receita sobre a bancada
+      for (let i = 0; i < 5; i++) {
+        const px = b.x + 18 + i * 23.5;
+        const done = i < s.prog, next = i === s.prog && p.alive && !s.hasGun && s.prog < 5;
+        r.box(px, 32, cz, 19, 1, 26, done ? '#1b3324' : '#1d2126');
+        if (next) r.plane(px, 33.3, cz, 19, 26, s.wrong > 0 ? '#ff3030' : own, { glow: true, opacity: 0.25 + 0.5 * blink });
+        if (done) this.part3d(r, s.recipe[i], px, 33, cz, 0.62, 0.3);
+      }
+    }
+
+    // peças no chão
+    for (const part of d.parts) this.part3d(r, part.type, part.x, 0, part.y, 1.25, part.rot);
+
+    // tiros: rajada (feixe + leque) e clarão do cano
+    for (const sh of d.shots) {
+      const al = Math.round(Math.max(0, sh.t / 0.3) * 10) / 10, fx = Math.cos(sh.dir), fz = Math.sin(sh.dir);
+      const x0 = sh.x + fx * 26, z0 = sh.y + fz * 26;
+      r.beam(x0, 40, z0, sh.x + fx * this.SHOT_RANGE, 40, sh.y + fz * this.SHOT_RANGE, 3, '#fff6c8', { glow: true, opacity: al });
+      for (const sgn of [-1, 1]) {
+        const ang = sh.dir + sgn * this.SHOT_HALF;
+        r.beam(x0, 40, z0, sh.x + Math.cos(ang) * this.SHOT_RANGE, 40, sh.y + Math.sin(ang) * this.SHOT_RANGE, 1.5, '#ffcf6a', { glow: true, opacity: 0.5 * al });
+      }
+      r.sphere(x0, 40, z0, 4 + 8 * al, '#fff1a8', { glow: true, opacity: al });
+      r.light(x0, 50, z0, '#ffcf6a', 1.6 * al, 260);
+    }
+
+    // jogadores
+    for (const p of g.players) {
+      const s = p.data;
+      const holding = p.alive && (s.hasGun || s.carry);
+      r.character(p, holding ? { pose: 'arms' } : {});
+      if (!p.alive) continue;
+      const fx = Math.cos(p.dir), fz = Math.sin(p.dir);
+      if (s.hasGun) {
+        this.gun3d(r, p.x + fx * 22, 38, p.y + fz * 22, p.dir, 1);
+        if (s.cd > 0) r.ring(p.x, 1, p.y, p.r + 5, p.r + 9, '#ffb02e', { glow: true, arc: 1 - s.cd / this.COOLDOWN });
+        else {
+          r.ring(p.x, 1, p.y, p.r + 5, p.r + 9, '#ffb02e', { glow: true, opacity: 0.6 });
+          r.beam(p.x + fx * 34, 40, p.y + fz * 34, p.x + fx * this.SHOT_RANGE, 40, p.y + fz * this.SHOT_RANGE, 1, '#ff5040', { glow: true, opacity: 0.55 });
+        }
+      } else if (s.carry) {
+        const hx = p.x + fx * 22, hz = p.y + fz * 22;
+        this.part3d(r, s.carry, hx, 34, hz, 1, p.dir);
+        if (s.wrong > 0) r.sphere(hx, 40, hz, 13, '#ff2020', { glow: true, opacity: 0.35 });
+      }
+    }
+  },
+
+  // cartões de receita (2D) presos a cada bancada
+  drawOverlay(g, c) {
+    if (!g.uses3d || !g.uses3d()) return;
+    const D = TN.draw, d = g.data;
+    for (const b of d.benches) {
+      const p = g.players[b.owner];
+      if (!p) continue;
+      const s = p.data, top = b.owner < 2, cx = b.x + b.w / 2;
+      const an = TN.R3.project(cx, top ? 60 : 0, top ? b.y : b.y + b.h + 14);
+      const W = 150, H = 44;
+      const x = Math.round(TN.util.clamp(an.x - W / 2, 4, g.W - W - 4)), y = Math.round(TN.util.clamp(top ? an.y - H - 2 : an.y + 2, 38, g.H - H - 4));
+      c.save();
+      c.globalAlpha = p.alive ? 1 : 0.45;
+      c.fillStyle = 'rgba(8,10,13,0.82)'; c.fillRect(x, y, W, H);
+      c.fillStyle = p.alive ? p.color : '#555'; c.fillRect(x, y, 4, H);
+      c.strokeStyle = 'rgba(255,255,255,0.12)'; c.lineWidth = 1; c.strokeRect(x + 0.5, y + 0.5, W - 1, H - 1);
+      D.text(c, p.label, x + 18, y + 13, { size: 11, color: p.alive ? p.color : '#777', align: 'center' });
+      if (s.gunReady) {
+        D.text(c, 'ARMA PRONTA!', x + W / 2 + 10, y + 15, { size: 13, color: '#ffb02e', align: 'center' });
+        D.text(c, 'PEGUE (AÇÃO)', x + W / 2 + 10, y + 32, { size: 10, color: '#ffd28a', align: 'center' });
+      } else if (s.hasGun || (!p.alive && s.prog >= 5)) {
+        D.text(c, 'ARMA EM USO', x + W / 2 + 10, y + H / 2, { size: 12, color: '#999', align: 'center' });
+      } else {
+        for (let i = 0; i < 5; i++) {
+          const sx = x + 33 + i * 23, sy = y + 4;
+          const done = i < s.prog, next = i === s.prog;
+          c.fillStyle = done ? '#1b2e22' : '#22262c'; c.fillRect(sx, sy, 20, 22);
+          c.globalAlpha = (p.alive ? 1 : 0.45) * (done || next ? 1 : 0.35);
+          this.drawPart(c, s.recipe[i], sx + 10, sy + 11, 0.72);
+          c.globalAlpha = p.alive ? 1 : 0.45;
+          if (done) D.text(c, '✔', sx + 15, sy + 18, { size: 10, color: '#46e27b', align: 'center' });
+          if (next && p.alive) {
+            c.strokeStyle = s.wrong > 0 ? '#f33' : p.color; c.lineWidth = 1.5 + Math.abs(Math.sin(g.time * 5)) * 1.5;
+            c.strokeRect(sx - 1, sy - 1, 22, 24);
+          }
+        }
+        if (s.prog < 5) D.text(c, this.NAMES[s.recipe[s.prog]], x + 33 + 57, y + 35, { size: 10, color: s.wrong > 0 ? '#f66' : '#cfd6dd', align: 'center' });
+      }
+      c.restore();
+    }
+  },
+
+  // ------------------------------------------------------------------ desenho 2D (alternativa sem WebGL)
   drawPart(c, type, x, y, k = 1, rot = 0) {
     c.save(); c.translate(x, y); c.rotate(rot); c.scale(k, k);
     c.strokeStyle = '#111'; c.lineWidth = 2;

@@ -299,7 +299,143 @@ TN.registerMinigame({
     return { x: steer, y: -pedal, a };
   },
 
-  // ---------- desenho ----------
+  // ---------- 3D (câmera fixa) ----------
+  camera: { pos: [480, 720, 880], target: [480, 0, 300], fov: 37 },
+  env: { ambient: 0.55, sun: 1.9, sunDir: [-0.35, 1, 0.5] },
+
+  // cilindro deitado centrado em x,z, eixo apontando para o ângulo `ang` da lógica (rodas, tubos)
+  hcyl(r, x, y, z, len, rad, ang, color, o = {}) {
+    const dx = Math.cos(ang), dz = Math.sin(ang);
+    r.cyl(x - dx * len / 2, y, z - dz * len / 2, rad, len, color, { ...o, rotZ: Math.PI / 2, rotY: Math.PI - ang });
+  },
+
+  crate3d(r, x, y, z, rot, op = 1) {
+    const s = this.CRATE_R * 2, o = op < 1 ? { opacity: op } : {};
+    r.box(x, y, z, s, s, s, '#a8743a', { rotY: -rot, rough: 0.85, ...o });
+    r.box(x, y + s * 0.42, z, s + 1.5, 5, s + 1.5, '#d39a55', { rotY: -rot, ...o });
+    r.box(x, y, z, s + 1, 3, s + 1, '#6b4520', { rotY: -rot, ...o });
+  },
+
+  // empilhadeira low-poly: chassi na cor do jogador, contrapeso, mastro, garfos, rodas e santantônio
+  forklift3d(r, p) {
+    const dead = !p.alive, col = dead ? '#3a3a3a' : p.color, c = Math.cos(p.dir), sn = Math.sin(p.dir);
+    const L = (f, s) => [p.x + c * f - sn * s, p.y + sn * f + c * s];
+    const rot = -p.dir;
+    let q = L(-4, 0);
+    r.box(q[0], 5, q[1], 36, 11, 26, col, { rotY: rot, metal: 0.35, rough: 0.5 });
+    q = L(-19, 0); r.box(q[0], 5, q[1], 8, 19, 26, '#24272b', { rotY: rot, metal: 0.5 });
+    q = L(-7, 0); r.box(q[0], 16, q[1], 10, 5, 14, '#16181b', { rotY: rot });                  // banco
+    for (const [f, s] of [[-12, 14], [-12, -14], [9, 14], [9, -14]]) {
+      q = L(f, s); this.hcyl(r, q[0], 6, q[1], 6, 6, p.dir + Math.PI / 2, '#111', { rough: 0.9 });
+    }
+    // arco de proteção atrás do banco (só atrás, para não esconder o motorista) + painel
+    const rb = [L(-15, 12), L(-15, -12)];
+    for (const [x, z] of rb) r.beam(x, 16, z, x, 58, z, 2.6, '#1d2024', { metal: 0.6 });
+    r.beam(rb[0][0], 58, rb[0][1], rb[1][0], 58, rb[1][1], 3, col, { metal: 0.4 });
+    q = L(7, 0); r.box(q[0], 16, q[1], 6, 8, 20, '#1d2024', { rotY: rot });
+    // mastro + garfos (sobem quando há caixa)
+    const forkY = p.data.crate ? 9 : 2;
+    for (const s of [-9, 9]) { q = L(16, s); r.beam(q[0], 3, q[1], q[0], 52, q[1], 3.5, '#2d3136', { metal: 0.7 }); }
+    q = L(17, 0); r.box(q[0], forkY, q[1], 3, 14, 22, '#3a3f45', { rotY: rot, metal: 0.6 });
+    for (const s of [-6, 6]) {
+      const a0 = L(17, s), a1 = L(36, s);
+      r.beam(a0[0], forkY + 1, a0[1], a1[0], forkY + 1, a1[1], 2.5, '#9aa3ad', { metal: 0.85, rough: 0.3 });
+    }
+    // giroflex
+    q = L(-14, 0);
+    r.sphere(q[0], 66, q[1], 3.2, dead ? '#331010' : '#ffb02e', { glow: true });
+    // motorista sentado (ou caído ao lado se a empilhadeira foi eliminada)
+    if (!dead) {
+      q = L(-8, 0);
+      r.character({ x: q[0], y: q[1], dir: p.dir, alive: true, color: p.color, label: p.label, r: 16 }, { pose: 'sit', y: 1, key: 'drv' + p.id });
+    } else {
+      q = L(-6, 34);
+      r.character({ x: q[0], y: q[1], dir: p.dir + 0.6, alive: false, color: p.color, label: p.label, r: 16 }, { pose: 'dead', key: 'drv' + p.id });
+    }
+  },
+
+  draw3d(g, r) {
+    const a = g.arena, d = g.data;
+    // chão do galpão
+    r.plane(480, -1, 290, 1700, 1200, '#0f1215');
+    const TX = a.w / 8, TZ = a.h / 4;
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 4; j++) {
+      r.plane(a.x + TX * (i + 0.5), 0, a.y + TZ * (j + 0.5), TX - 2, TZ - 2, (i + j) % 2 ? '#30333a' : '#2b2e33', { rough: 0.95 });
+    }
+    // paredes: fundo alto com prateleiras, laterais e frente baixas
+    r.box(480, 0, a.y - 12, a.w + 60, 130, 20, '#3b4148', { metal: 0.3 });
+    r.box(a.x - 12, 0, a.y + a.h / 2, 20, 40, a.h + 4, '#454c54', { metal: 0.3 });
+    r.box(a.x + a.w + 12, 0, a.y + a.h / 2, 20, 40, a.h + 4, '#454c54', { metal: 0.3 });
+    r.box(480, 0, a.y + a.h + 10, a.w + 44, 16, 16, '#454c54', { metal: 0.3 });
+    for (let i = 0; i < 9; i++) r.box(a.x + 6 + i * (a.w - 12) / 8, 0, a.y - 1, 26, 4, 2, i % 2 ? '#111' : '#f5c400', { shadow: false });
+    for (const lx of [a.x + 300, a.x + a.w - 300]) {
+      r.box(lx, 0, a.y - 30, 140, 4, 30, '#5a3d1e');            // prateleira com caixas ao fundo
+      r.box(lx, 70, a.y - 30, 140, 4, 30, '#5a3d1e');
+      for (const k of [-45, 0, 45]) { r.box(lx + k, 4, a.y - 32, 30, 30, 24, '#8a5f30'); if (k) r.box(lx + k * 0.6, 74, a.y - 32, 28, 26, 24, '#7a542b'); }
+    }
+    for (const lx of [a.x + 140, 480, a.x + a.w - 140]) r.box(lx, 116, a.y - 1, 46, 6, 3, '#ffe2b0', { glow: true });
+    // corredor central tracejado
+    for (let x = a.x + this.ZONE_W + 30; x < a.x + a.w - this.ZONE_W - 20; x += 46) r.plane(x + 11, 0.4, a.y + a.h / 2, 24, 4, '#f5c400', { glow: true, opacity: 0.4 });
+    // luzes
+    r.light(a.x + 220, 240, a.y + 110, '#ffd9a8', 0.8, 640);
+    r.light(a.x + a.w - 220, 240, a.y + 110, '#ffd9a8', 0.8, 640);
+    r.light(a.x + 220, 240, a.y + a.h - 90, '#ffd9a8', 0.7, 640);
+    r.light(a.x + a.w - 220, 240, a.y + a.h - 90, '#ffd9a8', 0.7, 640);
+    // zonas de entrega
+    for (const z of d.zones) {
+      const col = z.active ? z.owner.color : '#555', cx = z.x + z.w / 2, cz = z.y + z.h / 2;
+      r.plane(cx, 0.5, cz, z.w - 4, z.h - 4, col, { opacity: z.active ? 0.2 : 0.08 });
+      const lo = { glow: z.active, opacity: z.active ? 0.9 : 0.5 };
+      r.plane(cx, 0.8, z.y + 4, z.w - 8, 4, col, lo);
+      r.plane(cx, 0.8, z.y + z.h - 4, z.w - 8, 4, col, lo);
+      r.plane(z.x + 4, 0.8, cz, 4, z.h - 8, col, lo);
+      r.plane(z.x + z.w - 4, 0.8, cz, 4, z.h - 8, col, lo);
+      // poste com lâmpada no canto externo
+      const px = z.x < 480 ? z.x + 10 : z.x + z.w - 10, pz = z.y < a.y + a.h / 2 ? z.y + 10 : z.y + z.h - 10;
+      r.cyl(px, 0, pz, 2.5, 52, '#22262b', { metal: 0.6 });
+      r.sphere(px, 55, pz, 5, z.active ? col : '#2a2a2a', { glow: true });
+    }
+    // empilhadeiras (mortas primeiro)
+    for (const p of g.players) if (!p.alive) this.forklift3d(r, p);
+    for (const p of g.players) if (p.alive) this.forklift3d(r, p);
+    // caixas: soltas no chão, no garfo (no alto) ou subindo para o ímã
+    for (const cr of d.crates) {
+      if (cr.fade > 0) {
+        const k = Math.max(0, cr.fade / 0.9), lift = (1 - k) * 150;
+        this.crate3d(r, cr.x, 4 + lift, cr.y, cr.rot, Math.max(0.1, Math.round(k * 10) / 10));
+        r.cyl(cr.x, 230, cr.y, 26, 12, '#3a4048', { metal: 0.7 });
+        r.disc(cr.x, 229.5, cr.y, 22, '#7cf', { glow: true });
+        r.beam(cr.x, 30 + lift, cr.y, cr.x, 228, cr.y, 4, '#7cf', { glow: true, opacity: 0.5 });
+      } else this.crate3d(r, cr.x, cr.carrier ? 12 : 0, cr.y, cr.rot);
+    }
+  },
+
+  // placares fixos na tela: turno, tempo, caixas e contagem de cada zona
+  drawOverlay(g, c) {
+    if (!g.uses3d || !g.uses3d()) return;
+    const a = g.arena, D = TN.draw, d = g.data, U = TN.util;
+    for (const z of d.zones) {
+      const col = z.active ? z.owner.color : '#777';
+      const top = z.y < a.y + a.h / 2;
+      // fora da arena: as de cima na parede do fundo, as de baixo abaixo da mureta da frente
+      const s = TN.R3.project(z.x + z.w / 2, top ? 70 : 0, top ? a.y - 4 : a.y + a.h + 24);
+      const y = U.clamp(top ? s.y : s.y + 16, 82, g.H - 14);
+      c.fillStyle = 'rgba(8,10,13,0.7)'; c.fillRect(s.x - 46, y - 13, 92, 26);
+      c.fillStyle = col; c.fillRect(s.x - 46, y - 13, 4, 26);
+      D.text(c, z.active ? `${z.owner.label}  ${z.count}` : `${z.owner.label} ✖`, s.x + 2, y, { size: 18, color: col, align: 'center' });
+    }
+    const t = d.phase === 'play' ? d.timer : 0;
+    c.fillStyle = 'rgba(8,10,13,0.65)'; c.fillRect(g.W / 2 - 200, 38, 400, 30);
+    D.text(c, `TURNO ${d.sub}`, g.W / 2 - 190, 53, { size: 15, color: '#ffb02e' });
+    D.text(c, U.formatTime(t), g.W / 2, 53, { size: 24, color: t < 5 && d.phase === 'play' ? '#f55' : '#fff', align: 'center' });
+    D.text(c, `CAIXAS: ${d.crates.filter((cr) => !cr.removed).length}`, g.W / 2 + 190, 53, { size: 13, color: '#aaa', align: 'right' });
+    if (d.banner) {
+      D.panel(c, g.W / 2 - 230, g.H / 2 - 26, 460, 52, { stroke: d.banner.color });
+      D.text(c, d.banner.text, g.W / 2, g.H / 2, { size: 22, color: d.banner.color, align: 'center' });
+    }
+  },
+
+  // ---------- desenho 2D (alternativa sem WebGL) ----------
   drawCrate(c, cr) {
     const s = cr.r;
     c.save(); c.translate(cr.x, cr.y); c.rotate(cr.rot);

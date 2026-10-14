@@ -214,7 +214,101 @@
       return out;
     },
 
-    // ------------------------------------------------------------------ desenho
+    // ------------------------------------------------------------------ desenho 3D
+    // Oficina: telão holográfico ao fundo; 4 bancadas de frente para a câmera, cada uma com o bloco
+    // de 19 prismas hexagonais. O escultor fica atrás da própria bancada.
+    camera: { pos: [480, 400, 1010], target: [480, 70, 270], fov: 40 },
+    env: { bg: '#0c0a09', fog: [1000, 2400], sunDir: [-0.35, 1, 0.75], sunColor: '#ffe2bd' },
+    S3D: 12, TABLE_Z: 380,
+    tableX(i) { return 135 + i * 230; },
+
+    drawBlock3d(r, tx, ty, tz, removed, opts = {}) {
+      const S = this.S3D;
+      CELLS.forEach((cell, i) => {
+        const x = tx + cell.x * S, z = tz + cell.y * S;
+        const wrong = opts.compare && removed[i] && !opts.compare[i];
+        const missing = opts.compare && !removed[i] && opts.compare[i];
+        if (removed[i]) {
+          r.cyl(x, ty, z, S * 0.9, 1.5, wrong ? '#ff3030' : '#2a221a', { sides: 6, glow: wrong });
+        } else {
+          r.cyl(x, ty, z, S * 0.93, 14, missing ? '#c4673f' : '#c9b48c', { sides: 6, rough: 0.95, emissive: missing ? '#5a1a00' : undefined });
+        }
+      });
+    },
+
+    draw3d(g, r) {
+      const d = g.data, S = this.S3D;
+      // piso de madeira gasta e parede de fundo
+      r.plane(480, 0, 300, 1500, 1000, '#2a2420', { rough: 0.95 });
+      r.box(480, 0, 60, 1400, 520, 30, '#1b1715');
+      // telão com o bloco-alvo (prismas virados para a câmera)
+      r.box(480, 120, 98, 330, 280, 18, '#0d0f11', { metal: 0.5 });
+      r.box(480, 126, 108, 310, 266, 2, d.phase === 'memo' ? '#1b2a20' : '#0a0d0f', { emissive: d.phase === 'memo' ? '#0c2a16' : '#050607' });
+      if (d.phase === 'memo') {
+        const shown = CELLS.map(() => false);
+        for (let k = 0; k < d.removedShown; k++) shown[d.order[k]] = true;
+        CELLS.forEach((cell, i) => {
+          if (shown[i]) return;
+          r.cyl(480 + cell.x * 24, 258 - cell.y * 24, 110, 22, 8, '#e3cfa6', { sides: 6, rotX: Math.PI / 2, emissive: '#3d2f14' });
+        });
+        r.light(480, 260, 200, '#ffe7b8', 1.2, 600);
+      } else {
+        // "?" de estática enquanto esculpem
+        for (let k = 0; k < 14; k++) r.box(330 + ((k * 97 + Math.floor(g.time * 12) * 31) % 300), 140 + ((k * 53 + Math.floor(g.time * 12) * 17) % 230), 110, 18, 3, 1, '#2d3b33', { glow: true });
+      }
+      // lâmpadas sobre as bancadas
+      r.light(250, 300, 380, '#ffcf8f', 1.0, 600);
+      r.light(710, 300, 380, '#ffcf8f', 1.0, 600);
+      // bancadas
+      g.players.forEach((p, i) => {
+        const tx = this.tableX(i), tz = this.TABLE_Z, s = p.data;
+        r.box(tx, 0, tz, 205, 36, 120, '#5a4636', { rough: 0.9 });
+        r.box(tx, 36, tz, 210, 6, 124, '#6e5643', { rough: 0.8 });
+        r.box(tx, 0.5, tz + 64, 205, 2, 4, p.alive ? p.color : '#333', { glow: p.alive });   // faixa da cor do dono
+        const compare = d.phase === 'reveal' ? d.target : null;
+        this.drawBlock3d(r, tx - 14, 42, tz, s.cells, { compare });
+        // botões ENVIAR / RESETAR na beirada direita
+        const btnX = tx - 14 + NODES[SEND].x * S;
+        r.box(btnX, 42, tz + NODES[SEND].y * S * 1.6, 20, 6, 16, s.sent ? '#7dffaa' : '#1f8a45', { emissive: '#0b3d1e' });
+        r.box(btnX, 42, tz + NODES[RESET].y * S * 1.6, 20, 6, 16, '#d68a1e', { emissive: '#3d2405' });
+        // cursor (anel brilhante) durante a escultura
+        if (d.phase === 'carve' && !s.sent && p.alive) {
+          const n = NODES[s.cursor];
+          const cx = s.cursor >= SEND ? btnX : tx - 14 + n.x * S, cz = s.cursor >= SEND ? tz + n.y * S * 1.6 : tz + n.y * S;
+          r.ring(cx, 58 + Math.abs(Math.sin(g.time * 6)) * 3, cz, S * 0.75, S * 1.05, p.color, { glow: true });
+          r.beam(cx + 6, 62, cz - 6, cx + 16, 86, cz - 16, 3, '#c9ced4', { metal: 0.8 });   // cinzel
+        }
+        // escultor atrás da bancada, olhando para a câmera
+        r.box(tx, 0, tz - 92, 90, 14, 46, '#3b302a');   // degrau do escultor
+        r.character({ ...p, x: tx, y: tz - 92 }, { key: p.id, y: 14, scale: 1.15, dir: Math.PI / 2, pose: !p.alive ? 'dead' : d.phase === 'carve' && !s.sent ? 'arms' : 'idle', label: false });
+      });
+    },
+
+    drawOverlay(g, c) {
+      if (!TN.R3.available || !g.uses3d()) return;
+      const D = TN.draw, d = g.data;
+      // relógio / ciclo no topo
+      D.panel(c, 380, 42, 200, 40, { fill: 'rgba(10,8,6,0.85)', stroke: '#d9b77e' });
+      if (d.phase === 'memo') D.text(c, d.phaseT < this.SHOW_FULL ? 'O BLOCO...' : 'MEMORIZE!', 480, 62, { size: 20, color: '#ffd9a0', align: 'center' });
+      else if (d.phase === 'carve') {
+        const left = Math.max(0, d.carveTime - d.phaseT);
+        D.text(c, `ESCULPA: ${Math.ceil(left)} s`, 480, 62, { size: 20, color: left < 3 ? '#ff6b6b' : '#fff', align: 'center' });
+      } else D.text(c, `CICLO ${d.cycle}`, 480, 62, { size: 20, color: '#d9b77e', align: 'center' });
+      D.text(c, `${d.order.length} cortes · ${d.carveTime} s`, 480, 94, { size: 12, color: '#a08a66', align: 'center' });
+      // estado de cada escultor acima da cabeça
+      g.players.forEach((p, i) => {
+        const s = p.data, q = TN.R3.project(this.tableX(i), 110, this.TABLE_Z - 92);
+        let st = '', sc = '#aaa';
+        if (d.phase === 'reveal' && s.result) { st = s.result === 'ok' ? 'APROVADO' : s.result === 'late' ? 'NÃO ENVIOU' : 'REPROVADO'; sc = s.result === 'ok' ? '#46e27b' : '#ff4d4d'; }
+        else if (!p.alive) { st = 'ELIMINADO'; sc = '#f55'; }
+        else if (d.phase === 'carve') { st = s.sent ? 'ENVIADO ✔' : 'esculpindo…'; sc = s.sent ? '#46e27b' : '#d9b77e'; }
+        D.text(c, p.label + (p.isBot ? ' BOT' : ''), q.x, q.y - 16, { size: 13, color: p.alive ? p.color : '#777', align: 'center' });
+        if (st) D.text(c, st, q.x, q.y + 2, { size: 13, color: sc, align: 'center' });
+      });
+      if (d.phase === 'reveal') D.text(c, 'vermelho = cortou errado · laranja = faltou cortar', 480, TN.H - 14, { size: 12, color: '#a08a66', align: 'center' });
+    },
+
+    // ------------------------------------------------------------------ desenho 2D (alternativa)
     hexPath(c, x, y, s) {
       c.beginPath();
       for (let k = 0; k < 6; k++) { const a = Math.PI / 6 + (k * Math.PI) / 3; c.lineTo(x + Math.cos(a) * s, y + Math.sin(a) * s); }

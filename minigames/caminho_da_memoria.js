@@ -188,7 +188,65 @@ TN.registerMinigame({
     return { x: n.x, y: n.y };
   },
 
-  // ---------- desenho ----------
+  // ---------- desenho 3D ----------
+  camera: { pos: [480, 620, 790], target: [480, 0, 295], fov: 40 },
+  env: { bg: '#07090c', ambient: 0.55, sun: 1.8, sunDir: [-0.2, 1, 0.5] },
+
+  draw3d(g, r) {
+    const a = g.arena, d = g.data, preview = d.phase === 'preview', T = this.WALL_T, WH = 44;
+    r.plane(480, -1, 290, 1600, 1100, '#0f1215');
+    const tile = 41;
+    for (let x = a.x; x < a.x + a.w; x += tile) for (let z = a.y; z < a.y + a.h; z += tile) {
+      r.plane(x + tile / 2, 0, z + tile / 2, tile - 1.5, tile - 1.5, ((x - a.x) / tile + (z - a.y) / tile) % 2 ? '#2b3138' : '#272c33');
+    }
+    // zonas de início e saída (pisos que brilham)
+    r.plane(d.startZone.x + d.startZone.w / 2, 0.6, d.startZone.y + d.startZone.h / 2, d.startZone.w, d.startZone.h, '#1a4f80', { glow: true, opacity: 0.55 });
+    r.plane(d.endZone.x + d.endZone.w / 2, 0.6, d.endZone.y + d.endZone.h / 2, d.endZone.w, d.endZone.h, '#1d7a3c', { glow: true, opacity: 0.55 });
+    // muro externo baixo
+    r.box(a.x + a.w / 2, 0, a.y - 8, a.w + 16, 30, 16, '#3c444d');
+    r.box(a.x - 8, 0, a.y + a.h / 2, 16, 30, a.h, '#3c444d');
+    r.box(a.x + a.w + 8, 0, a.y + a.h / 2, 16, 30, a.h, '#3c444d');
+    // paredes com portas e lâmpadas
+    let lights = 0;
+    for (const w of d.walls) {
+      let y = a.y;
+      const seg = (z0, z1) => { if (z1 - z0 > 0.5) r.box(w.x, 0, (z0 + z1) / 2, T, WH, z1 - z0, '#5a636d', { metal: 0.3 }); };
+      for (const dr of w.doors) { seg(y, dr.y0); y = dr.y1; }
+      seg(y, a.y + a.h);
+      w.doors.forEach((dr, j) => {
+        let col = null;
+        if (preview) col = j === w.safe ? '#46e27b' : '#ff3b3b';
+        else if (dr.flash > 0) col = dr.flashOk ? '#46e27b' : '#ff3b3b';
+        else if (dr.red) col = '#a02020';
+        r.box(w.x, WH - 6, dr.cy, T + 2, 6, dr.y1 - dr.y0, '#3a4048');                  // verga da porta
+        r.sphere(w.x, WH + 5, dr.cy, 7, col || '#222', { glow: !!col });
+        if (col && dr.flash > 0 && lights < 6) { r.light(w.x, WH + 20, dr.cy, col, 0.8, 160); lights++; }
+        if (dr.red && !preview) r.disc(w.x, 0.8, dr.cy, 16, '#000', { opacity: 0.5 });     // fuligem da explosão
+      });
+    }
+    if (preview) r.light(480, 260, 290, '#ffffff', 0.6, 900);
+    for (const p of g.players) r.character(p, { flash: p.alive && p.data.fuse > 0 && Math.sin(g.time * 30) > 0 });
+  },
+
+  drawOverlay(g, c) {
+    if (!TN.R3.available || !g.uses3d()) return;
+    const D = TN.draw, d = g.data, a = g.arena, U = TN.util;
+    for (const p of g.alive()) {
+      const pd = p.data, q = TN.R3.project(p.x, 0, p.y + 22);
+      for (let k = 0; k < this.LIVES; k++) { c.fillStyle = k < pd.lives ? '#ff4d5e' : '#333'; c.beginPath(); c.arc(q.x - 5 + k * 10, q.y, 3.5, 0, Math.PI * 2); c.fill(); }
+      if (pd.fuse > 0) D.text(c, pd.fuse.toFixed(1), q.x, q.y + 14, { size: 13, color: '#ffb02e', align: 'center' });
+    }
+    D.text(c, `TRAVESSIA ${d.sub}  ·  ${d.rows}×${d.doors}`, 16, 52, { size: 15, color: '#3fe0c5' });
+    if (d.phase === 'preview') D.text(c, `MEMORIZE! ${d.previewT.toFixed(1)}`, g.W / 2, 56, { size: 24, color: '#ffd23f', align: 'center' });
+    else D.text(c, U.formatTime(d.timer), g.W / 2, 56, { size: 26, color: d.timer < 5 && d.phase === 'walk' ? '#f55' : '#fff', align: 'center' });
+    D.text(c, d.leftToRight ? 'SAÍDA →' : '← SAÍDA', g.W - 16, 52, { size: 15, color: '#46e27b', align: 'right' });
+    if (d.banner) {
+      D.panel(c, g.W / 2 - 250, 250, 500, 48, { stroke: d.banner.color });
+      D.text(c, d.banner.text, g.W / 2, 274, { size: 18, color: d.banner.color, align: 'center', maxWidth: 480 });
+    }
+  },
+
+  // ---------- desenho 2D (alternativa) ----------
   draw(g, c) {
     const a = g.arena, D = TN.draw, d = g.data, U = TN.util;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);

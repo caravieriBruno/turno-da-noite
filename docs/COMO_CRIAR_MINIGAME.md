@@ -31,7 +31,12 @@ O motor cuida do resto: lobby, bots, roleta, briefing, rodadas, contagem 3-2-1, 
 | `inspiredBy` | | texto livre de referência |
 | `init(g)` | sim | prepara a rodada; é chamado a cada rodada |
 | `update(g, dt)` | sim | lógica a 60 Hz fixos (`dt` = 1/60) |
-| `draw(g, c)` | sim | desenha com Canvas 2D em 960×540 virtuais |
+| `draw3d(g, r)` | sim* | desenha a cena 3D (câmera fixa); veja "Gráficos 3D" |
+| `draw(g, c)` | | alternativa 2D (Canvas 960×540); *é obrigatório ter `draw3d` ou `draw` |
+| `drawOverlay(g, c)` | | camada 2D por cima (placares, barras e textos fixos na tela) |
+| `camera`, `env` | | câmera fixa e iluminação do 3D |
+| `worldPos(g, p)` | | posição 3D `{x,y,z}` do jogador quando `p.x/p.y` não são o chão (jogos de visão lateral); usado nos rótulos do motor |
+| `screenSpace` | | `true` quando a lógica é em coordenadas de TELA (ex.: mira 2D); partículas e popups ficam em 2D e o jogo usa `r.unproject` |
 | `bot(g, p, dt)` | | IA do bot; retorna `{x, y, a, b}`. Sem ela o bot anda à toa |
 | `onTimeUp(g)` | | chamado quando o tempo acaba, antes do fim da rodada |
 | `results(g, pts)` | | gancho final para ajustar o objeto de pontos `{id: n}` |
@@ -106,6 +111,57 @@ Dentro dos métodos, `this` é a própria definição. Isso permite guardar cons
 - `robot`, `robotSide` (visão lateral).
 - `text`, `lines`, `panel`, `bar`.
 - `floor` (piso quadriculado), `hazardStripes`.
+
+## Gráficos 3D (câmera fixa): `draw3d(g, r)`
+
+Os minigames são desenhados em **3D com câmera fixa**, como no Machine Party. A lógica continua 2D, e o plano da lógica vira o **chão** do mundo 3D:
+
+- **X** = `p.x` (direita), **Z** = `p.y` (em direção à câmera), **Y** = altura. 1 unidade = 1 pixel da lógica. O chão fica em `y = 0`.
+- Defina `camera: { pos: [x,y,z], target: [x,y,z], fov }`. O padrão é `{ pos: [480, 640, 860], target: [480, 0, 300], fov: 38 }`, que mostra a `g.arena` inteira em ângulo de cima.
+- Ajuste a luz com `env: { bg, fog: [perto, longe], ambient, sun, sunDir: [x,y,z], sunColor, envMap }`. Use `envMap: 0` para desligar os reflexos do ambiente e deixar a cena escura de verdade (ex.: apagão); `r.env({...})` dentro do `draw3d` muda a luz por fase. O padrão é um ambiente industrial escuro com sol quente e sombras.
+- `draw3d` é chamado **a cada quadro** e descreve a cena inteira, como o `draw` 2D. O motor reaproveita os objetos 3D, então não há nada para criar ou destruir.
+
+| chamada | o que faz |
+|---|---|
+| `r.box(x, y, z, w, h, d, cor, o)` | caixa com **base** em `y` e centro em `x,z` |
+| `r.cyl(x, y, z, raio, h, cor, o)` / `r.cone(...)` | cilindro ou cone com base em `y`; `o.sides: 6` faz um prisma hexagonal |
+| `r.sphere(x, y, z, raio, cor, o)` | esfera com **centro** em `y` |
+| `r.plane(x, y, z, w, d, cor, o)` | retângulo horizontal (piso, ladrilho, faixa) |
+| `r.disc(x, y, z, raio, cor, o)` | círculo horizontal (sombra, marcador, área) |
+| `r.ring(x, y, z, raioInt, raioExt, cor, {arc})` | anel horizontal; `arc` de 0 a 1 vira barra de progresso circular |
+| `r.beam(x1,y1,z1, x2,y2,z2, espessura, cor, o)` | barra quadrada entre dois pontos (laser, cabo, corda, trilho) |
+| `r.tube(x1,y1,z1, x2,y2,z2, raio, cor, o)` | cilindro entre dois pontos (cano, roda, rolo, eixo, tronco) |
+| `r.light(x, y, z, cor, intensidade, alcance)` | luz pontual, com no máximo 6 por quadro |
+| `r.label(x, y, z, texto, cor, tamanho)` | texto 2D preso a um ponto 3D |
+| `r.character(p, o)` | **personagem** (boneco de macacão na cor do jogador), animado sozinho (veja abaixo) |
+| `r.camera(pos, target, fov)` | muda a câmera neste quadro (ex.: tremor, foco); normalmente use `def.camera` |
+| `r.project(x, y, z)` | converte para a posição na tela 2D: `{x, y}` |
+| `r.unproject(sx, sy, alturaY=0)` | ponto da tela → ponto no plano horizontal do mundo `{x, y, z}` |
+
+**Opções `o`** das primitivas:
+- `rotY`, `rotX`, `rotZ` (rotação em rad; caixa, cilindro e cone giram em torno da **base**);
+- `glow: true` (brilha, sem sombra: luzes, lasers, telas);
+- `opacity`;
+- `emissive: '#cor'`;
+- `metal` e `rough` (de 0 a 1);
+- `shadow: false`.
+- Cores e opacidades que mudam continuamente criam materiais novos. Prefira poucas cores fixas; a opacidade é arredondada em passos de 0,05.
+- `r.beam` calcula a própria rotação, então ignora `rotX`, `rotY` e `rotZ`.
+
+**Personagem `r.character(p, o)`:**
+- Aceita o jogador `p`, que já tem `x, y, dir, alive, color, label`, ou qualquer objeto com `x, y`.
+- Por padrão a pose é automática: anda quando o jogador se move, fica parado ou cai morto quando `p.alive` é falso.
+- `o.pose` força uma pose: `'idle' | 'walk' | 'dead' | 'sit' | 'crouch' | 'fall' | 'arms'`, em que `arms` são braços para frente (carregar, mirar).
+- Outras opções: `o.y` (elevação: pulo, cadeira, queda), `o.dir` (direção em rad), `o.lean` (inclinação do corpo em rad; positivo = para trás), `o.scale`, `o.flash`, `o.label` (texto ou `false`) e `o.key` (id para a animação, quando não é um jogador).
+- `p.dir` segue o padrão da lógica: 0 olha para +X e π/2 olha para +Z (em direção à câmera).
+
+**Outras regras:**
+- Partículas (`g.particles`), popups (`g.addScore`), mensagens, flash e tremor do motor funcionam sozinhos no 3D.
+- Textos, placares e barras que precisam ficar fixos na tela vão em `drawOverlay(g, c)`, que é 2D e é desenhado por cima do 3D. Ele **só é chamado no modo 3D**; no modo 2D o `draw` já desenha tudo.
+- O tamanho do personagem acompanha `p.r` (16 = normal). Para outro tamanho, use `o.scale`.
+- Jogos de visão lateral (mesa, cabo de guerra, escada) também usam 3D: monte o cenário com a câmera de frente ou de lado e converta as coordenadas da lógica como for mais natural, por exemplo `Y = altura`.
+- `draw(g, c)` em 2D é **opcional**: serve de alternativa quando não há WebGL ou com `?2d=1`. Minigames novos podem ter só `draw3d`.
+- Para conferir as poses do personagem, use a cena de teste: `index.html?game=_teste3d&extra=_teste3d&humans=0&t=4`.
 
 ## Compatibilidade com o modo em rede (obrigatória)
 

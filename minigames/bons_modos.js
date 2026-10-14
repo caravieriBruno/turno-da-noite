@@ -135,6 +135,190 @@ TN.registerMinigame({
     return { a: true };
   },
 
+  // ---------------- 3D (câmera fixa) ----------------
+  // Palco de frente: X = lógica x, Y = altura, Z = profundidade. Convidados sentados atrás da mesa
+  // (Z ≈ 320), Anfitrião em pé no meio, ainda mais atrás, com o jornal na frente do rosto.
+  camera: { pos: [480, 290, 1080], target: [480, 98, 400], fov: 36 },
+  env: { bg: '#0b0709', fog: [1000, 2400], ambient: 0.7, sun: 1.3, sunDir: [-0.2, 1, 0.9], sunColor: '#ffe0bf' },
+  S3: 1.6, TH3: 58, GZ3: 300, HZ3: 270, TZ3: 440, SEAT3: 28,
+
+  // posição 3D do convidado (sentado atrás da mesa) — usada pelos rótulos do motor
+  worldPos(g, p) { return { x: p.x, y: this.TH3 - this.SEAT3, z: this.GZ3 }; },
+
+  w3(x, z, lx, ly, lz, dir, S, oy) {
+    const cs = Math.cos(dir), sn = Math.sin(dir);
+    return { x: x + (lx * cs - lz * sn) * S, y: oy + ly * S, z: z + (lx * sn + lz * cs) * S };
+  },
+
+  draw3d(g, r) {
+    const d = g.data, h = d.host, t = g.time, S = this.S3, TH = this.TH3, GZ = this.GZ3, TZ = this.TZ3, HX = 480, HZ = this.HZ3;
+    // ---- sala de jantar (fábrica reformada) ----
+    r.plane(480, -1, 400, 2200, 1400, '#0d0a0b');
+    for (let x = -100; x < 1060; x += 40) r.plane(x + 20, 0, 420, 38, 700, (x / 40) % 2 ? '#2a1d17' : '#30221b', { rough: 0.8 });
+    r.box(480, 0, 150, 1600, 460, 16, '#24161c');
+    for (let x = -300; x < 1300; x += 48) r.box(x, 0, 160, 22, 460, 3, '#2d1c24');
+    r.box(480, 0, 162, 1600, 26, 6, '#160d11');
+    r.box(480, 168, 162, 1600, 8, 5, '#1a1015');
+    // quadros na parede
+    for (const [fx, col] of [[190, '#1e2a33'], [770, '#332a1e']]) {
+      r.box(fx, 190, 162, 130, 96, 6, '#5a4630', { metal: 0.4, rough: 0.5 });
+      r.box(fx, 198, 166, 112, 80, 2, col, { emissive: col, emissiveIntensity: 0.4 });
+    }
+    // cano industrial atravessando a sala
+    r.beam(-200, 330, 175, 1200, 330, 175, 14, '#3a3f46', { metal: 0.7, rough: 0.4 });
+    // lustre
+    r.beam(HX, 460, 380, HX, 244, 380, 2, '#a08850', { metal: 0.8 });
+    r.cyl(HX, 230, 380, 30, 14, '#c9a74a', { metal: 0.9, rough: 0.25 });
+    for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3; r.sphere(HX + Math.cos(a) * 34, 248, 380 + Math.sin(a) * 34, 4.5, '#ffe6a8', { glow: true }); }
+    r.light(HX, 270, 400, '#ffd9a0', 2.4, 900);
+    r.light(140, 220, 260, '#ff9a5a', 0.8, 420);
+    r.light(820, 220, 260, '#ff9a5a', 0.8, 420);
+    // ---- Anfitrião (em pé atrás da mesa) ----
+    this.drawHost3d(g, r);
+    // ---- convidados nas cadeiras ----
+    for (const p of g.players) {
+      const b = p.data, side = p.x < g.W / 2 ? 1 : -1, dir = Math.PI / 2 - side * 0.35;
+      // cadeira
+      const dead = !p.alive;
+      r.box(p.x, 56, GZ - 4, 46, 6, 44, '#3b2518', { rough: 0.6, rotZ: dead ? side * -0.25 : 0 });
+      r.box(p.x, 62, GZ - 28, 46, 66, 6, '#3b2518', { rough: 0.6, rotZ: dead ? side * -0.25 : 0 });
+      for (const [lx, lz] of [[-19, -22], [19, -22], [-19, 14], [19, 14]]) r.box(p.x + lx, 0, GZ - 4 + lz, 5, 56, 5, '#2a190f');
+      if (!p.alive) continue;
+      const eating = b.eatT > 0;
+      const aimed = d.shot && d.shot.id === p.id && Math.floor(t * 10) % 2 === 0;
+      r.character({ ...p, y: GZ }, { pose: 'sit', y: TH - this.SEAT3 + (eating ? 3 : 0), dir, scale: S, flash: aimed });
+      if (b.done) r.label(p.x, TH + 90 * S, GZ, 'SATISFEITO', '#7bd84a', 12);
+    }
+    // ---- mesa com toalha ----
+    r.box(480, TH - 6, TZ, 900, 6, 196, '#ebe6da', { rough: 0.9 });
+    r.box(480, 14, TZ + 98, 904, TH - 14, 3, '#e2dccf', { rough: 0.9 });
+    for (let x = 50; x < 920; x += 40) r.box(x + 10, 14, TZ + 100, 20, TH - 14, 1, '#d2cbbd', { shadow: false });
+    r.box(480, 14, TZ + 101, 904, 4, 1, '#b84a3a', { shadow: false });
+    r.plane(480, TH + 0.3, TZ + 20, 860, 34, '#7a1f1f', { rough: 0.9 });   // trilho de mesa
+    // travessa com campânula no centro
+    r.cyl(480, TH, TZ + 30, 46, 2, '#b9bec4', { metal: 0.85, rough: 0.25 });
+    r.sphere(480, TH + 2, TZ + 30, 38, '#c9ced4', { metal: 0.9, rough: 0.2 });
+    r.sphere(480, TH + 42, TZ + 30, 5, '#c9ced4', { metal: 0.9, rough: 0.2 });
+    // castiçais
+    for (const cx of [210, 750]) {
+      r.cyl(cx, TH, TZ - 64, 7, 3, '#c9a74a', { metal: 0.9, rough: 0.3 });
+      r.cyl(cx, TH + 3, TZ - 64, 2, 22, '#c9a74a', { metal: 0.9, rough: 0.3 });
+      r.cyl(cx, TH + 25, TZ - 64, 3, 12, '#f2ecd8');
+      r.sphere(cx, TH + 40, TZ - 64, 2.6 + Math.sin(t * 13 + cx) * 0.4, '#ffcf5a', { glow: true });
+    }
+    // ---- pratos, ervilhas e garfos ----
+    for (const p of g.players) this.drawPlate3d(g, r, p);
+    // ---- tiro: rastro do disparo ----
+    if (d.shot) {
+      const tgt = g.players[d.shot.id], gun = this.gunPose(g, tgt);
+      if (d.flashT > 0) {
+        r.beam(gun.mx, gun.my, gun.mz, tgt.x, TH + 40, GZ + 14, 2.5, '#fff6a0', { glow: true });
+        r.sphere(gun.mx, gun.my, gun.mz, 9, '#fff3a0', { glow: true });
+        r.light(gun.mx, gun.my, gun.mz + 20, '#ffe08a', 4, 600);
+      }
+    }
+  },
+
+  // posição do revólver do Anfitrião apontando para o alvo
+  gunPose(g, tgt) {
+    const S2 = 2.05, side = tgt.x < 480 ? -1 : 1;
+    const hx = 480 + side * 104, hy = 100, hz = this.HZ3 + 30;
+    const tx = tgt.x, ty = this.TH3 + 40, tz = this.GZ3 + 14;
+    const dx = tx - hx, dy = ty - hy, dz = tz - hz, L = Math.hypot(dx, dy, dz) || 1;
+    return { hx, hy, hz, mx: hx + dx / L * 30, my: hy + dy / L * 30, mz: hz + dz / L * 30, S2 };
+  },
+
+  drawHost3d(g, r) {
+    const d = g.data, h = d.host, t = g.time, HX = 480, HZ = this.HZ3, HS = 2.05;
+    const watching = h.state === 'watch' || !!d.shot;
+    r.character({ id: 'host', x: HX, y: HZ, alive: true, color: '#16181c', label: false }, { pose: 'arms', dir: Math.PI / 2, scale: HS, key: 'host' });
+    // camisa, gravata, cartola
+    r.box(HX, 62, HZ + 11.5, 8, 22, 1.5, '#eeeeee', { shadow: false });
+    r.box(HX, 66, HZ + 12.5, 3, 16, 1, '#a01818', { shadow: false });
+    const top = 52 * HS + 8.2 * HS;
+    r.cyl(HX, top - 6, HZ, 20, 2.5, '#111');
+    r.cyl(HX, top - 4, HZ, 12.5, 30, '#111', { rough: 0.5 });
+    r.cyl(HX, top - 3, HZ, 12.8, 6, '#a01818');
+    // olhos (vermelhos quando vigia)
+    for (const ex of [-6, 6]) r.sphere(HX + ex, 52 * HS + 1, HZ + 14.5, 3, watching ? '#ff2a2a' : '#5fe8e8', { glow: true });
+    if (watching) r.light(HX, 52 * HS, HZ + 40, '#ff2a2a', 1.4, 260);
+    // revólver no tiro (o jornal já está abaixado)
+    if (d.shot) {
+      const gp = this.gunPose(g, g.players[d.shot.id]);
+      r.beam(gp.hx, gp.hy, gp.hz, gp.mx, gp.my, gp.mz, 6, '#2a2c30', { metal: 0.8, rough: 0.3 });
+      r.sphere(gp.hx, gp.hy, gp.hz, 4.5, '#d8d2c8');
+      const sx = 480 + Math.sign(gp.hx - 480) * 26;
+      r.beam(sx, 84, HZ, gp.hx, gp.hy, gp.hz, 9, '#16181c');
+      if (!d.shot.fired) { const tg = g.players[d.shot.id]; r.beam(gp.mx, gp.my, gp.mz, tg.x, this.TH3 + 44, this.GZ3 + 8, 0.8, '#ff2020', { glow: true }); r.sphere(tg.x, this.TH3 + 44, this.GZ3 + 10, 2.2, '#ff2020', { glow: true }); }
+    }
+    // jornal: sobe/desce com h.k (tremendo na finta); 0 = cobrindo o rosto
+    const k = d.shot ? 1 : h.k;
+    const shake = h.state === 'fake' ? Math.sin(t * 60) * 3 : 0;
+    // a caixa gira em torno da borda de baixo: ao abaixar, o jornal tomba para a frente sobre a mesa
+    const a = k * 0.22, PW = 172, PH = 96;
+    const by = 46 - 60 * k + shake, bz = HZ + 44;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    // ponto da página (lx = lado, ly = altura a partir da borda de baixo, lz = espessura) → mundo
+    const pt = (lx, ly, lz) => ({ x: 480 + lx, y: by + ly * ca - lz * sa, z: bz + ly * sa + lz * ca });
+    r.box(480, by, bz, PW, PH, 2, '#e8e2cf', { rotX: a, rough: 0.95 });
+    const line = (lx, ly, w, hh, col) => { const q = pt(lx, ly, 1.4); r.box(q.x, q.y, q.z, w, hh, 0.8, col, { rotX: a, shadow: false }); };
+    line(-44, 70, 74, 16, '#2a2a2a');
+    for (let i = 0; i < 5; i++) { line(-44, 54 - i * 11, 76, 3.5, '#9a968a'); line(44, 80 - i * 14, 76, 4, '#9a968a'); }
+    line(0, 3, 1, PH - 6, '#a9a395');
+    // mãos segurando o jornal
+    for (const sx of [-1, 1]) { const q = pt(sx * (PW / 2 + 2), PH * 0.8, 0); r.sphere(q.x, q.y, q.z, 6, '#c9c3b8'); }
+  },
+
+  drawPlate3d(g, r, p) {
+    const b = p.data, TH = this.TH3, side = p.x < g.W / 2 ? 1 : -1, GZ = this.GZ3;
+    const px = p.x + side * 6, pz = 378;
+    r.cyl(px, TH, pz, 34, 2, '#f4f4f4', { rough: 0.3 });
+    r.ring(px, TH + 2.1, pz, 26, 33, '#d8d8d8', { shadow: false });
+    const left = this.GOAL - b.eaten - b.fork, n = Math.ceil((left / this.GOAL) * 22);
+    for (let i = 0; i < n; i++) {
+      const ax = ((i * 37) % 44) - 22, az = ((i * 13) % 26) - 13;
+      r.sphere(px + ax, TH + 4.5, pz + az * 0.9, 3.4, '#5cbf2a', { rough: 0.5 });
+    }
+    if (!p.alive) {
+      // tombou de cara na mesa
+      r.disc(px - side * 10, TH + 0.6, pz - 10, 30, '#3a0a0a', { opacity: 0.85 });
+      r.character({ ...p, y: pz - 14 }, { pose: 'dead', y: TH - 2, dir: side > 0 ? Math.PI : 0, scale: this.S3 * 0.9 });
+      return;
+    }
+    if (b.done) return;
+    // garfo: desce ao espetar, sobe até a boca ao comer
+    const dir = Math.PI / 2 - side * 0.35;
+    let tip, hand;
+    if (b.eatT > 0) {
+      tip = this.w3(p.x, GZ, 11, 46, 0, dir, this.S3, TH - this.SEAT3 + 3);
+      hand = { x: tip.x + side * 10, y: tip.y - 16, z: tip.z + 22 };
+    } else {
+      tip = { x: px + side * 4, y: TH + (b.stabT > 0 ? 4 : 18), z: pz - 2 };
+      hand = { x: tip.x - side * 8, y: tip.y + 22, z: tip.z - 26 };
+    }
+    r.beam(hand.x, hand.y, hand.z, tip.x, tip.y, tip.z, 2.2, '#cfd3d8', { metal: 0.9, rough: 0.2 });
+    r.sphere(hand.x, hand.y, hand.z, 4.6, '#d8d2c8');
+    const L = Math.hypot(hand.x - tip.x, hand.y - tip.y, hand.z - tip.z) || 1;
+    for (let i = 0; i < b.fork; i++) {
+      const u = (3 + i * 3.6) / L;
+      r.sphere(tip.x + (hand.x - tip.x) * u, tip.y + (hand.y - tip.y) * u, tip.z + (hand.z - tip.z) * u, 2.8, '#5cbf2a');
+    }
+  },
+
+  // HUD 2D por cima do 3D: placar de ervilhas na toalha e o aviso de vigia
+  drawOverlay(g, c) {
+    if (!g.uses3d()) return;
+    const D = TN.draw, h = g.data.host;
+    for (const p of g.players) {
+      const b = p.data, s0 = TN.R3.project(p.x, 36, this.TZ3 + 102), s = { x: TN.util.clamp(s0.x, 58, g.W - 58), y: s0.y };
+      D.text(c, `${b.eaten}/${this.GOAL}`, s.x, s.y - 8, { size: 15, color: p.alive ? '#333' : '#999', align: 'center', shadow: false });
+      D.bar(c, s.x - 46, s.y + 4, 92, 9, b.eaten / this.GOAL, p.alive ? p.color : '#777', '#bbb');
+      c.fillStyle = '#333'; c.fillRect(s.x - 1, s.y + 2, 2, 13);
+      D.text(c, p.alive ? (b.done ? 'LIMPOU O PRATO' : `garfo ${b.fork}`) : 'MAL-EDUCADO', s.x, s.y + 26, { size: 11, color: p.alive ? '#555' : '#a33', align: 'center', shadow: false });
+    }
+    if (h.state === 'watch') D.text(c, 'ELE ESTÁ OLHANDO', g.W / 2, 52, { size: 15, color: '#f55', align: 'center' });
+  },
+
   draw(g, c) {
     const d = g.data, D = TN.draw, h = d.host, TY = this.TABLE_Y;
     // sala de jantar

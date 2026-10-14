@@ -97,6 +97,7 @@ TN.registerMinigame({
       for (const p of g.alive()) {
         if (p.data.air > 0) continue;
         if (U.segCircle(x1, y1, x2, y2, p.x, p.y, p.r - 4 + this.BEAM_W / 2)) {
+          p.data.cutAt = g.time;   // só para a animação 3D do corte
           g.eliminate(p, { sound: 'laser', particles: false, msg: U.pick(['TROPEÇOU.', 'CORTADO.', 'FORA DO RITMO.', 'NÃO PULOU.']) });
           g.sfx('boom'); g.shake(12); g.flash('#ff3b6b', 0.18);
           g.particles(p.x, p.y, '#ff3b6b', 26, 320);
@@ -144,6 +145,116 @@ TN.registerMinigame({
       }
     }
     return { x: U.clamp(mx, -1, 1), y: U.clamp(my, -1, 1), a: jump };
+  },
+
+  // ---------- desenho 3D (câmera fixa) ----------
+  camera: { pos: [480, 600, 760], target: [480, 0, 290], fov: 38 },
+  env: { bg: '#040507', fog: [900, 1900], ambient: 0.5, sun: 1.3, sunDir: [-0.3, 1, 0.45], sunColor: '#ffe6cc' },
+  LASER_Y: 8,
+
+  // um braço de laser: núcleo branco, halo colorido, rastro e o carrinho emissor na borda
+  drawLaser3d(r, d, ang, color, ghost) {
+    const cx = this.CX, cy = this.CY, y = this.LASER_Y, c = Math.cos(ang), s = Math.sin(ang);
+    const x1 = cx + c * this.HUB, z1 = cy + s * this.HUB, x2 = cx + c * (this.R + 8), z2 = cy + s * (this.R + 8);
+    if (ghost) { r.beam(x1, y, z1, x2, y, z2, 5, color, { glow: true, opacity: 0.35 }); return; }
+    r.beam(x1, y, z1, x2, y, z2, 2.4, '#ffffff', { glow: true });
+    r.beam(x1, y, z1, x2, y, z2, 8, color, { glow: true, opacity: 0.5 });
+    r.beam(x1, y, z1, x2, y, z2, 18, color, { glow: true, opacity: 0.14 });
+    for (let k = 1; k <= 5; k++) {
+      const a = ang - d.sign * k * 0.06, ca = Math.cos(a), sa = Math.sin(a);
+      r.beam(cx + ca * this.HUB, 1, cy + sa * this.HUB, cx + ca * this.R, 1, cy + sa * this.R, 10, color, { glow: true, opacity: 0.13 * (1 - k / 6), shadow: false });
+    }
+    // carrinho emissor que corre no trilho da borda
+    r.box(x2 + c * 6, 0, z2 + s * 6, 18, 16, 18, '#2a2e35', { rotY: -ang, metal: 0.7, rough: 0.35 });
+    r.sphere(x2, y, z2, 4, color, { glow: true });
+    r.light(cx + c * this.R * 0.55, 26, cy + s * this.R * 0.55, color, 1.3, 280);
+  },
+
+  draw3d(g, r) {
+    const d = g.data, cx = this.CX, cy = this.CY, R = this.R, t = g.time;
+    const warn = d.revWarn > 0 && Math.floor(t * 12) % 2 === 0;
+    const col = warn ? '#ffd23f' : '#ff3b6b';
+    // poço escuro com grade lá embaixo
+    r.plane(480, -220, 290, 2200, 1500, '#07080a');
+    for (let k = -8; k <= 8; k++) r.plane(cx + k * 70, -219, 290, 2, 1400, '#1a2a30', { glow: true, opacity: 0.5 });
+    // plataforma circular suspensa
+    r.cyl(cx, -60, cy, R + 10, 60, '#2a2e34', { metal: 0.5, rough: 0.5, sides: 32 });
+    r.cyl(cx, -220, cy, 60, 160, '#1c1f24', { metal: 0.5 });
+    const T = 36;
+    for (let i = -6; i <= 6; i++) for (let j = -6; j <= 6; j++) {
+      const x = cx + i * T, z = cy + j * T;
+      if (Math.hypot(i, j) * T > R - 22) continue;
+      r.plane(x, 0, z, T - 1.5, T - 1.5, (i + j) % 2 ? '#262b32' : '#21252b', { rough: 0.85 });
+    }
+    r.disc(cx, -0.4, cy, R, '#15181c', {});
+    for (const rr of [90, 140]) r.ring(cx, 0.5, cy, rr - 1, rr + 1, '#ffffff', { glow: true, opacity: 0.07 });
+    // borda com faixa de perigo que gira junto com o laser
+    r.ring(cx, 0.3, cy, R, R + 10, '#f5c400', {});
+    for (let k = 0; k < 16; k++) {
+      const an = (k / 16) * Math.PI * 2 + d.theta * 0.1, mx = cx + Math.cos(an) * (R + 5), mz = cy + Math.sin(an) * (R + 5);
+      r.box(mx, 0, mz, 30, 0.8, 10.5, '#111', { rotY: -(an + Math.PI / 2), shadow: false });
+    }
+    r.ring(cx, 0.2, cy, R + 10, R + 13, '#3a3f47', { metal: 0.6 });
+    // luzes do teto
+    r.light(cx, 380, cy + 60, '#ffd9a8', 1.4, 820);
+    r.light(cx - 360, 220, cy - 100, '#6d86b0', 0.5, 600);
+    // corpos: mancha de queimado + fumaça
+    for (const p of g.players) {
+      if (p.alive) continue;
+      r.disc(p.x, 0.8, p.y, 24, '#000', { opacity: 0.5 });
+      const ct = p.data.cutAt !== undefined ? (t - p.data.cutAt) / 0.5 : 1;
+      if (ct >= 0 && ct < 1) {
+        // corte do laser: clarão, anel de choque e o corpo arremessado para cima
+        r.sphere(p.x, 20, p.y, 12 + 40 * ct, '#ff3b6b', { glow: true, opacity: 0.7 * (1 - ct) });
+        r.sphere(p.x, 20, p.y, 6 + 16 * ct, '#ffffff', { glow: true, opacity: 0.9 * (1 - ct) });
+        r.ring(p.x, 1.5, p.y, 14 + 70 * ct, 20 + 80 * ct, '#ff3b6b', { glow: true, opacity: 0.6 * (1 - ct) });
+        r.light(p.x, 40, p.y, '#ff3b6b', 4 * (1 - ct), 360);
+        r.character(p, { pose: 'fall', y: Math.sin(Math.PI * ct) * 40, flash: ct < 0.4, label: false });
+        continue;
+      }
+      r.character(p, { label: false });
+      for (let s = 0; s < 2; s++) { const ph = (t * 0.7 + s / 2) % 1; r.sphere(p.x, 8 + ph * 50, p.y, 4 + ph * 8, '#555', { glow: true, opacity: 0.3 * (1 - ph) }); }
+    }
+    // jogadores: no ar sobem (o.y), no chão mostram a recarga do pulo
+    for (const p of g.alive()) {
+      const pd = p.data;
+      if (pd.air > 0) {
+        const k = Math.sin(Math.PI * (1 - pd.air / this.AIR));
+        r.disc(p.x, 0.9, p.y, p.r * (1 - k * 0.4), '#000', { opacity: 0.45 });
+        r.character(p, { pose: 'fall', y: k * 34 });
+      } else {
+        r.character(p, { pose: pd.cd > 0.12 ? 'crouch' : 'auto' });
+        if (pd.cd > 0) r.ring(p.x, 1, p.y, p.r + 4, p.r + 7, '#ffffff', { glow: true, opacity: 0.4, arc: pd.cd / this.JUMP_CD });
+      }
+    }
+    // lasers e aviso do segundo braço
+    if (d.arm2Warn && d.arms.length === 1 && Math.floor(t * 8) % 2 === 0) this.drawLaser3d(r, d, d.theta + Math.PI, '#ff3b6b', true);
+    for (const ang of this.armAngles(g)) this.drawLaser3d(r, d, ang, col, false);
+    // eixo central com engrenagem girando e setas do sentido
+    const H = this.HUB;
+    r.cyl(cx, 0, cy, H, 24, '#3a4048', { metal: 0.6, rough: 0.4, sides: 16 });
+    for (let k = 0; k < 8; k++) {
+      const an = d.theta + (k / 8) * Math.PI * 2;
+      r.box(cx + Math.cos(an) * (H + 1), 6, cy + Math.sin(an) * (H + 1), 10, 12, 8, '#5a626c', { rotY: -an, metal: 0.7, rough: 0.3 });
+    }
+    r.cyl(cx, 24, cy, H - 10, 4, '#20252b', { metal: 0.5 });
+    r.ring(cx, 28.3, cy, H - 22, H - 17, col, { glow: true, opacity: 0.85 });
+    for (const off of [0, Math.PI]) {
+      const an = d.theta + off + Math.PI / 2;
+      r.cone(cx + Math.cos(an) * (H - 19.5), 29, cy + Math.sin(an) * (H - 19.5), 4.5, 10, col, { glow: true, rotZ: -Math.PI / 2, rotY: -(an + d.sign * Math.PI / 2) });
+    }
+    r.sphere(cx, 32, cy, 6, col, { glow: true });
+  },
+
+  // painel de rotação (fixo na tela)
+  drawOverlay(g, c) {
+    if (!g.uses3d()) return;
+    const D = TN.draw, d = g.data;
+    const rpm = Math.round(Math.abs(d.omega) * 60 / (Math.PI * 2));
+    D.text(c, `ROTAÇÃO ${String(rpm).padStart(2, '0')} RPM`, 24, 510, { size: 14, color: '#ff3b6b' });
+    D.text(c, d.sign > 0 ? 'SENTIDO: HORÁRIO' : 'SENTIDO: ANTI-HORÁRIO', 24, 490, { size: 12, color: d.revWarn > 0 ? '#ffd23f' : '#889' });
+    const left = Math.max(0, this.SAFETY - g.time);
+    D.text(c, `RECREIO TERMINA EM ${Math.ceil(left)} s`, g.W - 24, 510, { size: 12, color: '#667', align: 'right' });
   },
 
   draw(g, c) {

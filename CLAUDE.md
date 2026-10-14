@@ -1,9 +1,9 @@
 # Turno da Noite: instruções para a IA
 
-Party game de navegador com minigames (1 a 4 jogadores locais e bots), inspirado no Machine Party. É JS puro com Canvas 2D, **sem build e sem dependências**: abrir o `index.html` já roda.
+Party game de navegador com minigames (1 a 4 jogadores locais/rede e bots), inspirado no Machine Party. É JS puro, **sem build**: abrir o `index.html` já roda. Os gráficos são **3D com câmera fixa** (Three.js r158 em `vendor/`, carregado como script clássico), e os menus e o HUD ficam numa camada 2D por cima.
 
 ## Estrutura
-- `engine/`: motor. Contém utilidades, entrada, áudio sintetizado, desenho, o `TN.Round` (uma rodada de minigame) e `session.js` (menus, lobby, roleta, briefing, placar, pódio).
+- `engine/`: motor. Contém utilidades, entrada, áudio sintetizado, desenho 2D, **`render3d.js`** (API 3D imediata: `r.box/cyl/sphere/plane/ring/beam/light/character...`), o `TN.Round` (uma rodada de minigame), `session.js` (menus, lobby, roleta, briefing, placar, pódio) e `net.js` (rede).
 - `minigames/<id>.js`: **um arquivo por minigame**, registrado com `TN.registerMinigame`. A lista de carregamento fica em `minigames/manifest.js`.
 - `minigames/_modelo.js`: modelo para copiar. Não está no manifesto.
 - `docs/COMO_CRIAR_MINIGAME.md`: **referência completa da API**. Leia antes de criar ou alterar um minigame.
@@ -23,8 +23,8 @@ Party game de navegador com minigames (1 a 4 jogadores locais e bots), inspirado
 
 ## Fluxo para criar um minigame novo a partir de uma ideia do usuário
 1. Leia `docs/COMO_CRIAR_MINIGAME.md` e `minigames/aspiradores.js`, que é a referência de estilo.
-2. Defina as regras: objetivo, como se morre, controles (andar + AÇÃO + EXTRA), pontuação (`survival`/`rank`/`points`), duração e um bot.
-3. Crie `minigames/<id>.js`. O nome do arquivo é igual ao id. Use textos em pt-BR e o tom sombrio-cômico de "instalação de testes".
+2. Defina as regras: objetivo, como se morre, controles (andar + AÇÃO + EXTRA), pontuação (`survival`/`rank`/`points`), duração e um bot. Planeje também a **cena 3D**: cenário, câmera fixa (`camera`) e o que vai na camada 2D (`drawOverlay`).
+3. Crie `minigames/<id>.js`. O nome do arquivo é igual ao id. Use textos em pt-BR e o tom sombrio-cômico de "instalação de testes". O desenho principal é o `draw3d(g, r)`; o `draw` 2D é opcional.
 4. Adicione `'<id>.js'` em `minigames/manifest.js`.
 5. Rode `node tools/simular.js <id> --vezes 3` e `node tools/simular.js <id> --parado`. As duas precisam terminar com "Tudo certo".
 6. Faça a checagem visual: suba `node tools/servidor.js 8765` em background, rode `bash tools/screenshot.sh <id> <segundos> out.png` e leia o PNG.

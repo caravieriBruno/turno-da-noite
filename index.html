@@ -7,17 +7,27 @@
   <style>
     html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
     body { display: flex; align-items: center; justify-content: center; }
-    canvas { display: block; image-rendering: pixelated; background: #0b0f13; }
+    #stage { position: relative; }
+    #stage canvas { position: absolute; left: 0; top: 0; display: block; }
+    #game3d { visibility: hidden; }
   </style>
 </head>
 <body>
-  <canvas id="game"></canvas>
+  <!-- camada 3D (WebGL) embaixo; camada 2D (HUD, menus, textos) por cima -->
+  <div id="stage">
+    <canvas id="game3d"></canvas>
+    <canvas id="game"></canvas>
+  </div>
+
+  <!-- Bibliotecas (locais, funcionam offline / na rede local) -->
+  <script src="vendor/three.min.js"></script>
 
   <!-- Motor -->
   <script src="engine/util.js"></script>
   <script src="engine/input.js"></script>
   <script src="engine/audio.js"></script>
   <script src="engine/draw.js"></script>
+  <script src="engine/render3d.js"></script>
   <script src="engine/minigame.js"></script>
   <script src="engine/session.js"></script>
   <script src="engine/net.js"></script>

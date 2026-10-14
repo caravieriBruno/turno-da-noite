@@ -197,7 +197,152 @@ TN.registerMinigame({
     return { x: m.x, y: m.y, a: U.chance(0.006) };
   },
 
-  // ---------------- desenho ----------------
+  // ---------------- desenho 3D (câmera fixa) ----------------
+  camera: { pos: [480, 690, 870], target: [480, 0, 280], fov: 41 },
+  env: { bg: '#07060a', fog: [1200, 2800], ambient: 0.45, sun: 1.1, sunDir: [-0.3, 1, 0.5], sunColor: '#e8dcff' },
+
+  // mistura duas cores hex (k de 0 a 1, quantizado para reaproveitar materiais)
+  mix(a, b, k) {
+    k = Math.round(TN.util.clamp(k, 0, 1) * 6) / 6;
+    const p = (h, i) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
+    let out = '#';
+    for (let i = 0; i < 3; i++) out += Math.round(p(a, i) + (p(b, i) - p(a, i)) * k).toString(16).padStart(2, '0');
+    return out;
+  },
+
+  draw3d(g, r) {
+    const d = g.data, F = this.F, t = g.time;
+    const music = d.phase === 'music', scan = d.phase === 'scan', glitch = d.phase === 'glitch';
+    const pulse = music ? 1 - Math.min(1, d.beatT / d.beatInt) : 0;
+    // a luz da sala muda com a fase: festa (lilás) x alerta (vermelho)
+    if (!music) r.env({ bg: '#0b0405', fog: [1200, 2800], ambient: 0.35, sun: 0.85, sunDir: [-0.3, 1, 0.5], sunColor: '#ff8a8a', hemiSky: '#a05a5a' });
+    r.plane(480, -1, 290, 2000, 1400, '#0a090c');
+    r.plane(F.x + F.w / 2, -0.5, F.y + F.h / 2, F.w, F.h, '#040405');
+    // pista de dança: ladrilhos que acendem no ritmo
+    const T = 56;
+    for (let j = 0; j < F.h / T; j++) for (let i = 0; i < F.w / T; i++) {
+      const x = F.x + i * T + T / 2, z = F.y + j * T + T / 2;
+      const base = (i + j) % 2 ? '#15171c' : '#1a1c22';
+      if (music && (i * 7 + j * 3 + d.beatIdx) % 5 < 2) {
+        r.plane(x, 0, z, T - 3, T - 3, this.mix(base, this.TILE_COLORS[(i + j * 2 + d.beatIdx) % 5], 0.3 + 0.45 * pulse), { glow: true });
+      } else if (glitch && (i * 13 + j * 7 + Math.floor(t * 30)) % 6 === 0) {
+        r.plane(x, 0, z, T - 3, T - 3, '#9a9aa6', { glow: true });
+      } else {
+        r.plane(x, 0, z, T - 3, T - 3, music ? base : ((i + j) % 2 ? '#2a1216' : '#301519'), { rough: 0.35, metal: 0.3 });
+      }
+    }
+    // moldura da pista
+    const rim = scan ? '#a01020' : '#3a2440', ro = scan ? { glow: true } : { metal: 0.4 };
+    r.box(F.x + F.w / 2, 0, F.y - 5, F.w + 20, 6, 10, rim, ro);
+    r.box(F.x + F.w / 2, 0, F.y + F.h + 5, F.w + 20, 6, 10, rim, ro);
+    r.box(F.x - 5, 0, F.y + F.h / 2, 10, 6, F.h, rim, ro);
+    r.box(F.x + F.w + 5, 0, F.y + F.h / 2, 10, 6, F.h, rim, ro);
+    // cabine do Supervisor ao fundo: parede, caixas de som e equalizador
+    r.box(480, 0, 14, 1100, 170, 20, '#141519', { rough: 0.9 });
+    r.box(480, 0, 62, 330, 38, 46, '#0e0f14', { metal: 0.4, rough: 0.5 });
+    for (let i = 0; i < 18; i++) {
+      let h;
+      if (music) h = (0.3 + 0.7 * Math.abs(Math.sin(i * 1.7 + d.beatIdx * 2.3))) * (0.55 + 0.45 * pulse);
+      else if (glitch) h = Math.abs(Math.sin(i * 9.1 + t * 61)) * 0.9;
+      else h = 0.06;
+      const colr = !music && !glitch ? '#ff3344' : h > 0.75 ? '#ff4fd8' : h > 0.45 ? '#ffd23f' : '#46e27b';
+      r.box(342 + i * 16 + 5.5, 38, 70, 11, Math.max(1, 46 * h), 8, colr, { glow: true });
+    }
+    for (const sx of [250, 710]) {
+      r.box(sx, 0, 62, 72, 110, 46, '#16181d', { rough: 0.7 });
+      const wr = 19 + (music ? 4 * pulse : 0);
+      r.cyl(sx, 40, 85, wr, 3, '#0a0a0c', { rotX: Math.PI / 2, rough: 0.9 });
+      r.cyl(sx, 40, 87, wr * 0.4, 3, '#2f3440', { rotX: Math.PI / 2, metal: 0.7 });
+      r.cyl(sx, 86, 85, 8, 3, '#0a0a0c', { rotX: Math.PI / 2 });
+      r.sphere(sx, 102, 86, 2.5, music ? '#46e27b' : '#ff3344', { glow: true });
+    }
+    // luzes: festa colorida girando, ou alerta vermelho
+    if (music) {
+      r.light(480 + Math.cos(t * 0.9) * 300, 170, 300 + Math.sin(t * 1.3) * 140, '#ff4fd8', 1.1 + pulse * 0.6, 520);
+      r.light(480 + Math.cos(t * 0.7 + 3) * 300, 170, 300 + Math.sin(t * 1.1 + 2) * 140, '#3fa9ff', 1.1 + pulse * 0.6, 520);
+    } else r.light(480, 260, 300, '#ff2a3a', glitch ? 0.6 : 1.4, 800);
+    r.light(480, 320, 420, '#ffe2c0', 0.6, 800);
+    // marcas de queimado
+    for (const s of d.scorch) {
+      r.disc(s.x, 0.6, s.y, s.r * 1.2, '#000', { opacity: 0.6 });
+      r.disc(s.x, 0.7, s.y, s.r * 0.6, '#28140a', { opacity: 0.7 });
+    }
+    // holofote: coluna de luz do teto + anel de tempo
+    if (d.spot) {
+      const s = d.spot, k = s.life / s.max;
+      r.cone(s.x, 0, s.y, s.r + 8, 320, '#fff3c0', { glow: true, opacity: 0.1, shadow: false });
+      r.disc(s.x, 0.8, s.y, s.r + 4, '#fff3a0', { glow: true, opacity: 0.45 });
+      r.ring(s.x, 1, s.y, s.r - 3, s.r + 1, '#fff3a0', { glow: true, arc: k });
+      r.label(s.x, 6, s.y, '+1', '#fff3a0', 16);
+      r.light(s.x, 120, s.y, '#fff0c0', 1.2, 260);
+    }
+    // corpos: carbonizados, soltando fumaça
+    for (const p of g.players) {
+      if (p.alive) continue;
+      r.character(p, { color: '#555555', label: false });
+      for (let s = 0; s < 2; s++) { const ph = (t * 0.6 + s / 2 + p.id * 0.3) % 1; r.sphere(p.x, 8 + ph * 55, p.y, 4 + ph * 9, '#4a4a4a', { glow: true, opacity: 0.3 * (1 - ph) }); }
+    }
+    // varredura do scanner: cortina vermelha que percorre a pista
+    if (scan) {
+      const sy = F.y + ((d.phaseT * 1.4) % 1) * F.h;
+      r.box(F.x + F.w / 2, 0, sy, F.w, 80, 2, '#ff2233', { glow: true, opacity: 0.16, shadow: false });
+      r.beam(F.x, 1.5, sy, F.x + F.w, 1.5, sy, 3, '#ff3344', { glow: true });
+      r.beam(F.x, 80, sy, F.x + F.w, 80, sy, 2, '#ff3344', { glow: true, opacity: 0.7 });
+      r.light(480, 60, sy, '#ff2233', 1.4, 360);
+    }
+    // jogadores: dançam no ritmo; parados viram estátua (braços estendidos)
+    for (const p of g.alive()) {
+      const q = p.data;
+      if (music) r.character(p, { y: pulse * 5, flash: q.spin > 0 });
+      else r.character(p, { pose: q.moved ? 'walk' : 'arms', flash: q.spin > 0 });
+      if (music && q.ocio > 0.65 && Math.floor(t * 8) % 2 === 0) r.ring(p.x, 1, p.y, p.r + 5, p.r + 9, '#ff4433', { glow: true });
+    }
+    // torretas nos cantos: poste, cabeça que mira o jogador mais próximo e lente indicando a fase
+    for (const tu of this.TURRETS) {
+      let ang = Math.atan2(F.y + F.h / 2 - tu[1], F.x + F.w / 2 - tu[0]), bd = 1e9;
+      for (const p of g.alive()) { const dd = Math.hypot(p.x - tu[0], p.y - tu[1]); if (dd < bd) { bd = dd; ang = Math.atan2(p.y - tu[1], p.x - tu[0]); } }
+      const lens = scan ? '#ff2233' : d.phase === 'grace' ? '#ffaa00' : '#4a1a1a';
+      r.cyl(tu[0], 0, tu[1], 20, 8, '#23262c', { metal: 0.6, sides: 8 });
+      r.cyl(tu[0], 8, tu[1], 8, 42, '#2e3239', { metal: 0.7 });
+      r.box(tu[0], 48, tu[1], 24, 16, 18, '#3a3f47', { rotY: -ang, metal: 0.7, rough: 0.35 });
+      const bx = tu[0] + Math.cos(ang) * 26, bz = tu[1] + Math.sin(ang) * 26;
+      r.beam(tu[0], 56, tu[1], bx, 56, bz, 5, '#1b1d22', { metal: 0.8 });
+      r.sphere(bx, 56, bz, 3.5, lens, { glow: true });
+    }
+    // raios das torretas
+    for (const b of d.beams) {
+      const k = b.t / 0.35;
+      const t0 = this.nearestTurret(b.x0, b.y0), ang = Math.atan2(b.y1 - t0[1], b.x1 - t0[0]);
+      const sx = b.x0 + Math.cos(ang) * 26, sz = b.y0 + Math.sin(ang) * 26;
+      r.beam(sx, 56, sz, b.x1, 26, b.y1, 12 * k, '#ff2838', { glow: true, opacity: k });
+      r.beam(sx, 56, sz, b.x1, 26, b.y1, 3.5 * k, '#ffffff', { glow: true });
+      r.sphere(b.x1, 26, b.y1, 22 * k, '#ff6070', { glow: true, opacity: 0.6 * k });
+      r.light(b.x1, 50, b.y1, '#ff3344', 3 * k, 300);
+    }
+  },
+
+  // estado da música e barras de ócio (fixos na tela; as barras seguem o jogador)
+  drawOverlay(g, c) {
+    if (!g.uses3d()) return;
+    const D = TN.draw, d = g.data, t = g.time, music = d.phase === 'music';
+    let txt, col;
+    if (music) { txt = '♪ DANCEM'; col = '#46e27b'; }
+    else if (d.phase === 'scan') { txt = '■ VARRENDO'; col = '#ff3344'; }
+    else { txt = '■ ESTÁTUA!'; col = Math.floor(t * 10) % 2 ? '#ff3344' : '#fff'; }
+    D.text(c, txt, 24, 60, { size: 20, color: col });
+    D.text(c, `${Math.round(60 / d.beatInt)} BPM`, g.W - 24, 56, { size: 14, color: '#888', align: 'right' });
+    D.text(c, 'PISTA Nº 7', g.W - 24, 74, { size: 12, color: '#555', align: 'right' });
+    for (const p of g.alive()) {
+      const q = p.data;
+      if (q.ocio <= 0.02) continue;
+      const s = TN.R3.project(p.x, 0, p.y);
+      const bc = q.ocio > 0.7 ? '#f43' : q.ocio > 0.4 ? '#fc3' : '#7ff';
+      D.bar(c, s.x - 18, s.y + 8, 36, 5, q.ocio, bc);
+      if (music && q.ocio > 0.65 && Math.floor(t * 8) % 2 === 0) D.text(c, 'MEXA-SE!', s.x, s.y + 24, { size: 12, color: '#f43', align: 'center' });
+    }
+  },
+
+  // ---------------- desenho 2D (alternativa sem WebGL) ----------------
   draw(g, c) {
     const D = TN.draw, d = g.data, F = this.F, t = g.time;
     const music = d.phase === 'music', scan = d.phase === 'scan';

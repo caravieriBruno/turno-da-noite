@@ -133,6 +133,101 @@ TN.registerMinigame({
     return { y: pd.botWant === 'vivo' ? -1 : 1 };
   },
 
+  // ---------------- 3D (câmera fixa) ----------------
+  // Cabines lado a lado vistas de frente: X = laneX, Z = fundo da cabine, Y = altura.
+  camera: { pos: [480, 250, 1240], target: [480, 128, 420], fov: 36 },
+  env: { bg: '#07090b', fog: [1000, 2600], ambient: 0.5, sun: 1.0, sunDir: [-0.25, 1, 0.8], sunColor: '#ffe6c8' },
+  S3: 1.6, LZ3: 420, PK3: 0.62,
+
+  // posição 3D do boneco (no meio da cabine) — usada pelos rótulos do motor
+  worldPos(g, p) { return { x: p.data.laneX, y: 0, z: this.LZ3 }; },
+
+  // altura da base da placa da prensa (mesma animação do 2D)
+  pressBottom(p) {
+    const pr = p.data.press, ph = 26;
+    let y = this.PRESS_TOP;
+    if (pr) {
+      const fall = Math.min(1, pr.t / 0.12);
+      const rise = pr.t > 0.9 ? Math.min(1, (pr.t - 0.9) / 1.2) : 0;
+      const low = this.FLOOR_Y - ph - 14;
+      y = this.PRESS_TOP + (low - this.PRESS_TOP) * fall * (1 - rise * 0.75);
+    }
+    return (this.FLOOR_Y - y - ph) * this.PK3;
+  },
+
+  draw3d(g, r) {
+    const d = g.data, n = g.players.length, lw = g.W / n, LZ = this.LZ3, S = this.S3, t = g.time;
+    const BZ = 320, FZ = 520, CH = 250;   // fundo, frente e teto das cabines
+    // piso e parede do galpão
+    r.plane(480, -1, 500, 2600, 1600, '#0c0e11');
+    for (let x = -200; x < 1160; x += 80) for (let z = 520; z < 760; z += 80) r.plane(x + 40, 0, z + 40, 78, 78, ((x + z) / 80) % 2 ? '#24282e' : '#20242a', { rough: 0.95 });
+    r.box(480, 0, BZ - 30, 1800, 520, 20, '#14171b');
+    for (let x = -420; x < 1400; x += 64) r.box(x, 0, BZ - 19, 4, 520, 2, '#191d22');
+    // faixa de perigo na frente das cabines
+    for (let i = 0; i < 40; i++) r.box(-10 + i * 25 + 6, 0.3, FZ + 8, 12.5, 1, 12, i % 2 ? '#111' : '#f5c400', { shadow: false });
+    // viga superior com o nome do setor
+    r.box(480, CH, (BZ + FZ) / 2, 1000, 34, FZ - BZ + 20, '#2a3038', { metal: 0.5, rough: 0.5 });
+    r.box(480, CH + 2, FZ + 11, 1000, 4, 2, '#f5c400', { glow: true });
+    for (let i = 0; i < n; i++) {
+      const p = g.players[i], x = p.data.laneX, alive = p.alive;
+      // cabine: fundo, piso e divisórias
+      r.box(x, 0, BZ - 8, lw - 10, CH, 8, '#262c33', { rough: 0.85 });
+      r.box(x, 0, BZ - 3, lw - 40, 6, 2, '#3a4048');
+      r.plane(x, 0.2, (BZ + FZ) / 2, lw - 12, FZ - BZ, alive ? '#30363e' : '#2a2023', { rough: 0.9 });
+      for (let k = 0; k < 4; k++) r.plane(x, 0.4, BZ + 30 + k * 50, lw - 30, 2, '#20252b', { shadow: false });
+      // número da cabine
+      r.label(x - lw / 2 + 26, CH - 26, BZ, String(i + 1), '#56606c', 22);
+      // prensa: pistão, placa e listras
+      const pb = this.pressBottom(p);
+      r.cyl(x, pb + 22, LZ, 12, Math.max(1, CH - pb - 22), '#8a929c', { metal: 0.85, rough: 0.25 });
+      r.cyl(x, CH - 40, LZ, 20, 40, '#3a4048', { metal: 0.6 });
+      r.box(x, pb, LZ, 150, 22, 100, '#4b525b', { metal: 0.55, rough: 0.45 });
+      for (let k = 0; k < 10; k++) r.box(x - 67.5 + k * 15, pb + 2, LZ + 50.5, 7.5, 8, 1, k % 2 ? '#111' : '#f5c400', { shadow: false });
+      // luz de alerta da cabine
+      const danger = d.phase === 'cmd' && alive;
+      const lc = danger ? (Math.floor(t * 10) % 2 ? '#ff3333' : '#550000') : (alive ? '#2f6a3a' : '#311');
+      r.sphere(x + 60, pb + 30, LZ + 40, 5, lc, { glow: true });
+      // lâmpada da cabine
+      r.sphere(x, CH - 4, FZ - 6, 6, alive ? '#ffe2b0' : '#5a3020', { glow: true });
+      if (i < 4) r.light(x, CH - 30, FZ - 10, alive ? '#ffd7a0' : '#ff5a3a', alive ? 2.6 : 0.9, 460);
+      // divisória à direita
+      if (i < n - 1) r.box(x + lw / 2, 0, (BZ + FZ) / 2, 10, CH, FZ - BZ, '#2f363e', { metal: 0.3 });
+      // boneco
+      if (alive) {
+        const k = p.data.lie;
+        if (k >= 0.85) r.character({ ...p, x, y: LZ }, { pose: 'lie', dir: 0, scale: S });
+        else if (k > 0.15) r.character({ ...p, x, y: LZ }, { pose: 'crouch', dir: Math.PI / 2 - k, scale: S });
+        else r.character({ ...p, x, y: LZ }, { pose: 'idle', dir: Math.PI / 2, scale: S });
+      } else {
+        // achatado debaixo da prensa: panqueca na cor do macacão
+        r.disc(x, 0.6, LZ, 62, '#120607', { opacity: 0.9 });
+        r.box(x, 0, LZ, 92, 5, 56, p.color, { rough: 0.7, rotY: 0.15 });
+        r.box(x - 52, 0, LZ + 6, 22, 4, 26, '#d8d2c8', { rotY: 0.3 });
+        r.box(x - 58, 4, LZ + 6, 8, 1.5, 18, '#0b0f14', { rotY: 0.3 });
+        r.box(x + 30, 0, LZ - 34, 40, 3, 12, p.color, { rotY: -0.5 });
+        r.box(x + 24, 0, LZ + 36, 40, 3, 12, p.color, { rotY: 0.6 });
+        r.label(x, 112, LZ, p.label, '#888', 12);
+      }
+    }
+    // alarme geral quando há ordem no ar
+    if (d.phase === 'cmd') r.light(480, CH - 20, FZ + 60, '#ff2a2a', 0.8 + d.eye * 2.5, 900);
+    else r.light(480, CH + 120, FZ + 200, '#cfd8ff', 0.4, 900);
+  },
+
+  // HUD 2D: painel do Supervisor no topo e a placa de cada cabine
+  drawOverlay(g, c) {
+    if (!g.uses3d()) return;
+    const D = TN.draw, n = g.players.length, lw = g.W / n;
+    this.drawSupervisor(g, c);
+    for (const p of g.players) {
+      const s = TN.R3.project(p.data.laneX, 0, 540);
+      const lbl = p.alive ? (p.data.pose === 'vivo' ? 'DE PÉ' : 'DEITADO') : 'ELIMINADO';
+      D.text(c, p.label + (p.isBot ? ' BOT' : ''), s.x, s.y + 16, { size: 15, color: p.alive ? p.color : '#777', align: 'center' });
+      D.text(c, lbl, s.x, s.y + 36, { size: 13, color: p.alive ? '#cdd' : '#f55', align: 'center' });
+      if (!p.alive && p.data.why) D.text(c, p.data.why, s.x, s.y + 54, { size: 11, color: '#a77', align: 'center', maxWidth: lw - 16 });
+    }
+  },
+
   draw(g, c) {
     const D = TN.draw, d = g.data, n = g.players.length, lw = g.W / n;
     // parede e chão

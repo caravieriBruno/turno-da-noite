@@ -258,7 +258,74 @@ TN.registerMinigame({
     return { x: n.x, y: n.y + (dd > 60 ? pd.bZig : 0), b: false };
   },
 
-  // ---------- desenho ----------
+  // ---------- desenho 3D ----------
+  // A mira e os acertos são calculados em coordenadas de TELA (como o 2D). Por isso cada boneco e
+  // cada cobertura é colocado no chão 3D exatamente sob o seu ponto de tela (r.unproject) e escalado
+  // para ocupar na tela o mesmo tamanho da sua caixa de colisão.
+  screenSpace: true,
+  camera: { pos: [480, 260, 1000], target: [480, 168.6, 0], fov: 30 },
+  env: { bg: '#3a2a36', fog: [1500, 3600], ambient: 0.75, sun: 2.0, sunDir: [0.8, 0.35, -0.6], sunColor: '#ffb27a', hemiSky: '#c98a6a', hemiGround: '#2a3320' },
+
+  // ponto no chão sob (sx, sy) e quantas unidades do mundo cabem em 1 px de tela ali
+  anchor(r, sx, sy) {
+    const P = r.unproject(sx, sy, 0);
+    const a = r.project(P.x, 0, P.z), b = r.project(P.x, 100, P.z);
+    return { ...P, upp: 100 / Math.max(1, a.y - b.y) };
+  },
+
+  draw3d(g, r) {
+    const d = g.data, F = this.FIELD;
+    // chão, árvores ao fundo e sol poente
+    r.plane(480, 0, -900, 7000, 4200, '#4a6a30', { rough: 1 });
+    for (let k = 0; k < 46; k++) {
+      const x = -2200 + k * 110 + ((k * 37) % 50), z = -1700 - ((k * 53) % 260);
+      r.cone(x, 0, z, 46 + ((k * 13) % 20), 190 + ((k * 29) % 80), '#1a2a1e', { rough: 1 });
+    }
+    r.sphere(1500, 230, -3000, 140, '#ffd9a0', { glow: true });
+    // linhas de largada e de saída (seguem a perspectiva: ligam o ponto de tela de perto ao de longe)
+    const line = (sx, col, glow) => {
+      const a = r.unproject(sx, F.y0 - 20), b = r.unproject(sx, F.y1 + 20);
+      r.beam(a.x, 1, a.z, b.x, 1, b.z, 6, col, { glow });
+      for (let k = 0; k <= 4; k++) { const t = k / 4; r.cyl(a.x + (b.x - a.x) * t, 0, a.z + (b.z - a.z) * t, 3, 26, col, { glow }); }
+    };
+    line(108, '#d8d8d8', false);
+    line(this.EXIT_X, '#4dff7a', true);
+    // torre do caçador ao fundo, à direita
+    const h = this.hunter(g), T = this.anchor(r, 930, F.y0 - 6);
+    for (const [ox, oz] of [[-14, -14], [14, -14], [-14, 14], [14, 14]]) r.beam(T.x + ox * 2, 0, T.z + oz * 2, T.x + ox, 120, T.z + oz, 5, '#5a4128');
+    r.box(T.x, 120, T.z, 44, 6, 44, '#6b4d2e');
+    if (h) r.character({ ...h, x: T.x, y: T.z }, { key: 'hunter', y: 126, dir: Math.PI, pose: 'arms', label: false });
+    // coberturas e patos (o motor cuida da profundidade)
+    for (const cv of d.covers) this.cover3d(r, cv);
+    for (const p of this.runners(g)) {
+      if (p.data.out) continue;
+      const A = this.anchor(r, p.x, p.y), gm = this.geom(p);
+      const standPx = (32 + 8 * 0.8 + 8) * gm.s;
+      const hurtBlink = p.alive && p.data.hp < this.HP && Math.floor(g.time * 5) % 2;
+      r.character({ ...p, x: A.x, y: A.z }, { key: p.id, scale: (standPx * A.upp) / 60, dir: 0, flash: hurtBlink,
+        pose: !p.alive ? 'dead' : p.data.crouch ? 'crouch' : undefined, label: p.label });
+    }
+  },
+
+  cover3d(r, cv) {
+    const A = this.anchor(r, cv.x, cv.y), w = cv.w * A.upp, hgt = cv.h * A.upp, dep = w * 0.6, z = A.z - dep / 2;
+    if (cv.kind === 'feno') {
+      r.box(A.x, 0, z, w, hgt, dep, '#c9a43a', { rough: 1 });
+      r.box(A.x - w * 0.22, 0, z, w * 0.06, hgt * 1.01, dep * 1.02, '#6b4a1a');
+      r.box(A.x + w * 0.22, 0, z, w * 0.06, hgt * 1.01, dep * 1.02, '#6b4a1a');
+    } else if (cv.kind === 'arbusto') {
+      for (let k = 0; k < 4; k++) r.sphere(A.x - w * 0.33 + k * w * 0.22, hgt * (0.42 + 0.1 * Math.sin(k * 1.7 + cv.seed)), z, hgt * 0.5, k % 2 ? '#2d6a32' : '#3c8442', { rough: 1 });
+    } else if (cv.kind === 'tronco') {
+      r.cyl(A.x - w / 2, hgt / 2, z, hgt / 2, w, '#6b4526', { rotZ: -Math.PI / 2, rough: 1 });
+    } else {
+      r.box(A.x, 0, z, w, hgt / 2, dep, '#8a6438', { rough: 0.9 });
+      r.box(A.x, hgt / 2, z, w * 0.85, hgt / 2, dep * 0.85, '#94703f', { rough: 0.9 });
+    }
+  },
+
+  drawOverlay(g, c) { if (TN.R3.available && g.uses3d()) this.drawHunterUi(g, c); },
+
+  // ---------- desenho 2D (alternativa) ----------
   drawCover(c, cv) {
     const { x, y, w, h } = cv, l = x - w / 2;
     c.save(); c.strokeStyle = '#1a140c'; c.lineWidth = 2;
@@ -336,6 +403,12 @@ TN.registerMinigame({
     // coberturas e patos em ordem de profundidade
     const things = [...d.covers.map((cv) => ({ cv, y: cv.y })), ...this.runners(g).filter((p) => !p.data.out).map((p) => ({ p, y: p.y }))].sort((a, b) => a.y - b.y);
     for (const t of things) t.cv ? this.drawCover(c, t.cv) : this.drawRunner(g, c, t.p);
+    this.drawHunterUi(g, c);
+  },
+
+  // mira, impactos e painel do caçador (coordenadas de tela) — usado no 2D e por cima do 3D
+  drawHunterUi(g, c) {
+    const D = TN.draw, d = g.data;
     // impactos
     for (const im of d.impacts) {
       c.strokeStyle = im.hit ? '#f33' : '#ffd';

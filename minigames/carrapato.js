@@ -216,7 +216,117 @@ TN.registerMinigame({
     return far ? { x: pd.bDir.x * 0.4, y: pd.bDir.y * 0.4 } : { x: pd.bDir.x, y: pd.bDir.y };
   },
 
-  // ---------- desenho ----------
+  // ---------- desenho 3D (câmera fixa) ----------
+  camera: { pos: [480, 700, 740], target: [480, 0, 288], fov: 40 },
+  env: { bg: '#07090b', fog: [1150, 2700], ambient: 0.5, sun: 1.7, sunDir: [-0.35, 1, 0.5], sunColor: '#d6e8ff' },
+
+  // a luz do carrapato está acesa neste quadro? (mesma regra do 2D: pisca mais rápido perto do fim)
+  devLit(g, dev) {
+    if (dev.timerOn && !dev.armed) return (g.time % (0.12 + 0.88 * dev.timer / this.ACTIVATION)) < 0.07 + 0.05 * dev.timer / this.ACTIVATION;
+    return dev.armed ? Math.floor(g.time * 12) % 2 === 0 : false;
+  },
+
+  // aranha mecânica low-poly: corpo, cúpula, cabeça, 6 patas (2 segmentos cada) e a luz de status
+  drawDevice3d(g, r, dev, x, z, y0, ang, footY, lit) {
+    const S = 1.45, ca = Math.cos(ang), sa = Math.sin(ang);
+    const W = (fx, sx) => [x + (ca * fx - sa * sx) * S, z + (sa * fx + ca * sx) * S];
+    const rot = -ang, hot = lit || dev.armed;
+    r.box(x, y0 + 3 * S, z, 26 * S, 8 * S, 17 * S, '#555b65', { rotY: rot, metal: 0.7, rough: 0.35 });
+    for (const fx of [-7, 0, 7]) { const [px, pz] = W(fx, 0); r.box(px, y0 + 10.5 * S, pz, 3 * S, 2 * S, 15 * S, '#8a919c', { rotY: rot, metal: 0.8, rough: 0.3 }); }
+    const [bx, bz] = W(-3, 0); r.sphere(bx, y0 + 11 * S, bz, 7 * S, '#3a3f47', { metal: 0.7, rough: 0.3 });
+    const [hx, hz] = W(15, 0); r.sphere(hx, y0 + 8 * S, hz, 5.5 * S, '#b4bac4', { metal: 0.8, rough: 0.25 });
+    for (const s of [-1, 1]) { const [ex, ez] = W(19.5, s * 2.6); r.sphere(ex, y0 + 9.5 * S, ez, 1.7 * S, hot ? '#ff3b5c' : '#ff8a8a', { glow: true }); }
+    for (let k = 0; k < 3; k++) for (const s of [-1, 1]) {
+      const sw = Math.sin(dev.walk * 6 + k * 2 + (s > 0 ? 0 : Math.PI)), ph = sw * 4, lift = Math.max(0, sw) * 4 * S;
+      const lx = -7 + k * 7;
+      const [ax, az] = W(lx, s * 8), [kx, kz] = W(lx + 3 + ph, s * 17), [fx2, fz2] = W(lx + 6 + ph, s * 23);
+      r.beam(ax, y0 + 6 * S, az, kx, y0 + 16 * S + lift, kz, 3 * S, '#2a2d33', { metal: 0.6, rough: 0.4 });
+      r.beam(kx, y0 + 16 * S + lift, kz, fx2, footY + lift * 0.6, fz2, 2.2 * S, '#3a3e45', { metal: 0.6, rough: 0.4 });
+    }
+    const [lx, lz] = W(-3, 0);
+    r.sphere(lx, y0 + 19 * S, lz, 3.4 * S, lit ? '#ff3b5c' : '#4a1018', { glow: true });
+    if (lit) {
+      r.sphere(lx, y0 + 19 * S, lz, 11 * S, '#ff3b5c', { glow: true, opacity: 0.25 });
+      r.light(lx, y0 + 40, lz, '#ff2a48', 1.6, 260);
+    }
+  },
+
+  draw3d(g, r) {
+    const a = g.arena, d = g.data, dev = d.dev, t = g.time;
+    // piso: entorno escuro + ladrilhos de concreto esverdeado
+    r.plane(480, -1, 290, 1800, 1200, '#0b0e0f');
+    const T = 55;
+    for (let i = 0; i * T < a.w; i++) for (let j = 0; j * T < a.h; j++) {
+      const x0 = a.x + i * T, z0 = a.y + j * T, w = Math.min(T, a.x + a.w - x0), h = Math.min(T, a.y + a.h - z0);
+      r.plane(x0 + w / 2, 0, z0 + h / 2, w - 1.5, h - 1.5, (i + j) % 2 ? '#2b3535' : '#273131', { rough: 0.9 });
+    }
+    // paredes baixas + faixa de perigo na parede do fundo
+    const H = 34, Wd = 14;
+    r.box(a.x + a.w / 2, 0, a.y - Wd / 2, a.w + Wd * 2, H, Wd, '#3d4646', { metal: 0.25 });
+    r.box(a.x + a.w / 2, 0, a.y + a.h + Wd / 2, a.w + Wd * 2, H * 0.6, Wd, '#3d4646', { metal: 0.25 });
+    r.box(a.x - Wd / 2, 0, a.y + a.h / 2, Wd, H, a.h, '#3d4646', { metal: 0.25 });
+    r.box(a.x + a.w + Wd / 2, 0, a.y + a.h / 2, Wd, H, a.h, '#3d4646', { metal: 0.25 });
+    for (let i = 0; i < 22; i++) r.box(a.x + 20 + i * 40, 10, a.y - 0.5, 20, 14, 1.5, i % 2 ? '#111' : '#f5c400', { shadow: false });
+    // pilares de concreto com faixa de perigo e lâmpada no topo
+    for (const pl of d.pillars) {
+      r.cyl(pl.x, 0, pl.y, pl.r + 4, 4, '#2b3033', { metal: 0.4 });
+      r.cyl(pl.x, 0, pl.y, pl.r, 60, '#7a8282', { rough: 0.85 });
+      r.cyl(pl.x, 14, pl.y, pl.r + 1, 14, '#f5c400', { rough: 0.6 });
+      for (let k = 0; k < 6; k++) {
+        const an = (k / 6) * Math.PI * 2 + 0.3;
+        r.box(pl.x + Math.cos(an) * (pl.r + 1.3), 14, pl.y + Math.sin(an) * (pl.r + 1.3), 2, 14, 11, '#141414', { rotY: -an });
+      }
+      r.cyl(pl.x, 60, pl.y, pl.r + 5, 7, '#4a5155', { metal: 0.6, rough: 0.35 });
+      r.cyl(pl.x, 67, pl.y, 8, 4, '#ffe0b0', { glow: true });
+      r.light(pl.x, 125, pl.y, '#ffcf96', 0.75, 460);
+    }
+    // corpos: mancha no chão + boneco caído
+    for (const p of g.players) if (!p.alive) { r.disc(p.x, 0.6, p.y, 24, '#3a0a12', { opacity: 0.7 }); r.character(p); }
+    // alvo atual: linha tracejada no chão e anel pulsante embaixo dele
+    const lit = this.devLit(g, dev);
+    const tgt = dev.state === 'follow' ? this.byId(g, dev.target) : null;
+    if (tgt && tgt.alive) {
+      const n = 9, off = (t * 2.5) % 1;
+      for (let i = 0; i < n; i++) {
+        const k0 = (i + off) / n, k1 = Math.min(1, (i + off + 0.45) / n);
+        r.beam(dev.x + (tgt.x - dev.x) * k0, 1.5, dev.y + (tgt.y - dev.y) * k0, dev.x + (tgt.x - dev.x) * k1, 1.5, dev.y + (tgt.y - dev.y) * k1, 2.5, '#ff3b5c', { glow: true, opacity: 0.55 });
+      }
+      r.ring(tgt.x, 1.2, tgt.y, tgt.r + 8, tgt.r + 12 + Math.sin(t * 10) * 2, '#ff3b5c', { glow: true, opacity: 0.7 });
+    }
+    // jogadores vivos
+    for (const p of g.alive()) {
+      const carrying = dev.state === 'attached' && dev.carrier === p.id;
+      if (carrying) r.ring(p.x, 1.2, p.y, p.r + 6, p.r + 11 + Math.sin(t * 14) * 2, '#ff3b5c', { glow: true });
+      r.character(p, { flash: carrying && lit });
+    }
+    // o carrapato: no chão, voando (arremessado) ou nas costas de quem carrega
+    if (dev.state === 'attached') {
+      const c = this.byId(g, dev.carrier);
+      this.drawDevice3d(g, r, dev, dev.x, dev.y, 33, c ? c.dir : dev.ang, 24, lit);
+    } else {
+      const hop = dev.state === 'thrown' ? Math.min(1, Math.hypot(dev.vx, dev.vy) / this.THROW_V) * 26 : 0;
+      r.disc(dev.x, 0.5, dev.y, 18, '#000', { opacity: 0.35 });
+      this.drawDevice3d(g, r, dev, dev.x, dev.y, 4 + hop, dev.ang, hop, lit);
+    }
+    if (dev.timerOn || dev.armed) {
+      const txt = dev.armed ? '!!' : String(Math.ceil(dev.timer));
+      r.label(dev.x, dev.state === 'attached' ? 98 : 50, dev.y, txt, dev.armed || dev.timer < 4 ? '#ff3b5c' : '#fff', 18);
+    }
+  },
+
+  // painel do timer (fixo na tela, por cima do 3D)
+  drawOverlay(g, c) {
+    if (!g.uses3d()) return;
+    const D = TN.draw, dev = g.data.dev;
+    let label, col = '#fff';
+    if (dev.armed) { label = 'ARMADO! QUEM FOR PEGO MORRE'; col = '#ff3b5c'; }
+    else if (dev.timerOn) { label = `ATIVAÇÃO EM ${dev.timer.toFixed(1)} s`; if (dev.timer < 4) col = '#ff3b5c'; }
+    else label = 'O CARRAPATO ESTÁ ESCOLHENDO...';
+    D.panel(c, g.W / 2 - 170, 40, 340, 24, { stroke: '#ff3b5c' });
+    D.text(c, label, g.W / 2, 52, { size: 14, color: col, align: 'center' });
+  },
+
+  // ---------- desenho 2D (alternativa sem WebGL) ----------
   drawDevice(g, c, dev) {
     const lit = dev.timerOn && !dev.armed
       ? (g.time % (0.12 + 0.88 * dev.timer / this.ACTIVATION)) < 0.07 + 0.05 * dev.timer / this.ACTIVATION

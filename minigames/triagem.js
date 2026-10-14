@@ -67,6 +67,7 @@ TN.registerMinigame({
       const pd = p.data;
       pd.lock -= dt; pd.wrong -= dt; pd.shift = Math.max(0, pd.shift - dt * 9);
       if (pd.crush > 0) pd.crush = Math.min(1, pd.crush + dt * 4);
+      if (!p.alive) pd.deadT = (pd.deadT || 0) + dt;   // só para a animação 3D da prensa subindo
       if (!p.alive || d.phase !== 'play' || pd.lock > 0) continue;
       if (p.input.aPressed) this.act(g, p, true);
       else if (p.input.bPressed) this.act(g, p, false);
@@ -126,7 +127,158 @@ TN.registerMinigame({
     return burn ? { a: true } : { b: true };
   },
 
-  // ---------- desenho dos ícones (centro x,y; s = meia largura) ----------
+  // ---------- 3D (câmera fixa): X = x da lógica, Z = baia, esteiras correndo da esquerda para a direita ----------
+  camera: { pos: [480, 720, 830], target: [480, 0, 292], fov: 37 },
+  env: { ambient: 0.5, sun: 1.7, sunDir: [-0.4, 1, 0.5] },
+
+  // item 3D low-poly sobre uma bandeja vermelha (arte) ou verde (tecnologia); base em y
+  item3d(r, type, x, y, z, k = 1, op = 1) {
+    const it = this.ITEMS[type], o = op < 1 ? { opacity: op } : {};
+    r.box(x, y, z, 40 * k, 2, 40 * k, it.art ? '#6a1d1d' : '#174a27', { emissive: it.art ? '#3a0606' : '#06280f', ...o });
+    y += 2;
+    switch (type) {
+      case 0: // quadro: moldura dourada em pé com a pintura
+        r.box(x, y, z, 30 * k, 24 * k, 4 * k, '#c9a24a', { metal: 0.6, rough: 0.4, ...o });
+        r.box(x, y + 4 * k, z + 2.2 * k, 22 * k, 16 * k, 1, '#5fa8e8', { emissive: '#12324f', ...o });
+        break;
+      case 1: // busto em pedestal
+        r.box(x, y, z, 16 * k, 8 * k, 16 * k, '#9b958a', o);
+        r.box(x, y + 8 * k, z, 20 * k, 7 * k, 10 * k, '#e8e2d6', o);
+        r.sphere(x, y + 21 * k, z, 7 * k, '#e8e2d6', { rough: 0.5, ...o });
+        break;
+      case 2: // vaso de cerâmica
+        r.sphere(x, y + 10 * k, z, 10 * k, '#d0703a', { rough: 0.6, ...o });
+        r.cyl(x, y + 16 * k, z, 4.5 * k, 10 * k, '#c0602c', o);
+        break;
+      case 3: // partitura num suporte
+        r.box(x, y, z, 26 * k, 20 * k, 2, '#f2ecd9', { rotX: -0.35, ...o });
+        r.sphere(x - 4 * k, y + 8 * k, z + 3, 3.2 * k, '#111', o);
+        r.box(x + 1 * k, y + 8 * k, z + 2.5, 1.6, 12 * k, 1.6, '#111', o);
+        break;
+      case 4: // chip
+        r.box(x, y, z, 24 * k, 5 * k, 24 * k, '#1d1f22', { metal: 0.4, ...o });
+        r.box(x, y + 5 * k, z, 10 * k, 1.5, 10 * k, '#46e27b', { glow: true, ...o });
+        r.box(x, y + 1, z, 30 * k, 2, 6 * k, '#c8c8c8', { metal: 0.9, rough: 0.3, ...o });
+        break;
+      case 5: // bateria
+        r.cyl(x, y, z, 8 * k, 24 * k, '#d8d8d8', { metal: 0.5, rough: 0.4, ...o });
+        r.cyl(x, y + 6 * k, z, 8.4 * k, 11 * k, '#2fbf62', o);
+        r.cyl(x, y + 24 * k, z, 3 * k, 3 * k, '#999', { metal: 0.8, ...o });
+        break;
+      case 6: // engrenagem
+        r.cyl(x, y, z, 11 * k, 6 * k, '#b8c0c8', { metal: 0.85, rough: 0.3, ...o });
+        r.box(x, y, z, 28 * k, 6 * k, 5 * k, '#a9b1b9', { metal: 0.85, rough: 0.3, ...o });
+        r.box(x, y, z, 5 * k, 6 * k, 28 * k, '#a9b1b9', { metal: 0.85, rough: 0.3, ...o });
+        break;
+      default: // monitor
+        r.box(x, y, z, 8 * k, 6 * k, 8 * k, '#888', o);
+        r.box(x, y + 6 * k, z, 30 * k, 20 * k, 5 * k, '#c4c4c4', { metal: 0.3, ...o });
+        r.box(x, y + 9 * k, z + 2.8 * k, 24 * k, 14 * k, 1, '#1d6b3f', { glow: true, ...o });
+    }
+  },
+
+  draw3d(g, r) {
+    const a = g.arena, d = g.data;
+    const BX0 = this.SLOT_X - 34, BX1 = a.x + a.w - 96, BH = 22, SX = this.SLOT_X;
+    // chão, paredes e luz geral
+    r.plane(480, -1, 290, 1700, 1200, '#0e1013');
+    r.box(480, 0, a.y - 14, a.w + 60, 120, 20, '#363b42', { metal: 0.3 });
+    for (let i = 0; i < 9; i++) r.box(a.x + 6 + i * (a.w - 12) / 8, 0, a.y - 3, 26, 4, 2, i % 2 ? '#111' : '#f5c400', { shadow: false });
+    r.box(a.x - 12, 0, a.y + a.h / 2, 20, 46, a.h + 8, '#40464e', { metal: 0.3 });
+    r.box(a.x + a.w + 12, 0, a.y + a.h / 2, 20, 46, a.h + 8, '#40464e', { metal: 0.3 });
+    r.light(300, 300, 160, '#ffd9a8', 0.7, 700);
+    r.light(660, 300, 400, '#ffd9a8', 0.7, 700);
+    for (const p of g.players) {
+      const pd = p.data, L = pd.lane, cy = p.y, dead = !p.alive;
+      // baia
+      r.plane(480, 0, cy, a.w, L.h - 6, dead ? '#141518' : '#1d2126', { rough: 0.95 });
+      r.plane(a.x + 4, 0.4, cy, 8, L.h - 6, dead ? '#333' : p.color, { glow: !dead });
+      r.plane(480, 0.4, L.y + 2, a.w, 2, '#f5c400', { opacity: 0.35 });
+      // esteira: corpo, lona, roletes nas pontas e ripas que andam junto com os itens
+      r.box((BX0 + BX1) / 2, 0, cy, BX1 - BX0, BH, 60, '#2a2e34', { metal: 0.5, rough: 0.5 });
+      r.plane((BX0 + BX1) / 2, BH + 0.3, cy, BX1 - BX0 - 4, 56, '#16181b', { rough: 0.9 });
+      for (const ex of [BX0, BX1]) this.hcylZ(r, ex, BH / 2 + 1, cy, 62, BH / 2 + 1, '#4a5058');
+      for (let k = 0; k < this.VISIBLE; k++) {
+        const x = SX + 34 + (k + pd.shift) * this.SLOT_GAP;
+        if (x > BX1 - 6 || x < BX0 + 4) continue;
+        r.box(x, BH, cy, 3, 1.2, 56, '#2f343b', { shadow: false });
+      }
+      // incinerador (atrás do item ativo) e calha de reciclagem (na frente)
+      const fl = Math.round((0.6 + 0.4 * Math.sin(g.time * 14 + p.id * 1.7)) * 5) / 5;
+      r.box(SX, 0, cy - 41, 70, 34, 14, '#26292e', { metal: 0.5 });
+      r.box(SX, 34, cy - 41, 60, 1, 10, dead ? '#2a1a12' : '#ff7a1a', { glow: !dead, opacity: dead ? 1 : 0.5 + 0.5 * fl });
+      if (!dead) r.light(SX, 50, cy - 46, '#ff7a2a', 0.35 + 0.25 * fl, 120);
+      r.box(SX, 0, cy + 41, 70, 12, 14, '#1d3a27', { metal: 0.4 });
+      r.box(SX, 12, cy + 41, 60, 1, 10, dead ? '#13241a' : '#2fbf62', { glow: !dead });
+      // itens da fila (o primeiro é o ativo)
+      if (!dead) {
+        for (let k = this.VISIBLE - 1; k >= 0; k--) {
+          const x = SX + (k + pd.shift) * this.SLOT_GAP;
+          if (x > BX1 - 22) continue;
+          this.item3d(r, d.seq[(pd.idx + k) % d.seq.length], x, BH + 0.5, cy, k === 0 ? 1.1 : 0.85);
+        }
+        // moldura do item ativo
+        const wrong = pd.wrong > 0, fc = wrong ? '#ff3030' : '#ffd23f';
+        r.beam(SX - 31, BH + 2, cy - 31, SX + 31, BH + 2, cy - 31, 2.5, fc, { glow: true });
+        r.beam(SX - 31, BH + 2, cy + 31, SX + 31, BH + 2, cy + 31, 2.5, fc, { glow: true });
+        r.beam(SX - 31, BH + 2, cy - 31, SX - 31, BH + 2, cy + 31, 2.5, fc, { glow: true });
+        r.beam(SX + 31, BH + 2, cy - 31, SX + 31, BH + 2, cy + 31, 2.5, fc, { glow: true });
+        if (wrong) r.plane(SX, BH + 1, cy, 60, 60, '#ff2020', { glow: true, opacity: 0.35 });
+      }
+      // base do placar no fim da esteira
+      r.box(a.x + a.w - 46, 0, cy, 70, 30, 50, '#22262b', { metal: 0.5 });
+      r.box(a.x + a.w - 46, 30, cy - 20, 66, 1, 6, dead ? '#444' : p.color, { glow: !dead });
+      // operador (de frente para a esteira)
+      r.character(p, { pose: dead ? 'dead' : 'arms', dir: 0, flash: !dead && pd.wrong > 0.15 });
+      // prensa hidráulica: desce do teto em cima do operador
+      if (dead) r.disc(p.x + 26, 0.6, cy, 34, '#4a0c0c', { rough: 0.4 });
+      const up = dead ? TN.util.clamp(((pd.deadT || 0) - 0.6) / 0.5, 0, 1) : 0;
+      if ((pd.crush > 0 || dead) && up < 1) {
+        // desce; 0,6 s depois da morte a prensa volta para o teto e deixa ver o operador esmagado
+        const k = dead ? 1 : pd.crush;
+        const hy = 200 - 192 * k + 320 * up, px = p.x + (dead ? 26 : 0);
+        r.beam(px, hy + 18, cy, px, 320, cy, 10, '#9aa3ad', { metal: 0.9, rough: 0.25 });
+        r.box(px, hy, cy, 70, 18, 64, '#f5c400', { metal: 0.3 });
+        for (let i = 0; i < 4; i++) r.box(px - 26 + i * 17, hy - 0.5, cy + 32.5, 8, 19, 1.5, '#111', { shadow: false, rotZ: 0.5 });
+      }
+    }
+    // itens saindo da esteira: para trás (fogo) ou para a frente (reciclagem), com arco e queda
+    for (const f of d.flying) {
+      const u = 1 - Math.max(0, f.t) / 0.35, dir = f.burn ? -1 : 1;
+      const z = f.lane.y + dir * Math.min(u * 90, 40);
+      const y = BH + 26 * Math.sin(Math.min(1, u * 1.4) * Math.PI) - (u > 0.65 ? (u - 0.65) * 90 : 0);
+      this.item3d(r, f.type, f.x, Math.max(0, y), z, 0.75, Math.max(0.1, Math.round((1 - u) * 10) / 10));
+    }
+  },
+
+  // cilindro deitado ao longo do eixo Z (roletes da esteira), centrado em x,z
+  hcylZ(r, x, y, z, len, rad, color) {
+    r.cyl(x, y, z - len / 2, rad, len, color, { metal: 0.8, rough: 0.3, rotX: Math.PI / 2 });
+  },
+
+  // placares por baia + faixa de status (2D por cima do 3D)
+  drawOverlay(g, c) {
+    if (!g.uses3d || !g.uses3d()) return;
+    const a = g.arena, D = TN.draw, d = g.data, U = TN.util;
+    for (const p of g.players) {
+      const pd = p.data, dead = !p.alive;
+      const s = TN.R3.project(a.x + a.w - 46, 30, p.y);
+      D.panel(c, s.x - 34, s.y - 26, 68, 44, { stroke: dead ? '#444' : p.color, fill: 'rgba(0,0,0,0.7)' });
+      D.text(c, dead ? '✖' : String(pd.sub), s.x, s.y - 4, { size: 28, color: dead ? '#f55' : '#fff', align: 'center' });
+    }
+    const t = d.phase === 'play' ? d.timer : 0;
+    c.fillStyle = 'rgba(8,10,13,0.7)'; c.fillRect(a.x, 37, a.w, 30);
+    D.text(c, `TURNO ${d.sub}`, a.x + 10, 52, { size: 16, color: '#ff5a3c' });
+    D.text(c, U.formatTime(t), g.W / 2, 52, { size: 24, color: t < 4 && d.phase === 'play' ? '#f55' : '#fff', align: 'center' });
+    D.text(c, 'AÇÃO: QUEIMAR ARTE', a.x + a.w - 250, 45, { size: 12, color: '#ff7a5a', align: 'left' });
+    D.text(c, 'EXTRA: RECICLAR TECNOLOGIA', a.x + a.w - 250, 59, { size: 12, color: '#46e27b', align: 'left' });
+    if (d.banner) {
+      D.panel(c, g.W / 2 - 250, g.H / 2 - 26, 500, 52, { stroke: d.banner.color });
+      D.text(c, d.banner.text, g.W / 2, g.H / 2, { size: 20, color: d.banner.color, align: 'center' });
+    }
+  },
+
+  // ---------- desenho 2D (alternativa sem WebGL): ícones (centro x,y; s = meia largura) ----------
   drawItem(c, type, x, y, s = 22) {
     const it = this.ITEMS[type];
     c.save(); c.translate(x, y);

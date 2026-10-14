@@ -5,15 +5,21 @@
   const params = new URLSearchParams(location.search);
   const SPEED = Number(params.get('speed')) || 1;   // ?speed=3 acelera (útil para testar)
   const STEP = 1 / 60;
+  TN.force2d = params.get('2d') === '1';             // ?2d=1 força os gráficos 2D antigos
+  const canvas3d = document.getElementById('game3d');
+  if (canvas3d && !TN.force2d) TN.R3.init(canvas3d);
 
   function resize() {
     const dpr = window.devicePixelRatio || 1;
     const s = Math.min(window.innerWidth / TN.W, window.innerHeight / TN.H);
-    canvas.style.width = Math.floor(TN.W * s) + 'px';
-    canvas.style.height = Math.floor(TN.H * s) + 'px';
-    canvas.width = Math.floor(TN.W * s * dpr);
-    canvas.height = Math.floor(TN.H * s * dpr);
-    TN._scale = s * dpr;
+    const w = Math.floor(TN.W * s), h = Math.floor(TN.H * s);
+    const stage = document.getElementById('stage');
+    if (stage) { stage.style.width = w + 'px'; stage.style.height = h + 'px'; }
+    for (const cv of [canvas, canvas3d]) { if (!cv) continue; cv.style.width = w + 'px'; cv.style.height = h + 'px'; }
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    TN._scale = (w / TN.W) * dpr;
+    if (TN.R3.available) TN.R3.resize(w, h, Math.min(dpr, 2));
   }
   window.addEventListener('resize', resize);
   resize();
@@ -45,7 +51,9 @@
     }
     c.setTransform(TN._scale, 0, 0, TN._scale, 0, 0);
     c.clearRect(0, 0, TN.W, TN.H);
+    TN.R3.used = false;
     try { TN.scene.draw(c); } catch (e) { console.error(e); TN.lastError = String(e && e.stack || e); }
+    TN.R3.setVisible && TN.R3.setVisible(TN.R3.used);   // a camada 3D só aparece quando uma rodada 3D foi desenhada
     if (TN.net.mode === 'host') TN.net.drawToast(c);
     if (TN.lastError) {
       c.fillStyle = 'rgba(120,0,0,0.85)'; c.fillRect(0, TN.H - 60, TN.W, 60);

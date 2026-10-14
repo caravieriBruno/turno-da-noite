@@ -270,6 +270,183 @@ TN.registerMinigame({
     return back * (0.18 + 0.22 * Math.min(1, q.power / 3) + 0.05 * q.kick);
   },
 
+  // ---------------- 3D (câmera fixa) ----------------
+  // Palco de frente: X = p.x, Y = altura (queda no fosso = p.y abaixo do chão), Z = linha do cabo.
+  camera: { pos: [480, 300, 1130], target: [480, 76, 400], fov: 37 },
+  env: { bg: '#080606', fog: [1000, 2500], ambient: 0.45, sun: 1.0, sunDir: [-0.3, 1, 0.75], sunColor: '#ffdcb8' },
+  S3: 1.45, PZ3: 400, PIT_D: 140,
+
+  // posição 3D do jogador — usada pelos rótulos do motor
+  worldPos(g, p) { return { x: p.x, y: -(p.y - this.GROUND), z: this.PZ3 }; },
+
+  // inclinação 3D (rad, positivo = para trás) a partir da inclinação 2D
+  lean3(p) { return (p.data.team === 'L' ? -1 : 1) * this.leanOf(p); },
+
+  // ponto das mãos no cabo (mundo 3D)
+  hand3(p) {
+    const q = p.data, S = this.S3, dir = q.team === 'L' ? 0.3 : Math.PI - 0.3;
+    const y0 = -(p.y - this.GROUND);
+    let lx, ly, a = this.lean3(p);
+    if (q.won && !q.fall) { lx = 9; ly = 20; a = 0; return { x: p.x + lx * S * Math.cos(dir), y: y0 - 20 * S + ly * S, z: this.PZ3 + lx * S * Math.sin(dir) }; }
+    lx = 19; ly = 41;
+    const x2 = lx * Math.cos(a) - ly * Math.sin(a), y2 = lx * Math.sin(a) + ly * Math.cos(a);
+    return { x: p.x + x2 * S * Math.cos(dir), y: y0 + y2 * S, z: this.PZ3 + x2 * S * Math.sin(dir) };
+  },
+
+  draw3d(g, r) {
+    const d = g.data, t = g.time, S = this.S3, PZ = this.PZ3, PL = this.PIT_L, PR = this.PIT_R, CX = this.CENTER, PD = this.PIT_D;
+    const Z0 = 260, Z1 = 540;   // fundo e frente das plataformas
+    // ---- galpão ----
+    r.box(480, -300, Z0 - 40, 2000, 900, 20, '#121418');
+    for (let x = -480; x < 1500; x += 120) r.box(x, -300, Z0 - 29, 8, 900, 3, '#0d0f12');
+    r.box(480, 120, Z0 - 28, 2000, 10, 4, '#22262c');
+    r.box(480, 300, Z0 - 28, 2000, 6, 4, '#22262c');
+    r.plane(480, -PD - 60, 600, 2600, 1400, '#060505');
+    // ---- plataformas ----
+    for (const [x0, x1] of [[-200, PL], [PR, 1160]]) {
+      const w = x1 - x0, cx = (x0 + x1) / 2;
+      r.box(cx, -PD - 60, (Z0 + Z1) / 2, w, PD + 60, Z1 - Z0, '#2a2e35', { metal: 0.3, rough: 0.7 });
+      for (let x = x0 + 20; x < x1; x += 60) r.plane(x, 0.3, (Z0 + Z1) / 2, 2, Z1 - Z0, '#20242a', { shadow: false });
+      for (let x = x0; x < x1; x += 30) r.box(x + 15, -3, Z1 + 0.5, 15, 3, 1, '#c9a100', { shadow: false });
+    }
+    // bordas do fosso com listras
+    for (const ex of [PL - 5, PR + 5]) for (let k = 0; k < 14; k++) r.box(ex, -PD + k * 10, Z1 + 0.6, 10, 5, 1, '#c9a100', { shadow: false });
+    // marcas de limite (onde a fita vermelha precisa chegar)
+    for (const lx of [CX - this.LIMIT, CX + this.LIMIT]) r.plane(lx, 0.5, (Z0 + Z1) / 2, 3, Z1 - Z0, '#ff2a2a', { glow: true, opacity: 0.55 });
+    // ---- fosso com fogo ----
+    r.box(480, -PD - 60, Z0 - 10, PR - PL, PD + 60, 10, '#1a0703');
+    r.plane(480, -PD, (Z0 + Z1) / 2, PR - PL, Z1 - Z0, Math.sin(t * 5) > 0 ? '#9a2a00' : '#8a2400', { glow: true });
+    r.box(480, -PD - 60, Z1 - 4, PR - PL, 40, 8, '#2a1206', { metal: 0.4 });          // borda baixa da frente
+    for (let i = 0; i < 9; i++) for (let j = 0; j < 3; j++) {
+      const fx = PL + 14 + i * ((PR - PL - 28) / 8), fz = Z0 + 50 + j * 90 + (i % 2) * 20;
+      const h = 34 + Math.sin(t * 9 + i * 1.7 + j) * 14 + Math.sin(t * 4.3 + i + j * 2) * 8;
+      r.cone(fx, -PD, fz, 11, h * 1.3, (i + j) % 2 ? '#e8901a' : '#d0400a', { glow: true, opacity: 0.8 });
+    }
+    for (let i = 0; i < 14; i++) {   // brasas subindo
+      const ex = PL + ((i * 53 + t * 25) % (PR - PL)), ey = -PD + ((t * 70 + i * 41) % 260), ez = Z0 + 30 + ((i * 71) % (Z1 - Z0 - 60));
+      r.box(ex, ey, ez, 3, 3, 3, i % 3 ? '#ffb030' : '#ff5020', { glow: true });
+    }
+    r.light(430, -40, 400, '#ff7a20', 3.2 + Math.sin(t * 11) * 0.4, 520);
+    r.light(530, -40, 470, '#ff9a30', 3.0 + Math.sin(t * 7 + 1) * 0.4, 520);
+    // ---- coifa e chaminé ----
+    r.box(480, 170, 360, 240, 22, 140, '#23262c', { metal: 0.5, rough: 0.5 });
+    r.box(480, 192, 340, 110, 50, 90, '#1d2026', { metal: 0.5 });
+    r.cyl(480, 242, 330, 32, 300, '#1d2026', { metal: 0.5 });
+    for (let x = PL + 10; x < PR - 6; x += 22) r.box(x, 168, 432, 12, 3, 2, '#ff7820', { glow: true, opacity: 0.6 });
+    r.box(480, 194, 386, 200, 26, 2, '#1a1208', { emissive: '#1a0c00' });
+    r.label(480, 213, 390, 'FORNALHA Nº 3 · 1400 °C', '#ffb35c', 13);
+    // laser central
+    r.beam(CX, 168, PZ, CX, -PD, PZ, 1.5, '#ff2a2a', { glow: true, opacity: 0.55 });
+    // lâmpada do TRANCO na coifa
+    const tr = d.tranco, on = d.phase === 'pull' && (tr.state === 'go' || (tr.state === 'warn' && Math.floor(tr.t * 6.6) % 2 === 0));
+    const lc = d.phase === 'pull' && tr.state === 'go' ? '#ff3a1a' : on ? '#ffd23f' : '#3a2a10';
+    r.sphere(480, 164, 432, 8, lc, { glow: true });
+    if (on) r.light(480, 150, 470, lc, 2.2, 700);
+    // luzes do teto sobre as plataformas
+    r.light(200, 260, 460, '#ffd9a8', 1.4, 650);
+    r.light(760, 260, 460, '#ffd9a8', 1.4, 650);
+    // ---- cabo ----
+    this.drawRope3d(g, r);
+    // ---- manequim (só jogando sozinho) ----
+    if (d.phantom) {
+      const root = r.character({ id: 'manequim', x: this.FRONT_R + d.rope, y: PZ, alive: true, color: '#777', label: false }, { pose: 'arms', dir: Math.PI - 0.3, scale: S, key: 'manequim' });
+      if (root && root.rotation) root.rotation.z = 0.25;
+    }
+    // ---- jogadores ----
+    for (const p of g.players) {
+      const q = p.data, dir = q.team === 'L' ? 0.3 : Math.PI - 0.3, y0 = -(p.y - this.GROUND);
+      const wp = { ...p, y: PZ };
+      if (!p.alive) {
+        // virou cinza no fundo do fosso
+        r.cone(p.x, -PD, PZ, 22, 12, '#1b1716', { rough: 1 });
+        r.character(wp, { pose: 'dead', y: -PD + 4, dir, scale: S * 0.95, color: '#2a2422' });
+        for (let k = 0; k < 3; k++) r.box(p.x - 12 + k * 12, -PD + 8 + ((t * 30 + k * 13) % 30), PZ + 6, 2.5, 2.5, 2.5, '#ff8a1e', { glow: true });
+        continue;
+      }
+      let pose = 'arms', oy = y0, lean = this.lean3(p);
+      if (q.fall) { pose = q.fall.falling ? 'fall' : 'walk'; }
+      else if (q.won) { pose = 'sit'; oy = -20 * S; lean = 0; }
+      else if (q.slip > 0) pose = 'fall';
+      const root = r.character(wp, { pose, y: oy, dir, scale: S, flash: q.slip > 0 && Math.floor(t * 12) % 2 === 0, label: q.fall ? false : undefined });
+      if (root && root.rotation) root.rotation.z = lean;
+      if (q.bonus > 1 && !q.fall) r.label(p.x, 92 * S, PZ, 'SOLO ×' + q.bonus.toFixed(1), '#ffd23f', 11);
+      // linhas de esforço
+      if (q.kick > 0.4 && !q.fall) {
+        const bk = q.team === 'L' ? -1 : 1;
+        for (const k of [-1, 1]) r.beam(p.x + bk * 26, 58 * S + k * 6, PZ, p.x + bk * 38, 60 * S + k * 11, PZ, 1.6, '#ffffff', { glow: true, opacity: 0.6 });
+      }
+    }
+  },
+
+  drawRope3d(g, r) {
+    const d = g.data, PZ = this.PZ3, PD = this.PIT_D;
+    const hands = [];
+    for (const p of g.players) {
+      if (p.alive) hands.push(this.hand3(p));
+      else if (p.data.fall && p.data.fall.done) hands.push({ x: p.x, y: -PD + 10, z: PZ });
+    }
+    if (d.phantom) hands.push({ x: this.FRONT_R + d.rope - 18, y: 58, z: PZ });
+    if (!hands.length) return;
+    hands.sort((a, b) => a.x - b.x);
+    const first = hands[0], last = hands[hands.length - 1];
+    const pts = [...(first.y > 5 ? [{ x: first.x - 46, y: 2, z: PZ + 10 }] : []), ...hands, ...(last.y > 5 ? [{ x: last.x + 46, y: 2, z: PZ + 10 }] : [])];
+    const sagOf = (a, b) => (a.x < this.CENTER && b.x > this.CENTER ? 6 + 22 * (1 - (d.tension || 0)) : 3);
+    const col = '#b8915a';
+    let mx = TN.util.clamp(this.CENTER + d.rope, pts[0].x + 1, pts[pts.length - 1].x - 1), my = 50, mz = PZ;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i], sg = sagOf(a, b);
+      const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - sg, z: (a.z + b.z) / 2 };
+      r.beam(a.x, a.y, a.z, m.x, m.y, m.z, 4.2, col, { rough: 0.9 });
+      r.beam(m.x, m.y, m.z, b.x, b.y, b.z, 4.2, col, { rough: 0.9 });
+      if (mx >= a.x && mx <= b.x) {
+        const u = (mx - a.x) / ((b.x - a.x) || 1), w = u < 0.5 ? u * 2 : (u - 0.5) * 2;
+        const p0 = u < 0.5 ? a : m, p1 = u < 0.5 ? m : b;
+        my = p0.y + (p1.y - p0.y) * w; mz = p0.z + (p1.z - p0.z) * w;
+      }
+    }
+    // fita vermelha presa no meio do cabo
+    const sway = Math.sin(g.time * 6) * 0.25;
+    r.box(mx, my - 2, mz, 8, 6, 6, '#900');
+    r.box(mx, my - 24, mz, 7, 22, 1.5, '#ff2a2a', { rotZ: sway, emissive: '#5a0000' });
+  },
+
+  // avisos do TRANCO (versão do HUD 3D: a lâmpada já existe na coifa)
+  drawTrancoText(g, c) {
+    const D = TN.draw, tr = g.data.tranco, t = g.time;
+    if (g.data.phase !== 'pull') return;
+    const on = tr.state === 'go' || (tr.state === 'warn' && Math.floor(tr.t * 6.6) % 2 === 0);
+    if (tr.state === 'warn') {
+      D.panel(c, this.CENTER - 130, 88, 260, 28, { fill: 'rgba(10,10,10,0.85)', stroke: on ? '#ffd23f' : '#5a4a10', radius: 3 });
+      D.text(c, 'PREPARAR TRANCO...', this.CENTER, 102, { size: 18, color: on ? '#ffd23f' : '#8a7020', align: 'center' });
+    }
+    if (tr.state === 'go') {
+      const s = 34 + Math.sin(t * 40) * 2;
+      D.panel(c, this.CENTER - 170, 84, 340, 42, { fill: 'rgba(30,6,0,0.9)', stroke: '#ff5a1a', radius: 3 });
+      D.text(c, 'TRANCO! AÇÃO!', this.CENTER, 106, { size: s, color: '#ff5a1a', align: 'center' });
+    }
+  },
+
+  // HUD 2D: medidor da fita, aviso de TRANCO e pegada/próximo botão de cada jogador
+  drawOverlay(g, c) {
+    if (!g.uses3d()) return;
+    const D = TN.draw;
+    this.drawGauge(g, c);
+    this.drawTrancoText(g, c);
+    for (const p of g.players) {
+      const q = p.data;
+      if (!p.alive || q.fall) continue;
+      const s = TN.R3.project(p.x, 0, this.PZ3 + 70);
+      D.bar(c, s.x - 22, s.y, 44, 6, q.grip, q.grip > 0.5 ? '#3f6' : q.grip > 0.25 ? '#fc3' : '#f43');
+      const next = q.last === 'a' ? 'b' : q.last === 'b' ? 'a' : null;
+      [['a', 'AÇÃO', -19], ['b', 'EXTRA', 19]].forEach(([k, txt, ox]) => {
+        const on = next === null || next === k;
+        c.fillStyle = on ? (k === 'a' ? '#ff8a1e' : '#3fa9ff') : '#1c1f24';
+        c.fillRect(s.x + ox - 17, s.y + 10, 34, 15);
+        D.text(c, txt, s.x + ox, s.y + 18, { size: 9, color: on ? '#111' : '#555', align: 'center', shadow: false });
+      });
+    }
+  },
+
   draw(g, c) {
     const D = TN.draw, d = g.data, t = g.time, W = g.W;
     const G = this.GROUND, PL = this.PIT_L, PR = this.PIT_R, CX = this.CENTER;

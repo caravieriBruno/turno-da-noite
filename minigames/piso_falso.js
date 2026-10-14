@@ -193,6 +193,117 @@ TN.registerMinigame({
     else if (s === 2) { c.beginPath(); c.arc(x, y, h, 0, Math.PI * 2); c.stroke(); }
   },
 
+  // ---------------- 3D (câmera fixa) ----------------
+  // Grade de ladrilhos de metal sobre um poço escuro com borda zebrada. Ladrilhos que caem afundam no
+  // poço (y negativo) e voltam subindo; símbolos brilhantes em cima (✖ = duas barras, ■ = placa, ● = anel).
+  // Dois monitores altos nas laterais mostram o símbolo seguro e a barra do tempo.
+  camera: { pos: [480, 650, 790], target: [480, 0, 280], fov: 43 },
+  env: { bg: '#07060a', fog: [1000, 2200], ambient: 0.5, sun: 1.6, sunDir: [-0.25, 1, 0.45], sunColor: '#f1dcff' },
+
+  // símbolo deitado no chão (em cima do ladrilho)
+  sym3d(r, s, x, y, z, k = 1) {
+    const col = this.SYM_COLORS[s], h = 9 * k;
+    if (s === 0) {
+      r.beam(x - h, y + 1.5, z - h, x + h, y + 1.5, z + h, 4 * k, col, { glow: true });
+      r.beam(x - h, y + 1.5, z + h, x + h, y + 1.5, z - h, 4 * k, col, { glow: true });
+    } else if (s === 1) r.box(x, y, z, 17 * k, 2.5, 17 * k, col, { glow: true });
+    else r.ring(x, y + 0.6, z, 6 * k, 10.5 * k, col, { glow: true });
+  },
+  // símbolo em pé (na tela de um monitor, virado para +z)
+  symScreen(r, s, x, y, z, size, col, o = {}) {
+    const h = size / 2;
+    if (s === 0) {
+      r.beam(x - h, y - h, z, x + h, y + h, z, size * 0.16, col, { glow: true, ...o });
+      r.beam(x - h, y + h, z, x + h, y - h, z, size * 0.16, col, { glow: true, ...o });
+    } else if (s === 1) {
+      r.box(x, y - h, z, size, size, 1.5, col, { glow: true, ...o });
+      r.box(x, y - h * 0.68, z + 0.3, size * 0.68, size * 0.68, 1.5, '#0b0e14', {});
+    } else r.ring(x, y, z, h * 0.68, h, col, { glow: true, rotX: Math.PI / 2, ...o });
+  },
+
+  draw3d(g, r) {
+    const d = g.data, T = this.TILE, U = TN.util;
+    const W = this.COLS * T, H = this.ROWS * T, cx0 = d.gx + W / 2, cz0 = d.gy + H / 2, PIT = 420;
+    const lights = [];
+    // ---- piso do galpão em volta, poço, borda ----
+    const outer = '#1b1d22';
+    r.box(cx0, -20, d.gy - 140, 1800, 20, 280 - 20, outer, { rough: 0.95 });
+    r.box(cx0, -20, d.gy + H + 160, 1800, 20, 300 + 20, outer, { rough: 0.95 });
+    r.box(d.gx - 300 - 10, -20, cz0, 600, 20, H + 20, outer, { rough: 0.95 });
+    r.box(d.gx + W + 300 + 10, -20, cz0, 600, 20, H + 20, outer, { rough: 0.95 });
+    // paredes internas do poço e fundo
+    r.box(cx0, -PIT, d.gy - 6, W + 12, PIT - 8, 12, '#16131c', { rough: 1 });
+    r.box(cx0, -PIT, d.gy + H + 6, W + 12, PIT - 8, 12, '#16131c', { rough: 1 });
+    r.box(d.gx - 6, -PIT, cz0, 12, PIT - 8, H, '#16131c', { rough: 1 });
+    r.box(d.gx + W + 6, -PIT, cz0, 12, PIT - 8, H, '#16131c', { rough: 1 });
+    r.plane(cx0, -PIT, cz0, W, H, '#1a0d24', { glow: true });
+    // borda zebrada (moldura)
+    const rim = (x, z, w, dd, n, alongX) => {
+      for (let k = 0; k < n; k++) {
+        const t = (k + 0.5) / n;
+        if (alongX) r.box(x - w / 2 + t * w, -2, z, w / n, 4, dd, k % 2 ? '#141414' : '#e0b400', { shadow: false });
+        else r.box(x, -2, z - dd / 2 + t * dd, w, 4, dd / n, k % 2 ? '#141414' : '#e0b400', { shadow: false });
+      }
+    };
+    rim(cx0, d.gy - 10, W + 40, 16, 22, true);
+    rim(cx0, d.gy + H + 10, W + 40, 16, 22, true);
+    rim(d.gx - 10, cz0, 16, H, 12, false);
+    rim(d.gx + W + 10, cz0, 16, H, 12, false);
+    // ---- ladrilhos ----
+    for (const t of d.tiles) {
+      if (t.fall >= 1 && t.state === 'gone') continue;
+      const x = d.gx + (t.c + 0.5) * T, z = d.gy + (t.r + 0.5) * T;
+      const y = -t.fall * t.fall * 260;
+      const dark = t.fall > 0.5;
+      const col = dark ? '#2a2f38' : (t.c + t.r) % 2 ? '#4a5263' : '#55607a';
+      r.box(x, y - 10, z, T - 4, 10, T - 4, col, { metal: 0.55, rough: 0.45, rotX: t.fall * 0.35 * ((t.c % 2) ? 1 : -1), rotZ: t.fall * 0.25 });
+      if (t.sym >= 0 && t.fall < 0.5) this.sym3d(r, t.sym, x, y + 0.2, z);
+    }
+    // ---- monitores laterais com o símbolo seguro ----
+    for (const px of [d.gx / 2 + 4, g.W - d.gx / 2 - 4]) this.drawMonitor3d(g, r, px, cz0 - 70, 0, lights);
+    // ---- holofotes ----
+    lights.push([cx0 - 220, 260, cz0 - 40, '#ffe0c0', 0.9, 700], [cx0 + 220, 260, cz0 - 40, '#ffe0c0', 0.9, 700]);
+    if (d.phase === 'drop') lights.unshift([cx0, -120, cz0, '#c86bff', 1.6, 600]);
+    for (const l of lights.slice(0, 6)) r.light(...l);
+    // ---- jogadores ----
+    for (const p of g.players) {
+      if (p.alive) {
+        const busy = p.data.wind > 0;
+        r.character(p, { pose: busy ? 'arms' : 'auto', flash: Math.hypot(p.vx, p.vy) > 40 || busy });
+        continue;
+      }
+      const ft = p.data.fallT;
+      if (ft < 0 || ft > 1.3) continue;
+      r.character(p, { pose: 'fall', y: -0.5 * 900 * ft * ft, label: ft < 0.5 ? undefined : false });
+    }
+  },
+
+  drawMonitor3d(g, r, x, z, rot, lights) {
+    const d = g.data;
+    // pedestal e gabinete
+    r.box(x, 0, z, 40, 8, 40, '#22252b', { metal: 0.6 });
+    r.cyl(x, 8, z, 6, 70, '#3a3f47', { metal: 0.7, rough: 0.35 });
+    r.box(x, 70, z, 88, 150, 16, '#2b2f37', { metal: 0.5, rough: 0.5, rotY: rot });
+    const fx = Math.sin(rot) * 9, fz = Math.cos(rot) * 9;     // frente da tela (+z girado)
+    const sx = x + fx, sz = z + fz;
+    r.box(sx, 78, sz, 78, 134, 1, '#0b0e14', { rotY: rot });
+    r.box(sx, 220, sz - fz * 0.2, 88, 4, 2, d.phase === 'final' ? '#c86bff' : '#3a3344', { glow: true, rotY: rot });
+    if (d.display >= 0) {
+      const col = this.SYM_COLORS[d.display];
+      const pulse = d.decoy ? 1 : 1 + Math.sin(g.time * 10) * 0.06;
+      // símbolo de mentira: apagado (cor escura) ; seguro: aceso e pulsando
+      this.symScreen(r, d.display, sx + Math.sin(rot) * 1.5, 170, sz + Math.cos(rot) * 1.5, 48 * pulse, col, { opacity: d.decoy ? 0.35 : 1, rotY: rot });
+      if (d.phase === 'final') {
+        const k = TN.util.clamp(1 - d.phaseT / d.phaseDur, 0, 1);
+        r.box(sx + Math.sin(rot) * 1.5 - Math.cos(rot) * 30 * (1 - k), 96, sz + Math.cos(rot) * 1.5 + Math.sin(rot) * 30 * (1 - k), Math.max(1, 60 * k), 8, 1, '#c86bff', { glow: true, rotY: rot });
+      }
+      if (!d.decoy) lights.push([sx + fx * 3, 160, sz + fz * 3, col, 0.9, 260]);
+    }
+    const label = d.display >= 0 ? (d.decoy ? 'EMBARALHANDO' : 'SEGURO') : d.phase === 'drop' ? 'CAIU' : 'AGUARDE';
+    const lcol = d.display >= 0 ? (d.decoy ? '#888' : '#fff') : d.phase === 'drop' ? '#f55' : '#888';
+    r.label(sx, d.display >= 0 ? 118 : 150, sz, label, lcol, d.decoy ? 10 : 14);
+  },
+
   draw(g, c) {
     const d = g.data, T = this.TILE, D = TN.draw, U = TN.util;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);

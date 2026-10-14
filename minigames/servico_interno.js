@@ -264,6 +264,177 @@ TN.registerMinigame({
     return { x: pd.bDir.x, y: pd.bDir.y };
   },
 
+  // ---------- 3D (câmera fixa) ----------
+  // Escritório em corte: parede do fundo com janelas noturnas e luminárias, paredes laterais, mureta na frente.
+  // Móveis revistáveis em 3D (mesas com monitor aceso, arquivos, estantes, sofás...). Quando as luzes apagam,
+  // o ambiente vai ao breu e cada jogador leva uma lanterna (r.light) — verde e maior para os infectados.
+  camera: { pos: [480, 640, 790], target: [480, 0, 282], fov: 41 },
+  env: { bg: '#0a0c10', ambient: 0.65, sun: 1.7, sunDir: [-0.3, 1, 0.5], sunColor: '#fff1dc' },
+
+  furniture3d(r, f, hi, dark) {
+    const { x, y, w, h } = f, cx = x + w / 2, cz = y + h / 2;
+    const S = f.searched;
+    switch (f.kind) {
+      case 'mesa': {
+        r.box(cx, 0, y + h + 12, 18, 14, 18, '#1c1f24');                              // cadeira
+        r.box(cx, 14, y + h + 20, 18, 22, 3, '#1c1f24');
+        for (const sx of [x + 4, x + w - 4]) r.box(sx, 0, cz, 4, 28, h - 6, '#4a3420');
+        r.box(cx, 28, cz, w, 4, h, '#7a5534', { rough: 0.6 });
+        r.box(cx, 32, y + 12, 34, 4, 10, '#15181c');                                 // monitor
+        r.box(cx, 36, y + 12, 34, 22, 3, '#15181c', { metal: 0.4 });
+        r.box(cx, 38, y + 14, 30, 18, 1, S ? '#1a1d22' : '#3a8fd0', S ? {} : { glow: true });
+        r.box(cx, 32, y + 28, 28, 2, 8, '#cfcfcf');                                  // teclado
+        if (!S) r.box(x + 14, 32, y + 28, 12, 1, 15, '#eeeeee');
+        break;
+      }
+      case 'armario':
+        r.box(cx, 0, cz, w, 62, h, S ? '#4a5058' : '#6b7480', { metal: 0.5, rough: 0.5 });
+        for (let k = 0; k < 3; k++) r.box(cx + (S && k === 1 ? 0 : 0), 8 + k * 18, y + h + (S && k === 1 ? 10 : 0.5), w - 8, 14, S && k === 1 ? 20 : 1, '#4d545e', { metal: 0.5 });
+        break;
+      case 'estante':
+        r.box(cx, 0, cz, w, 84, h, '#5d3f26');
+        for (const sy of [4, 30, 56]) {
+          for (let k = 0, bx = x + 4; bx < x + w - 6; k++) {
+            const bw = 5 + ((f.i * 7 + k * 13 + sy) % 5);
+            if (!(S && k % 2)) r.box(bx + bw / 2, sy, y + h + 0.5, bw, 20, 2, ['#b33', '#3a6', '#36b', '#cb3', '#999'][(f.i + k) % 5]);
+            bx += bw + 1;
+          }
+        }
+        break;
+      case 'impressora':
+        r.box(cx, 0, cz, w - 6, 20, h - 6, '#2a2d31');
+        r.box(cx, 20, cz, w, 22, h, '#c9cdd2', { rough: 0.5 });
+        r.box(cx, 30, y + h + 0.5, w - 16, 4, 1, '#333');
+        r.sphere(x + w - 8, 42, y + 6, 2.5, S ? '#300' : '#4f4', { glow: true });
+        break;
+      case 'sofa':
+        r.box(cx, 0, cz, w, 16, h, '#7a2e3a', { rough: 0.9 });
+        r.box(cx, 0, y + h - 6, w, 36, 12, '#6a2430', { rough: 0.9 });
+        for (const sx of [x + 5, x + w - 5]) r.box(sx, 0, cz, 10, 24, h, '#6a2430', { rough: 0.9 });
+        { const n = Math.round(w / 40); for (let k = 0; k < n; k++) r.box(x + 10 + (k + 0.5) * (w - 20) / n, 16, cz - 3, (w - 20) / n - 4, 6, h - 16, '#93404e', { rough: 0.9, rotZ: S && k === 0 ? 0.4 : 0 }); }
+        break;
+      case 'bebedouro':
+        r.box(cx, 0, cz, w, 42, h, '#dddddd', { rough: 0.5 });
+        r.cyl(cx, 42, cz, w * 0.36, 26, '#5ab4ff', { opacity: 0.85, rough: 0.1 });
+        break;
+      case 'vaso':
+        r.cyl(cx, 0, cz, w / 2, 20, '#8a5a3a', { sides: 8 });
+        for (let k = 0; k < 5; k++) { const an = k * 1.26 + f.i; r.sphere(cx + Math.cos(an) * 6, 30 + (k % 2) * 6, cz + Math.sin(an) * 6, 9, '#2f8a3f'); }
+        break;
+    }
+    if (S) for (const pp of f.papers || []) r.plane(x + pp.x, 0.6, y + pp.y, 10, 8, '#e8e8e8', { rotY: pp.a });
+    else if (hi && !dark) r.plane(cx, 0.4, cz, w + 10, h + 10, '#ffd23f', { glow: true, opacity: 0.35 });
+  },
+
+  draw3d(g, r) {
+    const a = g.arena, d = g.data, U = TN.util;
+    const dark = d.phase !== 'search';
+    const fade = dark ? Math.min(1, d.phase === 'grace' ? d.phaseT * 3 : 1) : 0;
+    if (dark) r.env({ bg: '#020306', fog: [1100, 2400], ambient: U.lerp(0.65, 0.07, fade), sun: U.lerp(1.7, 0.06, fade), sunDir: [-0.3, 1, 0.5], sunColor: '#8fa6d8', hemiSky: '#4a5a80', hemiGround: '#0a0806' });
+    // ---- piso, rodapé e paredes ----
+    r.plane(480, -1, 290, 2000, 1400, '#07080a');
+    r.plane(a.x + a.w / 2, 0, a.y + a.h / 2, a.w, a.h, '#2c3542', { rough: 0.85 });
+    for (let x = a.x + 80; x < a.x + a.w; x += 80) r.plane(x, 0.2, a.y + a.h / 2, 1.5, a.h, '#232a35');
+    for (let z = a.y + 80; z < a.y + a.h; z += 80) r.plane(a.x + a.w / 2, 0.2, z, a.w, 1.5, '#232a35');
+    r.plane(a.x + a.w / 2, 0.3, a.y + 197, a.w - 140, 58, '#5a2626', { rough: 1 });    // tapete do corredor
+    const wall = '#59616c';
+    r.box(a.x + a.w / 2, 0, a.y - 8, a.w + 32, 130, 16, '#4b525c', { rough: 0.9 });
+    r.box(a.x - 8, 0, a.y + a.h / 2, 16, 130, a.h, wall, { rough: 0.9 });
+    r.box(a.x + a.w + 8, 0, a.y + a.h / 2, 16, 130, a.h, wall, { rough: 0.9 });
+    r.box(a.x + a.w / 2, 0, a.y + a.h + 8, a.w + 32, 18, 16, wall, { rough: 0.9 });
+    r.box(a.x + a.w / 2, 18, a.y + a.h + 8, a.w + 32, 2, 18, '#2a2f36');
+    // janelas noturnas e luminárias na parede do fundo
+    for (const wx of [210, 390, 570, 750]) {
+      r.box(wx, 62, a.y + 0.5, 70, 46, 2, '#1d2c48', { glow: true });
+      r.box(wx, 84, a.y + 1.5, 70, 2, 2, '#2a2f36');
+    }
+    for (const lx of [130, 480, 830]) r.box(lx, 116, a.y + 2, 60, 5, 6, dark ? '#2a2a2a' : '#fff4dc', dark ? {} : { glow: true });
+    // ---- móveis ----
+    const hi = new Set();
+    if (d.phase === 'search') for (const p of g.players) { const f = this.reachable(g, p); if (f) hi.add(f); }
+    for (const f of d.furniture) this.furniture3d(r, f, hi.has(f), dark);
+    // ---- luzes ----
+    if (!dark) {
+      r.light(260, 170, 230, '#fff1dc', 0.7, 650);
+      r.light(700, 170, 230, '#fff1dc', 0.7, 650);
+    } else {
+      // lanternas: uma por jogador (infectados: verde e maior)
+      for (const p of g.players) {
+        const inf = p.data.infected, R = inf ? this.LIGHT_R_INF : this.LIGHT_R;
+        r.light(p.x, 70, p.y, inf ? '#b6ff7a' : '#ffe8c0', 0.35 + 1.1 * fade, R * 3.2);
+      }
+    }
+    // ---- jogadores ----
+    for (const p of g.players) {
+      const pd = p.data;
+      if (pd.infected) r.disc(p.x, 0.8, p.y, p.r + 9 + Math.sin(g.time * 8) * 2, '#9be15d', { glow: true, opacity: pd.frozen > 0 ? 0.2 : 0.35 });
+      if (dark) r.disc(p.x, 0.6, p.y, (pd.infected ? this.LIGHT_R_INF : this.LIGHT_R) * 0.7, pd.infected ? '#9be15d' : '#ffe8c0', { glow: true, opacity: 0.06 });
+      let pose = 'auto';
+      if (pd.frozen > 0) pose = 'crouch';
+      else if (this.isHunter(p)) pose = 'arms';
+      else if (pd.searchT > 0) pose = 'arms';
+      r.character(p, { pose, flash: pd.frozen > 0 && Math.floor(g.time * 6) % 2 === 0 });
+      if (this.isHunter(p) && pd.swing > 0) {
+        const L = 0.29, rho = -Math.PI / 2 - L * Math.PI - p.dir;
+        r.ring(p.x, 20, p.y, this.INFECT_RANGE - 10, this.INFECT_RANGE - 4, '#dcffb4', { glow: true, arc: L, rotY: rho });
+      }
+      if (pd.holder) {   // seringa flutuando sobre a cabeça
+        const sy = 80 + Math.sin(g.time * 4) * 3, ang = g.time * 2;
+        const dx = Math.cos(ang) * 12, dz = Math.sin(ang) * 12;
+        r.beam(p.x - dx, sy, p.y - dz, p.x + dx, sy, p.y + dz, 5, '#e8f6ff', { rough: 0.2 });
+        r.beam(p.x - dx * 0.6, sy, p.y - dz * 0.6, p.x + dx * 0.3, sy, p.y + dz * 0.3, 5.6, '#9be15d', { glow: true });
+        r.beam(p.x + dx, sy, p.y + dz, p.x + dx * 1.6, sy, p.y + dz * 1.6, 1, '#dddddd');
+      }
+      if (pd.frozen > 0) r.ring(p.x, 1.2, p.y, p.r + 4, p.r + 8, '#9be15d', { glow: true, arc: Math.max(0.01, pd.frozen / this.FREEZE) });
+      if (pd.searchT > 0) {
+        r.ring(p.x, 1.1, p.y, p.r + 5, p.r + 10, '#333333', {});
+        r.ring(p.x, 1.3, p.y, p.r + 5, p.r + 10, '#ffd23f', { glow: true, arc: Math.min(1, pd.searchT / this.SEARCH_TIME) });
+      }
+    }
+  },
+
+  drawOverlay(g, c) {
+    if (!TN.R3.available || !g.uses3d()) return;
+    const d = g.data;
+    if (d.phase !== 'search') {
+      // breu desenhado por cima do 3D; cada lanterna "apaga" o breu com um gradiente (borda suave)
+      const fade = Math.min(1, d.phase === 'grace' ? d.phaseT * 3 : 1);
+      const P = TN.R3.project;
+      c.save();
+      c.fillStyle = `rgba(2,4,8,${0.86 * fade})`; c.fillRect(0, 0, g.W, g.H);
+      c.globalCompositeOperation = 'destination-out';
+      for (const p of g.players) {
+        const R = p.data.infected ? this.LIGHT_R_INF : this.LIGHT_R;
+        const s = P(p.x, 0, p.y), sx = P(p.x + R, 0, p.y), sz = P(p.x, 0, p.y + R);
+        const rx = Math.max(4, Math.abs(sx.x - s.x)), ry = Math.max(4, Math.abs(sz.y - s.y));
+        c.save(); c.translate(s.x, s.y - ry * 0.3); c.scale(1, (ry * 1.3) / rx);
+        const gr = c.createRadialGradient(0, 0, rx * 0.55, 0, 0, rx);
+        gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        c.fillStyle = gr; c.beginPath(); c.arc(0, 0, rx, 0, Math.PI * 2); c.fill(); c.restore();
+      }
+      c.restore();
+      // nomes sempre visíveis
+      for (const p of g.players) { const s = P(p.x, 72, p.y); TN.draw.text(c, p.label, s.x, s.y, { size: 12, color: p.color, align: 'center' }); }
+    }
+    this.drawStatus(g, c);
+  },
+
+  // painel de estado logo abaixo do HUD (versão 3D; o draw 2D tem a sua própria cópia)
+  drawStatus(g, c) {
+    const d = g.data, D = TN.draw;
+    if (d.phase === 'search') {
+      D.panel(c, g.W / 2 - 170, 40, 340, 24, { stroke: '#ffd23f' });
+      D.text(c, `REVISTE OS MÓVEIS · BUSCAS: ${d.searches}`, g.W / 2, 52, { size: 14, color: '#ffd23f', align: 'center' });
+    } else if (d.phase === 'grace') {
+      D.panel(c, g.W / 2 - 170, 40, 340, 24, { stroke: '#9be15d' });
+      D.text(c, `${g.players.find((p) => p.id === d.holderId).label} ESTÁ COM A SERINGA! CORRAM!`, g.W / 2, 52, { size: 14, color: '#9be15d', align: 'center' });
+    } else {
+      const free = g.players.filter((p) => !p.data.infected).length;
+      D.panel(c, g.W / 2 - 150, 40, 300, 26, { stroke: d.huntLeft < 5 ? '#f55' : '#9be15d' });
+      D.text(c, `ESCURO ${TN.util.formatTime(d.huntLeft)} · LIVRES: ${free}`, g.W / 2, 53, { size: 16, color: d.huntLeft < 5 ? '#f55' : '#fff', align: 'center' });
+    }
+  },
+
   // ---------- desenho ----------
   drawFurniture(c, f, hi) {
     const { x, y, w, h } = f;

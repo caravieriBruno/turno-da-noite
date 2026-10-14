@@ -156,7 +156,192 @@ TN.registerMinigame({
     return { a: b.holding };
   },
 
-  // ------------------------------------------------------------------ desenho
+  // ------------------------------------------------------------------ 3D (câmera fixa)
+  // Palco de frente: X = lógica x, Z = profundidade (os bancos ficam em Z = p.y), Y = altura.
+  camera: { pos: [488, 196, 1110], target: [488, 128, 370], fov: 36 },
+  env: { bg: '#07090c', fog: [900, 2200], ambient: 0.45, sun: 1.1, sunDir: [-0.35, 1, 0.8], sunColor: '#ffe2c0' },
+  S3: 1.75,           // escala dos personagens
+  STOOL_H: 64,        // altura do assento do banquinho
+  DIR3: 0.95,         // sentados olhando para o fiscal, meio virados para a câmera
+
+  // posição 3D do fumante (sentado no banquinho) — usada pelos rótulos do motor
+  worldPos(g, p) { return { x: p.x, y: this.STOOL_H - 20 * this.S3, z: this.FLOOR_Y - 70 }; },
+
+  // ponto local do boneco (lx = frente, ly = altura, lz = lado) → mundo
+  w3(x, z, lx, ly, lz, dir, S, oy) {
+    const cs = Math.cos(dir), sn = Math.sin(dir);
+    return { x: x + (lx * cs - lz * sn) * S, y: oy + ly * S, z: z + (lx * sn + lz * cs) * S };
+  },
+
+  draw3d(g, r) {
+    const d = g.data, S = this.S3, SH = this.STOOL_H, Z = this.FLOOR_Y - 70, oy = SH - 20 * S, dir = this.DIR3;
+    const t = g.time;
+    // ---- sala: piso, parede, rodapé, canos ----
+    r.plane(480, -1, 420, 2200, 1400, '#0e1013');
+    for (let x = -60; x < 1040; x += 80) for (let z = 200; z < 640; z += 80) {
+      const k = (Math.floor(x / 80) + Math.floor(z / 80)) % 2;
+      r.plane(x + 40, 0, z + 40, 78, 78, k ? '#2b3036' : '#262a30', { rough: 0.95 });
+    }
+    r.box(480, 0, 196, 1500, 420, 16, '#1a1e24', { rough: 0.9 });
+    for (let x = -120; x < 1100; x += 120) r.box(x, 0, 206, 6, 420, 4, '#14171c');
+    r.box(480, 0, 207, 1500, 14, 6, '#0d0f12');
+    r.box(480, 150, 207, 1500, 4, 4, '#0f1216');
+    r.beam(-200, 300, 216, 1200, 300, 216, 12, '#3a3f46', { metal: 0.7, rough: 0.4 });
+    r.beam(-200, 282, 220, 1200, 282, 220, 7, '#5a3a22', { metal: 0.5, rough: 0.5 });
+    // faixa de segurança no chão, à frente dos bancos
+    for (let i = 0; i < 26; i++) r.box(-40 + i * 40 + 10, 0.4, 470, 20, 1, 8, i % 2 ? '#141414' : '#c9a100', { shadow: false });
+    // ---- janela com a noite lá fora ----
+    r.box(865, 120, 205, 150, 120, 4, '#2b323a', { metal: 0.5 });
+    r.box(865, 126, 208, 136, 108, 2, '#05080f', { glow: true });
+    r.sphere(900, 205, 210, 9, '#cfd8ff', { glow: true });
+    r.sphere(906, 208, 211, 8.5, '#05080f', { glow: true });
+    for (const [sx, sy] of [[820, 220], [850, 160], [880, 140], [915, 150], [835, 190]]) r.box(sx, sy, 210, 2, 2, 1, '#9aa', { glow: true });
+    r.box(865, 120, 211, 5, 120, 3, '#2b323a', { metal: 0.5 });
+    // ---- placa ÁREA DE FUMANTES ----
+    r.box(560, 196, 207, 190, 48, 4, '#2a1d0f', { emissive: '#1a0d00' });
+    r.box(560, 196, 209, 186, 3, 2, '#ff9f43', { glow: true });
+    r.box(560, 241, 209, 186, 3, 2, '#ff9f43', { glow: true });
+    r.label(560, 228, 212, 'ÁREA DE FUMANTES', '#ffcf8a', 15);
+    // ---- luminárias do teto (luz quente) ----
+    for (const lx of [215, 595]) {
+      r.beam(lx, 330, 360, lx, 260, 360, 2, '#222');
+      r.cone(lx, 236, 360, 30, 24, '#2b2f35', { metal: 0.6, rough: 0.4, rotX: Math.PI });
+      r.sphere(lx, 236, 360, 8, '#ffe2b0', { glow: true });
+      r.light(lx, 225, 380, '#ffcf96', 2.0, 560);
+    }
+    r.light(862, 230, 400, '#cfe0ff', 0.8, 420);
+    // ---- bancos, cinzeiros e fumantes ----
+    for (const p of g.players) {
+      const s = p.data, x = p.x;
+      // banquinho
+      r.cyl(x, SH - 6, Z, 26, 6, '#3a3f46', { metal: 0.5, rough: 0.45 });
+      for (let k = 0; k < 3; k++) {
+        const a = k * Math.PI * 2 / 3 + 0.4;
+        r.beam(x + Math.cos(a) * 20, 0, Z + Math.sin(a) * 20, x + Math.cos(a) * 9, SH - 6, Z + Math.sin(a) * 9, 3.5, '#24282d', { metal: 0.6 });
+      }
+      r.disc(x, 0.6, Z, 30, '#0a0b0d', { opacity: 0.5 });
+      // cinzeiro de pé
+      const ax = x + 64, az = Z + 16;
+      r.cyl(ax, 0, az, 12, 3, '#3a3f46', { metal: 0.6 });
+      r.cyl(ax, 3, az, 3, 52, '#6b737c', { metal: 0.8, rough: 0.3 });
+      r.cyl(ax, 55, az, 13, 6, '#8a929b', { metal: 0.8, rough: 0.3 });
+      r.cyl(ax, 60.5, az, 10, 0.6, '#1a1a1a');
+      if (!p.alive) continue;
+      // fumante sentado (tremendo enquanto tosse)
+      const shake = s.choke > 0 ? Math.sin(t * 70 + p.id) * 2.2 : 0;
+      r.character({ ...p, x: x + shake }, { pose: 'sit', y: oy, dir, scale: S });
+      // cigarro: na boca enquanto traga, na mão nos outros momentos
+      if (!s.done && s.cig > 0) {
+        const atMouth = s.inhaling && s.choke <= 0;
+        const base = atMouth ? this.w3(x + shake, Z, 8.4, 45.5, 0, dir, S, oy) : this.w3(x + shake, Z, 10, 22, 12.3, dir, S, oy);
+        if (atMouth) r.sphere(...Object.values(this.w3(x + shake, Z, 8, 42, 3, dir, S, oy)), 3 * S, '#d8d2c8');
+        const len = (3 + 9 * s.cig) * S, fx = Math.cos(dir), fz = Math.sin(dir);
+        const up = atMouth ? 0.08 : 0.35;
+        const filt = { x: base.x + fx * 3 * S, y: base.y + up * 3 * S, z: base.z + fz * 3 * S };
+        const tip = { x: filt.x + fx * len, y: filt.y + up * len, z: filt.z + fz * len };
+        r.beam(base.x, base.y, base.z, filt.x, filt.y, filt.z, 2.6, '#d88b3a');
+        r.beam(filt.x, filt.y, filt.z, tip.x, tip.y, tip.z, 2.6, '#f2f2ee');
+        const hot = s.inhaling;
+        r.sphere(tip.x, tip.y, tip.z, hot ? 2.4 : 1.7, hot ? '#ff7a1a' : '#a8401a', { glow: true });
+        if (hot) r.sphere(tip.x, tip.y, tip.z, 5.5, '#ff6a10', { glow: true, opacity: 0.35 });
+      }
+      if (s.done) r.label(x, oy + 92 * S, Z, '✔', '#46e27b', 24);
+      if (s.choke > 0) r.label(x - 30 + Math.sin(t * 40) * 2, oy + 80 * S, Z, 'COF!', '#ddd', 15);
+    }
+    // eletrocutados: caídos no chão, à frente do banco, soltando faíscas
+    for (const p of g.players) {
+      if (p.alive) continue;
+      if (d.zap > 0.55 && d.zapped.some((z) => z.id === p.id)) {   // fritando no banco antes de cair
+        const fr = Math.floor(t * 20) % 2 === 0;
+        r.character({ ...p, alive: true, x: p.x + Math.sin(t * 90) * 3 }, { pose: fr ? 'fall' : 'sit', y: oy + (fr ? 8 : 0), dir, scale: S, flash: fr });
+        continue;
+      }
+      r.disc(p.x, 0.7, Z + 52, 46, '#050505', { opacity: 0.7 });   // marca de queimado
+      r.character({ ...p, y: Z + 52 }, { pose: 'dead', dir: 0.15, scale: S * 0.95 });
+      const nSp = d.zap > 0 ? 6 : 2;
+      for (let k = 0; k < nSp; k++) r.box(p.x + Math.sin(t * 31 + k * 2) * 26, 6 + Math.abs(Math.sin(t * 23 + k)) * 22, Z + 52 + Math.cos(t * 27 + k) * 10, 2.5, 2.5, 2.5, '#bfe8ff', { glow: true });
+      for (let k = 0; k < 3; k++) {   // fumacinha saindo do corpo
+        const u = (t * 0.6 + k / 3) % 1;
+        r.sphere(p.x - 10 + k * 9 + Math.sin(t + k) * 4, 14 + u * 70, Z + 52, 5 + u * 9, '#7d8288', { opacity: Math.round((1 - u) * 4) / 10, shadow: false });
+      }
+    }
+    // ---- fiscal com quepe e bastão de choque ----
+    const IX = this.INSPECTOR_X, IS = 2.0, idir = Math.PI - 0.75;
+    const zapping = d.zap > 0;
+    r.character({ id: 'fiscal', x: IX, y: Z + 10, alive: true, color: '#8d99a6', label: 'FISCAL' }, { pose: zapping ? 'arms' : 'idle', dir: idir, scale: IS, key: 'fiscal' });
+    const cap = this.w3(IX, Z + 10, 0, 60, 0, idir, IS, 0);
+    r.cyl(cap.x, cap.y, cap.z, 9 * IS, 3 * IS, '#1d2a44');
+    r.cyl(cap.x, cap.y - 1, cap.z, 10.5 * IS, 1.2, '#141d30');
+    const badge = this.w3(IX, Z + 10, 8.6, 61.5, 0, idir, IS, 0);
+    r.box(badge.x, badge.y, badge.z, 4, 4, 4, '#ffd23f', { emissive: '#7a5a00', rotY: -idir });
+    const hand = zapping ? this.w3(IX, Z + 10, 19, 41, 12.3, idir, IS, 0) : this.w3(IX, Z + 10, 2, 24, 12.3, idir, IS, 0);
+    const bt = zapping ? this.w3(IX, Z + 10, 34, 46, 12.3, idir, IS, 0) : this.w3(IX, Z + 10, 16, 44, 15, idir, IS, 0);
+    r.beam(hand.x, hand.y, hand.z, bt.x, bt.y, bt.z, 4, '#2a2a2a', { metal: 0.5 });
+    r.sphere(bt.x, bt.y, bt.z, zapping ? 7 : 4.5, zapping ? '#e6f6ff' : '#4aa3ff', { glow: true });
+    r.light(bt.x, bt.y + 10, bt.z + 20, '#6cb8ff', zapping ? 3 : 0.6, zapping ? 700 : 160);
+    // raios do fiscal até quem não terminou
+    if (zapping) {
+      for (const p of d.zapped) {
+        const fry = d.zap > 0.55, tx = p.x, ty = fry ? oy + 32 * S : 30, tz = fry ? Z : Z + 52, n = 9;
+        let px = bt.x, py = bt.y, pz = bt.z;
+        for (let k = 1; k <= n; k++) {
+          const u = k / n, j = k < n ? 1 : 0;
+          const nx = px + (tx - bt.x) / n + j * (Math.random() - 0.5) * 26, ny = TN.util.lerp(bt.y, ty, u) + j * (Math.random() - 0.5) * 30;
+          const nz = TN.util.lerp(bt.z, tz, u) + j * (Math.random() - 0.5) * 20;
+          r.beam(px, py, pz, nx, ny, nz, 3.2, '#bfe8ff', { glow: true });
+          px = nx; py = ny; pz = nz;
+        }
+      }
+    }
+    // ---- fumaça (sobe devagar da boca) ----
+    const mouthY = this.FLOOR_Y - 46 - 64 * 0.68;
+    const list = d.smoke.length > 110 ? d.smoke.slice(-110) : d.smoke;
+    const fx = Math.cos(dir) * 9 * S - 16;
+    for (const sm of list) {
+      const op = Math.round(Math.max(0, Math.min(0.5, sm.t / sm.life)) * 10) / 10;
+      if (op <= 0) continue;
+      r.sphere(sm.x + fx, oy + 45.5 * S + (mouthY - sm.y) * 1.1, Z + Math.sin(dir) * 9 * S, sm.r * 1.25, '#c9ced4', { opacity: op, shadow: false });
+    }
+  },
+
+  // HUD 2D por cima do 3D: painel compacto de cada fumante + dica de controle
+  drawOverlay(g, c) {
+    if (!g.uses3d()) return;
+    const D = TN.draw, Z = this.FLOOR_Y - 70;
+    for (const p of g.players) {
+      const s = p.data, sp = TN.R3.project(p.x, 0, Z), w = 150, h = 92, x0 = TN.util.clamp(sp.x - w / 2, 6, g.W - w - 6), y0 = 42;
+      D.panel(c, x0, y0, w, h, { fill: 'rgba(8,11,14,0.82)', stroke: p.alive ? p.color : '#444', lw: 2 });
+      D.text(c, p.label + (p.isBot ? ' BOT' : ''), x0 + 8, y0 + 12, { size: 12, color: p.alive ? p.color : '#777' });
+      // pulmão (vertical)
+      const mx = x0 + 10, my = y0 + 24, mw = 24, mh = 60;
+      c.fillStyle = '#1b2026'; c.fillRect(mx, my, mw, mh);
+      const k = TN.util.clamp(s.lung / this.LUNG_MAX_VIEW, 0, 1);
+      c.fillStyle = s.lung > 0.92 ? '#ff4d4d' : s.lung > 0.75 ? '#ffb347' : '#c9d3dc';
+      c.fillRect(mx, my + mh * (1 - k), mw, mh * k);
+      const redY = my + mh * (1 - 1 / this.LUNG_MAX_VIEW);
+      c.fillStyle = 'rgba(255,0,0,0.14)'; c.fillRect(mx, my, mw, redY - my);
+      c.strokeStyle = '#ff2e2e'; c.lineWidth = 2; c.beginPath(); c.moveTo(mx - 3, redY); c.lineTo(mx + mw + 3, redY); c.stroke();
+      // estado
+      let st = 'PRONTO', sc = '#8a939c';
+      if (!p.alive) { st = 'ELETROCUTADO'; sc = '#f55'; }
+      else if (s.done) { st = `TERMINOU ${s.place + 1}º`; sc = '#46e27b'; }
+      else if (s.choke > 0) { st = `TOSSINDO ${s.choke.toFixed(1)}`; sc = '#ff6b6b'; }
+      else if (s.inhaling) { st = 'TRAGANDO...'; sc = '#ffb347'; }
+      else if (s.exhaling) { st = 'EXALANDO...'; sc = '#c9d3dc'; }
+      D.text(c, st, x0 + 44, y0 + 34, { size: 12, color: sc, maxWidth: w - 50 });
+      D.text(c, `tragadas ${s.drags} · tosses ${s.coughs}`, x0 + 44, y0 + 52, { size: 9, color: '#6c757d', maxWidth: w - 50 });
+      if (s.done && this.FINISH_POINTS[s.place]) D.text(c, `+${this.FINISH_POINTS[s.place]}`, x0 + w - 8, y0 + 12, { size: 14, color: '#ff0', align: 'right' });
+      // cigarro restante
+      const cy = y0 + h - 14, cxs = x0 + 44, full = w - 44 - 10 - 8;
+      c.fillStyle = '#d88b3a'; c.fillRect(cxs, cy - 5, 8, 10);
+      c.fillStyle = '#2a2e33'; c.fillRect(cxs + 8, cy - 5, full, 10);
+      c.fillStyle = '#f1f1f1'; c.fillRect(cxs + 8, cy - 5, full * s.cig, 10);
+      if (s.cig > 0) { c.fillStyle = s.inhaling ? '#ff6a1a' : '#b84a1a'; c.fillRect(cxs + 8 + full * s.cig - 3, cy - 5, 4, 10); }
+    }
+    D.text(c, 'SEGURE AÇÃO = TRAGAR  ·  SOLTE = EXALAR', g.W / 2, 524, { size: 14, color: '#8a939c', align: 'center' });
+  },
+
+  // ------------------------------------------------------------------ desenho 2D (alternativa)
   draw(g, c) {
     const D = TN.draw, F = this.FLOOR_Y;
     // parede

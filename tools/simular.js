@@ -42,7 +42,7 @@ function load(rel) {
   const file = path.join(ROOT, rel);
   vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
 }
-['engine/util.js', 'engine/input.js', 'engine/audio.js', 'engine/draw.js', 'engine/minigame.js', 'engine/session.js', 'engine/net.js', 'minigames/manifest.js'].forEach(load);
+['engine/util.js', 'engine/input.js', 'engine/audio.js', 'engine/draw.js', 'engine/render3d.js', 'engine/minigame.js', 'engine/session.js', 'engine/net.js', 'minigames/manifest.js'].forEach(load);
 
 let failures = 0;
 for (const f of TN.MINIGAME_FILES) {
@@ -75,13 +75,20 @@ for (const id of ids) {
         g = new TN.Round(def, roster, r, total);
         while (!g.finished && g.time < opt.max) {
           g.update(DT);
-          if (frames % 5 === 0) g.draw(ctx2d);
+          if (frames % 5 === 0) {
+            g.draw(ctx2d);
+            if (def.draw3d) { const errs = TN.R3.validate(g); if (errs.length) netIssues.add('draw3d: ' + errs[0]); }
+          }
           if (opt.rede && frames % 20 === 0) {
             // igual ao host: serializa → JSON → cliente recria e desenha
             const json = JSON.stringify(TN.serial.encode(g));
             if (TN.serial.dropped.length) netIssues.add('estado com objetos não sincronizáveis: ' + [...new Set(TN.serial.dropped)].join(', '));
             maxBytes = Math.max(maxBytes, json.length);
-            try { TN.serial.decode(JSON.parse(json)).draw(ctx2d); } catch (e) { netIssues.add('draw() falha na cópia recebida pela rede: ' + e.message); }
+            try {
+              const copy = TN.serial.decode(JSON.parse(json));
+              copy.draw(ctx2d);
+              if (def.draw3d) TN.R3.validate(copy);
+            } catch (e) { netIssues.add('draw()/draw3d() falha na cópia recebida pela rede: ' + e.message); }
           }
           frames++;
         }
@@ -101,7 +108,7 @@ for (const id of ids) {
     if (defState(def) !== defBefore) netIssues.add('o minigame altera `this` (a definição) em tempo de execução — guarde estado em g.data/p.data');
     if (maxBytes > 300000) netIssues.add(`estado muito grande para a rede (${(maxBytes / 1024).toFixed(0)} KB por quadro)`);
     for (const m of netIssues) { failures++; console.log(`✗ ${id} [rede]: ${m}`); }
-    if (!netIssues.size) console.log(`  ${id}: compatível com rede (estado ~${(maxBytes / 1024).toFixed(1)} KB/quadro)`);
+    if (!netIssues.size) console.log(`  ${id}: compatível com rede (estado ~${(maxBytes / 1024).toFixed(1)} KB/quadro)${def.draw3d ? ' · 3D ok' : ' · só 2D'}`);
   }
 }
 function defState(def) {

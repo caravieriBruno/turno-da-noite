@@ -51,7 +51,21 @@ TN.registerMinigame({
     return { x: n.x, y: n.y, a: bd > 200 && U.chance(0.05) };
   },
 
-  // Desenho. O HUD (título, tempo, placar) é desenhado pelo motor por cima.
+  // Desenho 3D com câmera fixa (principal). O HUD (título, tempo, placar) é desenhado pelo motor por cima.
+  // Coordenadas: X = p.x, Z = p.y (a lógica 2D vira o chão), Y = altura.
+  camera: { pos: [480, 600, 820], target: [480, 0, 290], fov: 40 },
+  draw3d(g, r) {
+    const a = g.arena;
+    r.plane(480, -1, 290, 1600, 1100, '#121519');                       // entorno
+    r.plane(a.x + a.w / 2, 0, a.y + a.h / 2, a.w, a.h, '#3a4048');       // piso da arena
+    for (const coin of g.data.coins) {
+      r.cyl(coin.x, 6, coin.y, coin.r, 3, '#ffd23f', { metal: 0.4, rough: 0.3, emissive: '#5a3c00', rotX: Math.PI / 2, rotY: g.time * 3 });
+      r.disc(coin.x, 0.5, coin.y, coin.r * 0.8, '#000', { opacity: 0.35 });   // sombra falsa
+    }
+    for (const p of g.players) r.character(p, { flash: p.data.dash > 0 });
+  },
+
+  // Alternativa 2D (opcional — usada sem WebGL ou com ?2d=1).
   draw(g, c) {
     const a = g.arena, D = TN.draw;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);

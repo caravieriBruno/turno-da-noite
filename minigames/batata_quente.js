@@ -208,6 +208,115 @@ TN.registerMinigame({
     return {};
   },
 
+  // ---------- desenho 3D (câmera fixa) ----------
+  camera: { pos: [480, 560, 780], target: [480, 0, 300], fov: 38 },
+  env: { bg: '#060708', fog: [900, 2000], ambient: 0.35, sun: 0.9, sunDir: [-0.2, 1, 0.35], sunColor: '#ffe2c0' },
+
+  // cor da batata conforme o calor (quantizada para reaproveitar materiais)
+  potColor(heat) {
+    const h = Math.round(heat * 8) / 8, hx = (v) => Math.round(v).toString(16).padStart(2, '0');
+    return '#' + hx(150 + 90 * h) + hx(100 - 40 * h) + hx(50 - 20 * h);
+  },
+
+  draw3d(g, r) {
+    const d = g.data, cx = this.CX, cy = this.CY, R = this.RING_R, t = g.time, U = TN.util;
+    // piso: entorno escuro + ladrilhos só na área iluminada da roda
+    r.plane(480, -1, 290, 2000, 1400, '#0a0b0d');
+    const T = 48;
+    for (let i = -7; i <= 7; i++) for (let j = -7; j <= 7; j++) {
+      const x = cx + i * T, z = cy + j * T;
+      if (Math.hypot(i, j) * T > 340) continue;
+      r.plane(x, 0, z, T - 1.5, T - 1.5, (i + j) % 2 ? '#24282e' : '#1f2328', { rough: 0.9 });
+    }
+    // roda pintada no chão + setas do sentido horário
+    r.ring(cx, 0.4, cy, R - 17, R + 17, '#ff9a2e', { glow: true, opacity: 0.16 });
+    r.ring(cx, 0.5, cy, R + 16, R + 18, '#ffc878', { glow: true, opacity: 0.35 });
+    r.ring(cx, 0.5, cy, R - 18, R - 16, '#ffc878', { glow: true, opacity: 0.35 });
+    for (let k = 0; k < 8; k++) {
+      const an = (k / 8) * Math.PI * 2 + Math.PI / 8;
+      r.cone(cx + Math.cos(an) * R, 2, cy + Math.sin(an) * R, 5, 13, '#ffc878', { glow: true, opacity: 0.4, rotZ: -Math.PI / 2, rotY: -(an + Math.PI / 2) });
+    }
+    // marcas de explosão
+    for (const s of d.scorch) {
+      r.disc(s.x, 0.7, s.y, s.r, '#000', { opacity: 0.55 });
+      r.disc(s.x, 0.8, s.y, s.r * 0.55, '#1a0d05', { opacity: 0.7 });
+    }
+    // pedestal octogonal com faixa de perigo e o dispensador no topo
+    const P = this.PED_R, glow = d.pedGlow;
+    r.cyl(cx, 0, cy, P + 6, 6, '#22262b', { sides: 8, metal: 0.5, rough: 0.5 });
+    r.cyl(cx, 6, cy, P, 30, '#3a4048', { sides: 8, metal: 0.55, rough: 0.45 });
+    r.cyl(cx, 13, cy, P + 0.6, 9, '#f5c400', { sides: 8 });
+    const ap = (P + 0.6) * Math.cos(Math.PI / 8);
+    for (let k = 0; k < 8; k += 2) { const th = (k + 0.5) * Math.PI / 4; r.box(cx + Math.sin(th) * ap, 13, cy + Math.cos(th) * ap, P * 0.77, 9, 1.5, '#141414', { rotY: th }); }
+    r.cyl(cx, 36, cy, P - 10, 3, '#20252b', { sides: 8, metal: 0.6 });
+    r.cyl(cx, 36, cy, 16, 12, glow > 0.05 ? '#ffaa3c' : '#402010', glow > 0.05 ? { glow: true } : { metal: 0.4 });
+    r.ring(cx, 48.2, cy, 10, 16, '#111', {});
+    if (glow > 0.05) { r.sphere(cx, 52, cy, 10 + 14 * glow, '#ffaa3c', { glow: true, opacity: 0.35 * glow }); r.light(cx, 80, cy, '#ff9a2e', 2.2 * glow, 380); }
+    r.label(cx, 82, cy, d.pot ? '??.?' : '--.-', d.pot ? '#f84' : '#555', 12);
+    // holofote quente sobre a roda
+    r.light(cx, 360, cy + 40, '#ffd7a0', 1.5, 820);
+    r.light(cx - 300, 200, cy - 120, '#5d7aa8', 0.5, 600);
+    // corpos: explosão, voo para fora da roda e fumaça
+    const pot = d.pot;
+    for (const p of g.players) {
+      if (p.alive) continue;
+      const b = p.data.blast;
+      if (b && b.t < 1) {
+        const k = b.t;
+        r.sphere(b.x0, 30, b.y0, 18 + 70 * k, '#ff8a30', { glow: true, opacity: 0.75 * (1 - k) });
+        r.sphere(b.x0, 30, b.y0, 10 + 36 * k, '#fff3c0', { glow: true, opacity: 0.9 * (1 - k) });
+        r.ring(b.x0, 1.5, b.y0, 20 + 120 * k, 30 + 150 * k, '#ffd23f', { glow: true, opacity: 0.7 * (1 - k) });
+        r.light(b.x0, 60, b.y0, '#ff8a30', 5 * (1 - k), 600);
+        r.character(p, { pose: 'fall', y: Math.sin(Math.PI * k) * 55, label: false });
+      } else {
+        r.character(p, { label: false });
+        for (let s = 0; s < 3; s++) {
+          const ph = (t * 0.6 + s / 3) % 1;
+          r.sphere(p.x + Math.sin(t + s * 2) * 6, 8 + ph * 60, p.y, 5 + ph * 9, '#4a4a4a', { glow: true, opacity: 0.35 * (1 - ph) });
+        }
+      }
+    }
+    // dicas de passe do portador: pontinhos no chão até cada vizinho
+    if (pot && pot.state === 'held' && pot.holder.alive) {
+      const h = pot.holder, ready = h.data.lock <= 0, col = ready ? '#ffd23f' : '#665';
+      for (const [sense, key] of [[1, 'A'], [-1, 'B']]) {
+        if (!this.neighbor(g, h, sense)) continue;
+        const rr = R + 34;
+        for (let k = 0; k < 4; k++) {
+          const an = h.data.ang + sense * (0.1 + k * 0.07);
+          r.sphere(cx + Math.cos(an) * rr, 3, cy + Math.sin(an) * rr, 2.4 + k * 0.5, col, { glow: true });
+        }
+        const an = h.data.ang + sense * 0.44;
+        r.label(cx + Math.cos(an) * (rr + 6), 10, cy + Math.sin(an) * (rr + 6), key, col, 14);
+      }
+    }
+    // jogadores vivos (quem segura estende os braços; quem derrubou se abaixa)
+    for (const p of g.alive()) {
+      const mine = pot && pot.holder === p && pot.state !== 'flight';
+      r.character(p, { pose: mine ? (pot.state === 'dropped' ? 'crouch' : 'arms') : 'idle', flash: mine && pot.blink > 0 });
+      if (mine && p.data.lock > 0) r.ring(p.x, 1, p.y, p.r + 6, p.r + 9, '#ffffff', { glow: true, opacity: 0.6, arc: p.data.lock / this.CATCH_LOCK });
+    }
+    // a batata-bomba
+    if (pot) {
+      const heat = U.clamp((0.7 - pot.interval) / 0.6, 0, 1);
+      const y = pot.state === 'dropped' ? 12 + pot.z : 38 + (pot.state === 'flight' ? pot.z : 0);
+      r.disc(pot.x, 0.6, pot.y, 13 - Math.min(8, y * 0.05), '#000', { opacity: 0.45 });
+      r.sphere(pot.x, y, pot.y, 12, pot.blink > 0 ? '#ffe0a0' : this.potColor(heat), { rough: 0.8, emissive: heat > 0.3 ? '#5a1400' : undefined });
+      for (const [sx, sy, sz] of [[-6, 3, 8], [5, -4, 9], [8, 5, -6]]) r.sphere(pot.x + sx, y + sy, pot.y + sz, 1.8, '#3c1e0a', {});
+      r.cyl(pot.x, y - 2, pot.y, 12.6, 4, '#5a5f66', { metal: 0.8, rough: 0.3 });
+      r.sphere(pot.x, y, pot.y + 12.6, 2.4, pot.blink > 0 ? '#ff2222' : '#550000', { glow: true });
+      // pavio torto com faísca
+      const fa = Math.sin(pot.spin) * 0.5 + (pot.state === 'flight' ? pot.t * 18 : 0);
+      const fx = pot.x + Math.cos(fa) * 5, fz = pot.y + Math.sin(fa) * 5;
+      r.beam(pot.x, y + 10, pot.y, fx, y + 20, fz, 2, '#cccccc', {});
+      const fl = 0.75 + 0.25 * Math.sin(t * 53) * Math.sin(t * 31);
+      r.sphere(fx, y + 21, fz, 3.2 * fl, '#ffff60', { glow: true });
+      r.sphere(fx, y + 21, fz, 7 * fl, '#ff8a00', { glow: true, opacity: 0.45 });
+      r.light(fx, y + 30, fz, '#ff9a40', 1 + heat * 1.5, 220);
+      if (heat > 0.05) r.sphere(pot.x, y, pot.y, 18 + heat * 12, '#ff5014', { glow: true, opacity: 0.3 * heat });
+    }
+  },
+
   draw(g, c) {
     const D = TN.draw, d = g.data, cx = this.CX, cy = this.CY;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);

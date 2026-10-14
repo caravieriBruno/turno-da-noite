@@ -204,6 +204,182 @@ TN.registerMinigame({
     return { x: n.x, y: n.y };
   },
 
+  // ---------------- 3D (câmera fixa) ----------------
+  // Campo minado à noite: terra com mato, cerca de arame, minas reveladas pelo sonar, a colheitadeira
+  // vermelha com o rolo de lâminas girando à esquerda e a van (caçamba aberta) depois da chegada.
+  camera: { pos: [480, 640, 800], target: [480, 0, 285], fov: 40 },
+  env: { bg: '#05070a', fog: [950, 2100], ambient: 0.42, sun: 0.9, sunDir: [0.35, 1, -0.5], sunColor: '#a9c1ff', hemiSky: '#6f86b0', hemiGround: '#1a140c' },
+
+  draw3d(g, r) {
+    const U = TN.util, a = g.arena, d = g.data;
+    const q = (v) => Math.round(U.clamp(v, 0, 1) * 10) / 10;           // opacidade em degraus (poucos materiais)
+    const fx0 = a.x + 70, fieldW = d.goalX - fx0;
+    // ---- chão ----
+    r.plane(480, -1, 290, 2200, 1500, '#0d0f0c', { rough: 1 });          // entorno (mato escuro)
+    for (let i = 0; i < 9; i++) r.plane(fx0 + fieldW / 2, 0, a.y + (a.h / 9) * (i + 0.5), fieldW, a.h / 9 + 0.5, i % 2 ? '#3d3424' : '#352d1f', { rough: 1 });
+    // tufos de mato (mesma semente do 2D)
+    let s = d.seed;
+    const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+    for (let i = 0; i < 70; i++) {
+      const x = fx0 + rnd() * (fieldW - 6), z = a.y + 4 + rnd() * (a.h - 8), sz = 3 + rnd() * 4;
+      r.cone(x, 0, z, sz, sz * 2.2, ['#4f5a2a', '#5a6630', '#46502a'][Math.floor(rnd() * 3)], { shadow: false, rough: 1 });
+    }
+    // largada de concreto + faixa de perigo
+    r.box(a.x + 35, -2, a.y + a.h / 2, 70, 4, a.h, '#4a4f55', { rough: 0.9 });
+    for (let z = a.y; z < a.y + a.h; z += 35) r.plane(a.x + 35, 2.2, z, 70, 1.5, '#3a3e43');
+    const stripes = (x, y) => { for (let k = 0; k < 14; k++) r.box(x, y, a.y + (k + 0.5) * (a.h / 14), 6, 1.2, a.h / 14, k % 2 ? '#141414' : '#f5c400', { shadow: false }); };
+    stripes(a.x + 67, 2);
+    // linha da metade (tracejada, brilhante)
+    for (let z = a.y + 10; z < a.y + a.h; z += 24) r.plane(d.midX, 0.6, z + 6, 3, 12, '#cfd6c0', { glow: true, opacity: 0.45 });
+    r.label(d.midX, 4, a.y - 6, 'METADE +1', 'rgba(255,255,255,0.7)', 12);
+    // chegada: faixa e área verde
+    stripes(d.goalX - 1, 0.4);
+    r.plane((d.goalX + a.x + a.w) / 2, 0.3, a.y + a.h / 2, a.x + a.w - d.goalX, a.h, '#9be04a', { glow: true, opacity: 0.12 });
+    // cerca de arame (em cima e embaixo)
+    for (const z of [a.y - 14, a.y + a.h + 14]) {
+      for (let x = a.x + 10; x <= a.x + a.w; x += 110) r.box(x, 0, z, 4, 40, 4, '#5a4a3a', { rough: 1 });
+      r.beam(a.x, 30, z, a.x + a.w, 30, z, 1.2, '#8a8f96', { metal: 0.7, shadow: false });
+      r.beam(a.x, 18, z, a.x + a.w, 18, z, 1.2, '#8a8f96', { metal: 0.7, shadow: false });
+    }
+    // marcas de explosão, rastro de óleo
+    for (const sc of d.scorch) { r.disc(sc.x, 0.5, sc.y, sc.r * 1.5, '#0a0806', { opacity: 0.6 }); r.disc(sc.x, 0.6, sc.y, sc.r * 0.8, '#050403', { opacity: 0.9 }); }
+    for (const t of d.trail) r.disc(t.x, 0.7, t.y, 3, '#2a0a06', { opacity: q(Math.min(1, t.t / 2) * 0.8) });
+    // minas reveladas
+    const blink = Math.sin(g.time * 14) > 0;
+    for (const m of d.mines) {
+      if (m.dead || m.reveal <= 0) continue;
+      const k = q(Math.min(1, m.reveal / 0.6));
+      r.ring(m.x, 0.8, m.y, this.TRIG - 2, this.TRIG, '#ff3c28', { glow: true, opacity: q(k * 0.5) });
+      r.cyl(m.x, 0, m.y, 9, 4, '#2a2a2a', { metal: 0.6, rough: 0.4, opacity: k });
+      r.cyl(m.x, 4, m.y, 4, 2, '#555', { metal: 0.7, opacity: k });
+      r.sphere(m.x, 7, m.y, 2.6, blink ? '#ff3030' : '#600', { glow: true, opacity: k });
+    }
+    // anéis de explosão (+ clarão)
+    const lights = [];
+    for (const rg of d.rings) {
+      const k = rg.t / 0.5, rad = this.BLAST * (0.3 + k * 0.7);
+      r.ring(rg.x, 2, rg.y, rad - 5, rad, '#ffbe3c', { glow: true, opacity: q(1 - k) });
+      r.sphere(rg.x, 10, rg.y, 26 * (1 - k) + 4, '#ffd27a', { glow: true, opacity: q(0.8 - k * 0.8) });
+      lights.push([rg.x, 50, rg.y, '#ffa040', 2.2 * (1 - k), 320]);
+    }
+    // ---- van (caçamba aberta) ----
+    this.drawVan3d(g, r);
+    // ---- colheitadeira ----
+    this.drawHarvester3d(g, r, lights);
+    // poste de luz quente na largada e na chegada
+    for (const [x, z] of [[a.x + 20, a.y - 30], [d.goalX + 40, a.y + a.h + 34]]) {
+      r.cyl(x, 0, z, 3, 120, '#3a3d40', { metal: 0.6 });
+      r.box(x + 8, 118, z, 22, 6, 10, '#2a2d30', { metal: 0.5 });
+      r.box(x + 8, 116, z, 18, 2, 7, '#ffe2b0', { glow: true });
+    }
+    lights.push([a.x + 40, 150, a.y + 30, '#ffd9a8', 1.0, 600], [d.goalX + 20, 150, a.y + a.h - 10, '#ffd9a8', 1.1, 650]);
+    // ---- jogadores ----
+    for (const p of g.players) {
+      const b = p.data;
+      if (b.done) continue;                       // quem chegou está sentado na van
+      if (!b.active) { r.character(p); continue; } // morto (deitado)
+      if (p.input.a && b.sonarT > 0) {
+        const k = (b.sonarT % this.SONAR_TIME) / this.SONAR_TIME, rad = Math.max(2, k * this.SONAR_R);
+        r.ring(p.x, 1.2, p.y, Math.max(0.5, rad - 3), rad, '#78fff0', { glow: true, opacity: q(0.9 - k * 0.7) });
+        r.ring(p.x, 1.1, p.y, Math.max(0.5, rad * 0.55 - 1.5), rad * 0.55, '#78fff0', { glow: true, opacity: q(0.5 - k * 0.4) });
+        r.disc(p.x, 0.9, p.y, rad, '#78fff0', { glow: true, opacity: q(0.12 * (1 - k)) });
+        lights.push([p.x, 40, p.y, '#78fff0', 0.8, 220]);
+      }
+      // coleira: anel no chão verde (longe) → vermelho (perto); pisca com o pavio armado
+      let col;
+      if (b.fuse > 0) col = Math.sin(g.time * 32) > 0 ? '#ff2020' : '#ffffff';
+      else { const t = Math.round(b.prox * 10) / 10; col = `rgb(${Math.round(255 * Math.min(1, 2 - 2 * t))},${Math.round(255 * Math.min(1, 2 * t))},40)`; }
+      r.ring(p.x, 1.5, p.y, p.r + 1, p.r + 5, col, { glow: true });
+      r.sphere(p.x, 44, p.y, 2.2, col, { glow: true });   // luz da coleira em volta do pescoço
+      if (b.fuse > 0) r.ring(p.x, 1.6, p.y, p.r + 7, p.r + 11, '#ffffff', { glow: true, arc: Math.min(1, b.fuse / this.FUSE) });
+      r.character(p, { pose: p.input.a && b.sonarT > 0 ? 'crouch' : 'auto', flash: b.inv > 0 && Math.sin(g.time * 40) > 0 });
+    }
+    // luzes: as mais importantes primeiro (máx. 6)
+    for (const l of lights.slice(0, 6)) r.light(...l);
+  },
+
+  drawVan3d(g, r) {
+    const a = g.arena, d = g.data;
+    const x0 = d.goalX + 6, w = a.x + a.w - x0, cx = x0 + w / 2, z0 = a.y + a.h / 2 - 110, z1 = z0 + 220;
+    const body = '#d8dde2', o = { metal: 0.35, rough: 0.45 };
+    // rodas
+    for (const z of [z0 + 34, z1 - 36]) for (const x of [x0 + 6, x0 + w + 2]) r.cyl(x, 14, z, 14, 8, '#151515', { rotZ: Math.PI / 2, rough: 0.9 });
+    // chassi e piso da caçamba
+    r.box(cx, 12, (z0 + z1) / 2, w, 8, 220, '#2b2f33', { metal: 0.5 });
+    // cabine na frente (lado de longe), com para-brisa azulado
+    r.box(cx, 20, z0 + 30, w, 58, 60, body, o);
+    r.box(cx, 50, z0 - 0.5, w - 10, 22, 2, '#8fd3ff', { glow: true, opacity: 0.85 });
+    r.box(cx, 50, z0 + 60.5, w - 12, 16, 2, '#1c2228');
+    for (const x of [x0 + 10, x0 + w - 10]) { r.sphere(x, 30, z0 - 1, 4, '#fff6d0', { glow: true }); }
+    // caçamba: paredes baixas, aberta em cima
+    const bz = (z0 + 60 + z1) / 2, bl = z1 - z0 - 60;
+    r.box(cx, 20, bz, w, 2, bl, '#1c2228');
+    r.box(x0 + w - 3, 20, bz, 6, 26, bl, body, o);
+    r.box(x0 + 3, 20, bz - bl / 2 + 15, 6, 26, 30, body, o);       // lateral do lado do campo: porta aberta
+    r.box(x0 + 3, 20, bz + bl / 2 - 15, 6, 26, 30, body, o);
+    r.box(cx, 20, z1 - 3, w, 26, 6, body, o);
+    r.box(cx, 30, z1 - 0.5, w - 20, 5, 2, '#ff2a2a', { glow: true });  // lanternas
+    r.label(cx, 98, z0 + 30, 'VAN', '#9be04a', 14);
+    // quem chegou fica sentado na caçamba
+    for (const p of g.players) {
+      if (!p.data.done) continue;
+      const st = p.data.seat;
+      r.character({ ...p, x: x0 + 18 + (st % 2) * 22, y: z0 + 82 + st * 30, alive: true }, { key: 'van' + p.id, pose: 'sit', y: 20, dir: Math.PI / 2, scale: 0.9 });
+    }
+  },
+
+  drawHarvester3d(g, r, lights) {
+    const a = g.arena, h = g.data.harv, W = this.HARV_W;
+    const zc = a.y + a.h / 2, depth = a.h + 12, back = h.x - W - 400, front = h.x - 30;
+    const red = '#b3261e';
+    // corpo comprido e cabine
+    r.box((back + front) / 2, 16, zc, front - back, 70, depth, red, { metal: 0.3, rough: 0.55 });
+    r.box((back + front) / 2, 86, zc, front - back - 40, 10, depth - 60, '#7a1912', { metal: 0.3 });
+    r.box(front - 70, 86, zc, 60, 54, 80, '#8a1d15', { metal: 0.3 });
+    r.box(front - 39, 104, zc, 2, 26, 70, '#9fd8ff', { glow: true, opacity: 0.8 });
+    for (let k = 1; k <= 4; k++) r.box(front - 40 - k * 85, 86, zc, 8, 14, depth - 40, '#5a120d', { metal: 0.4 });   // nervuras
+    r.cyl(front - 150, 96, zc - 120, 7, 70, '#2a2a2a', { metal: 0.7 });                                               // escapamento
+    r.beam(front - 260, 100, zc + 60, front - 330, 150, zc + 170, 16, '#9a1f17', { metal: 0.3 });                   // bica de grãos
+    // rodas
+    for (const x of [front - 60, back + 120]) for (const z of [a.y - 16, a.y + a.h + 16]) r.cyl(x, 30, z, 30, 22, '#151515', { rotX: Math.PI / 2, rough: 0.9 });
+    // faixa de perigo na frente
+    const n = 12;
+    for (let k = 0; k < n; k++) r.box(front + 1, 20, a.y - 6 + (k + 0.5) * depth / n, 2, 62, depth / n, k % 2 ? '#141414' : '#f5c400', { shadow: false });
+    // braços que seguram o rolo
+    for (const z of [a.y - 8, a.y + a.h + 8]) r.box(h.x - 20, 6, z, 26, 34, 8, '#333', { metal: 0.6 });
+    // rolo triturador girando + lâminas
+    const ax = h.x - 9, ay = 22;
+    r.cyl(ax, ay, a.y - 6, 9, depth, '#3a3a3a', { rotX: Math.PI / 2, metal: 0.7, rough: 0.35 });
+    const rows = 9;
+    for (let i = 0; i < rows; i++) {
+      const z = a.y + (i + 0.5) * (a.h / rows);
+      for (let k = 0; k < 3; k++) {
+        const ang = h.spin + k * (Math.PI * 2 / 3) + i * 0.7;
+        r.box(ax, ay, z, 3, 20, 26, '#d8d8d8', { rotZ: ang, metal: 0.9, rough: 0.2 });
+      }
+    }
+    // giroflex âmbar
+    const on = h.on && Math.sin(g.time * 8) > 0;
+    for (const z of [zc - 30, zc + 30]) r.sphere(front - 70, 146, z, 6, on ? '#ffb020' : '#5a3a10', { glow: true });
+    if (h.on) lights.unshift([front - 40, 160, zc, '#ffb020', on ? 1.6 : 0.6, 520]);
+    // faróis apontando para o campo
+    for (const z of [a.y + 40, a.y + a.h - 40]) r.sphere(front + 2, 74, z, 6, '#fff6d0', { glow: true });
+  },
+
+  drawOverlay(g, c) {
+    if (!TN.R3.available || !g.uses3d()) return;
+    // vidas embaixo de cada jogador em campo
+    for (const p of g.players) {
+      const b = p.data;
+      if (!b.active) continue;
+      const s = TN.R3.project(p.x, 0, p.y + p.r + 10);
+      for (let i = 0; i < this.LIVES; i++) {
+        c.fillStyle = i < b.lives ? '#ff4d5e' : '#333';
+        c.fillRect(s.x - 9 + i * 12, s.y, 8, 5);
+      }
+    }
+  },
+
   draw(g, c) {
     const U = TN.util, a = g.arena, d = g.data, D = TN.draw;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);

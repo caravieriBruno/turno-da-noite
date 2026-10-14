@@ -1,10 +1,10 @@
 # TURNO DA NOITE
 
-Party game de navegador com minigames curtos e mortais para 1–4 jogadores. É inspirado no **Machine Party**: o jogo original foi analisado por engenharia reversa e os minigames dele foram recriados em 2D, junto com jogos originais. Pode ser jogado no mesmo computador ou em **rede local**.
+Party game de navegador em **3D com câmera fixa**, com minigames curtos e mortais para 1–4 jogadores. É inspirado no **Machine Party**: o jogo original foi analisado por engenharia reversa e os minigames dele foram recriados do zero, junto com jogos originais. Pode ser jogado no mesmo computador ou em **rede local**.
 
 ## Como jogar
 
-- **Neste computador:** abra o `index.html` no navegador (Chrome, Edge ou Firefox). Não precisa instalar nada.
+- **Neste computador:** abra o `index.html` no navegador (Chrome, Edge ou Firefox, com WebGL). Não precisa instalar nada. Com `?2d=1` no endereço, o jogo usa os gráficos 2D simples.
 - **Em rede local:**
   1. Num computador com [Node.js](https://nodejs.org), dê dois cliques em `JOGAR_EM_REDE.bat` (ou rode `node tools/servidor.js`).
   2. Nesse computador, escolha **CRIAR SALA EM REDE LOCAL**.
@@ -30,7 +30,7 @@ ESC pausa o jogo. As vagas vazias são preenchidas por bots, que dá para deslig
 
 ## Criar um minigame novo
 
-Um minigame é **um arquivo** em `minigames/`. O guia completo está em [`docs/COMO_CRIAR_MINIGAME.md`](docs/COMO_CRIAR_MINIGAME.md). Com o Claude Code, basta descrever a ideia: a skill `/novo-minigame` cria o jogo, o bot, testa e registra.
+Um minigame é **um arquivo** em `minigames/`, que descreve a cena 3D a cada quadro com chamadas simples (`r.box`, `r.character`, `r.light`...). O guia completo está em [`docs/COMO_CRIAR_MINIGAME.md`](docs/COMO_CRIAR_MINIGAME.md). Com o Claude Code, basta descrever a ideia: a skill `/novo-minigame` cria o jogo, o bot, testa e registra.
 
 ```bash
 node tools/simular.js            # testa todos os minigames com bots (inclui compatibilidade com a rede)
@@ -44,3 +44,7 @@ Para jogar um minigame específico, abra `index.html?game=<id>`. Também funcion
 ## Pesquisa
 
 A análise de como o Machine Party funciona fica numa pasta `research/` local e **não é versionada**, porque contém material extraído do jogo original. A pasta reúne o formato do pacote Godot, o código decompilado, os textos oficiais e as regras de cada minigame. Os minigames deste repositório são reimplementações próprias.
+
+## Créditos
+
+- [three.js](https://threejs.org) r158 (licença MIT), em `vendor/`.

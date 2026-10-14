@@ -121,6 +121,49 @@ TN.registerMinigame({
     return { x: Math.abs(fx) > 0.15 ? Math.sign(fx) : 0, y: Math.abs(fy) > 0.15 ? Math.sign(fy) : 0, a: near && U.chance(0.05) };
   },
 
+  // ---------------- 3D (câmera fixa) ----------------
+  camera: { pos: [480, 560, 750], target: [480, 0, 300], fov: 40 },
+  env: { sunDir: [-0.3, 1, 0.4] },
+
+  draw3d(g, r) {
+    const a = g.arena;
+    // chão: piso industrial quadriculado + entorno escuro
+    r.plane(480, -1, 290, 1600, 1100, '#111417');
+    const T = 44;
+    for (let x = a.x; x < a.x + a.w; x += T) for (let z = a.y; z < a.y + a.h; z += T) {
+      const k = (Math.floor((x - a.x) / T) + Math.floor((z - a.y) / T)) % 2;
+      r.plane(x + T / 2, 0, z + T / 2, T - 1.5, T - 1.5, k ? '#3a4048' : '#343a41', { rough: 0.9 });
+    }
+    // paredes baixas
+    const H = 34, Wd = 14;
+    r.box(a.x + a.w / 2, 0, a.y - Wd / 2, a.w + Wd * 2, H, Wd, '#4b525a', { metal: 0.3 });
+    r.box(a.x + a.w / 2, 0, a.y + a.h + Wd / 2, a.w + Wd * 2, H * 0.6, Wd, '#4b525a', { metal: 0.3 });
+    r.box(a.x - Wd / 2, 0, a.y + a.h / 2, Wd, H, a.h, '#4b525a', { metal: 0.3 });
+    r.box(a.x + a.w + Wd / 2, 0, a.y + a.h / 2, Wd, H, a.h, '#4b525a', { metal: 0.3 });
+    // escotilhas com faixa de perigo
+    for (const h of g.data.hatches) {
+      r.box(h.x, 0.5, h.y, 56, 2, 56, '#0d0d0d');
+      for (let i = 0; i < 6; i++) r.box(h.x - 25 + i * 10 + 5, 2.5, h.y, 5, 1, 56, i % 2 ? '#111' : '#f5c400', { shadow: false });
+    }
+    // lâmpadas do teto (luz quente)
+    r.light(300, 260, 200, '#ffd9a8', 0.9, 700);
+    r.light(660, 260, 380, '#ffd9a8', 0.9, 700);
+    // aspiradores
+    for (const rb of g.data.roombas) {
+      r.cyl(rb.x, 2, rb.y, rb.r, 10, '#b9bec4', { metal: 0.6, rough: 0.35 });
+      r.cyl(rb.x, 12, rb.y, rb.r * 0.55, 3, '#2a2d31', { metal: 0.5 });
+      for (let k = 0; k < 6; k++) {
+        const ang = rb.spin + (k * Math.PI) / 3;
+        r.box(rb.x + Math.cos(ang) * (rb.r + 3), 3, rb.y + Math.sin(ang) * (rb.r + 3), 16, 3, 5, '#e8e8e8', { rotY: -ang, metal: 0.9, rough: 0.2 });
+      }
+      const col = rb.warm ? '#ffcc00' : '#ff2020';
+      r.sphere(rb.x, 17, rb.y, 4, col, { glow: true });
+      r.light(rb.x, 30, rb.y, col, 0.6, 140);
+    }
+    // jogadores
+    for (const p of g.players) r.character(p, { flash: p.alive && Math.hypot(p.vx, p.vy) > 40 });
+  },
+
   draw(g, c) {
     const a = g.arena, D = TN.draw;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);

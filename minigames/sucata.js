@@ -261,6 +261,89 @@ TN.registerMinigame({
     c.restore();
   },
 
+  // ---------- 3D (câmera fixa) ----------
+  // Plataformas de chapa sobre pilares num abismo escuro (névoa engole o fundo). Borda acesa na cor do dono,
+  // marcador de cubos (6 luzes), sucata caindo do alto com anel vermelho de aviso no chão, plataforma
+  // tremendo/avermelhando antes de desabar e despencando (y negativo) com o pilar.
+  camera: { pos: [480, 660, 820], target: [480, -20, 282], fov: 41 },
+  env: { bg: '#04060a', fog: [850, 1500], ambient: 0.75, sun: 2.3, sunDir: [-0.35, 1, 0.45], sunColor: '#ffe6c8' },
+
+  draw3d(g, r) {
+    const U = TN.util, d = g.data;
+    const q = (v) => Math.round(U.clamp(v, 0, 1) * 10) / 10;
+    const lights = [];
+    // ---- abismo: fundo distante e vigas perdidas na névoa ----
+    r.plane(480, -700, 280, 3000, 2400, '#0a0e14');
+    for (const [x, z] of [[20, 40], [940, 40], [480, 10], [250, 0], [710, 0]]) r.box(x, -700, z, 18, 640, 18, '#1a1f26', { metal: 0.5 });
+    // ---- plataformas ----
+    const platY = (pl) => (pl.dead ? -0.5 * 900 * pl.fallT * pl.fallT : 0);
+    for (const pl of d.plats) {
+      if (pl.dead && pl.fallT > 1.4) continue;
+      const owner = g.players.find((o) => o.id === pl.owner);
+      const cnt = this.countOn(g, pl);
+      const sh = pl.over > 0 ? Math.sin(g.time * 70) * 3 : 0;
+      const y = platY(pl), cx = pl.x + pl.w / 2 + sh, cz = pl.y + pl.h / 2;
+      const tilt = pl.dead ? { rotZ: pl.fallT * 0.5, rotX: pl.fallT * 0.25 } : {};
+      r.box(cx, y - 26, cz, pl.w, 26, pl.h, '#4a525c', { metal: 0.55, rough: 0.5, ...tilt });
+      r.cyl(cx, y - 700, cz, 30, 674, '#262b31', { metal: 0.5, sides: 8 });
+      if (pl.dead) continue;
+      // juntas da chapa e faixas zebradas nas bordas de cima e de baixo
+      for (let x = pl.x + 58; x < pl.x + pl.w - 10; x += 58) r.plane(x + sh, 0.2, cz, 1.5, pl.h - 12, '#30353c');
+      r.plane(cx, 0.2, cz, pl.w, 1.5, '#30353c');
+      const n = 10, sw = pl.w / n;
+      for (let k = 0; k < n; k++) for (const ez of [pl.y + 3, pl.y + pl.h - 3]) r.box(pl.x + sh + (k + 0.5) * sw, 0, ez, sw, 1, 6, k % 2 ? '#141414' : '#f5c400', { shadow: false });
+      // borda acesa na cor do dono
+      const bc = owner.alive ? owner.color : '#555555';
+      r.box(cx, -6, pl.y - 1, pl.w + 4, 4, 2, bc, { glow: true });
+      r.box(cx, -6, pl.y + pl.h + 1, pl.w + 4, 4, 2, bc, { glow: true });
+      r.box(pl.x - 1 + sh, -6, cz, 2, 4, pl.h + 4, bc, { glow: true });
+      r.box(pl.x + pl.w + 1 + sh, -6, cz, 2, 4, pl.h + 4, bc, { glow: true });
+      // alerta de sobrecarga
+      if (pl.over > 0 || cnt > this.LIMIT) {
+        r.plane(cx, 0.5, cz, pl.w, pl.h, '#ff2828', { glow: true, opacity: q(0.15 + 0.15 * Math.sin(g.time * 30)) });
+        lights.unshift([cx, 60, cz, '#ff3020', 1.2 + Math.sin(g.time * 30) * 0.6, 320]);
+      }
+      // marcador de cubos (6 luzes) no canto de trás e nome do dono
+      for (let i = 0; i < this.LIMIT + 1; i++) {
+        const on = i < cnt;
+        r.box(pl.x + pl.w - 14 - i * 12 + sh, 0, pl.y + 14, 9, on ? 4 : 2, 9, on ? (cnt > this.LIMIT ? '#ff3333' : '#d98b3a') : '#2a2e34', on ? { glow: true } : {});
+      }
+      r.label(pl.x + 22, 8, pl.y + 14, owner.label, owner.alive ? owner.color : '#777', 13);
+    }
+    // ---- cubos ----
+    for (const cb of d.cubes) {
+      const [col] = this.CUBE_COLORS[cb.kind], S = this.CUBE;
+      let y = 0;
+      if (cb.state === 'drop' || cb.state === 'air') y = cb.z;
+      else if (cb.state === 'held') y = 64;            // carregado acima da cabeça (não esconde o boneco)
+      else if (cb.state === 'void') y = cb.z - 0.5 * 900 * cb.voidT * cb.voidT;
+      const o = { rotY: -cb.ang, metal: cb.kind === 1 ? 0.7 : 0.3, rough: 0.6 };
+      if (cb.state === 'drop' || cb.state === 'air') { o.rotX = cb.ang * 0.6; }
+      r.box(cb.x, y, cb.y, S, S, S, col, o);
+      r.box(cb.x, y + S, cb.y, S * 0.5, 2, S * 0.5, this.CUBE_COLORS[cb.kind][1], { rotY: -cb.ang });
+      // aviso no chão (só para o que está caindo sobre uma plataforma)
+      if ((cb.state === 'drop' || cb.state === 'air') && this.platAt(g, cb.x, cb.y)) {
+        const t = 1 - Math.min(1, cb.z / this.DROP_Z);
+        r.disc(cb.x, 0.6, cb.y, 6 + 10 * t, '#000000', { opacity: q(0.25 + 0.35 * t) });
+        if (cb.state === 'drop') r.ring(cb.x, 0.8, cb.y, 15 - 6 * t, 18 - 6 * t, '#ff503c', { glow: true, opacity: q(0.4 + 0.5 * t) });
+      }
+    }
+    // ---- luzes de trabalho (uma por plataforma) ----
+    for (const pl of d.plats) if (!pl.dead) lights.push([pl.x + pl.w / 2, 240, pl.y + pl.h / 2, '#ffd9a8', 1.0, 480]);
+    for (const l of lights.slice(0, 6)) r.light(...l);
+    // ---- jogadores ----
+    for (const p of g.players) {
+      if (!p.alive) continue;                      // quem caiu sumiu no abismo
+      const pd = p.data;
+      if (pd.falling > 0) {
+        const t = this.FALL_T - pd.falling;
+        r.character(p, { pose: 'fall', y: -0.5 * 900 * t * t });
+        continue;
+      }
+      r.character(p, { pose: pd.held >= 0 ? 'arms' : 'auto', flash: pd.stun > 0 && Math.floor(g.time * 12) % 2 === 0 });
+    }
+  },
+
   draw(g, c) {
     const D = TN.draw, d = g.data;
     // vazio: fundo escuro com linhas de profundidade

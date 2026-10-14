@@ -143,7 +143,97 @@ TN.registerMinigame({
     return { x: 0, y: 0 };
   },
 
-  // ------------------------------------------------------------------ desenho
+  // ------------------------------------------------------------------ desenho 3D
+  // Mundo: cada escada sobe ao longo de X (x0 → x1) e de Y (0 → TOP); as 4 escadas ficam lado a lado em Z.
+  TOP: 190, X0: 130, X1: 790,
+  laneZ(i) { return 150 + i * 78; },
+  world(i, s) {
+    if (s > 1) return { x: this.X1 + (s - 1) * 900, y: this.TOP, z: this.laneZ(i) };
+    return { x: TN.util.lerp(this.X0, this.X1, s), y: s * this.TOP, z: this.laneZ(i) };
+  },
+  camera: { pos: [470, 330, 1080], target: [470, 105, 270], fov: 40 },
+  // onde cada jogador está no mundo 3D (usado pelo motor para rótulos)
+  worldPos(g, p) { const w = this.world(p.data.lane, Math.min(p.data.s, 1.08)); return { x: w.x, y: w.y, z: w.z }; },
+  env: { bg: '#0b0f15', fog: [900, 2200], sunDir: [-0.5, 1, 0.8] },
+
+  draw3d(g, r) {
+    const d = g.data, len = this.X1 - this.X0, slope = this.TOP / len;
+    // piso do shopping (com o buraco à esquerda das escadas) e parede do fundo
+    r.plane(560, 0, 300, 900, 900, '#262b33');
+    r.plane(-80, 0, 300, 300, 900, '#262b33');
+    r.box(480, -260, 90, 1400, 700, 20, '#151a21');
+    for (let k = 0; k < 6; k++) r.box(80 + k * 170, 230, 102, 120, 60, 4, '#1d2530', { emissive: '#0e1a28' }); // vitrines apagadas
+    // buraco: paredes escuras, fundo com espinhos e brilho vermelho
+    r.box(this.X0 - 60, -170, 290, 100, 170, 330, '#050505', { shadow: false });
+    for (let k = 0; k < 10; k++) r.cone(this.X0 - 95 + (k % 5) * 18, -60, 150 + Math.floor(k / 5) * 160 + (k % 5) * 30, 6, 40, '#b8b8b8', { metal: 0.9, rough: 0.3 });
+    r.plane(this.X0 - 60, 0.6, 128, 110, 8, '#f5c400');
+    r.plane(this.X0 - 60, 0.6, 452, 110, 8, '#f5c400');
+    r.light(this.X0 - 60, 40, 300, '#ff2a2a', 0.7 + 0.3 * Math.sin(g.time * 6), 260);
+    // patamar de saída (alto, à direita) com porta verde
+    r.box(this.X1 + 90, 0, 300, 180, this.TOP, 360, '#2b333c');
+    r.box(this.X1 + 165, this.TOP, 300, 12, 70, 340, '#1a2027');
+    for (let i = 0; i < 4; i++) {
+      r.box(this.X1 + 158, this.TOP, this.laneZ(i), 4, 56, 40, '#0b1f14', { emissive: '#1f7a42', emissiveIntensity: 0.9 });
+    }
+    r.light(this.X1 + 120, this.TOP + 90, 300, '#7dffaa', 0.8, 380);
+    r.light(420, 330, 300, '#ffd9a8', 1.0, 900);
+    // escadas
+    for (let i = 0; i < 4; i++) {
+      const z = this.laneZ(i), owner = g.players[i];
+      // treliça lateral (dos dois lados) e corrimão com a cor do dono
+      for (const side of [-1, 1]) {
+        r.beam(this.X0, -6, z + side * 30, this.X1, this.TOP - 6, z + side * 30, 14, '#2f3842', { metal: 0.5 });
+        r.beam(this.X0, 34, z + side * 30, this.X1, this.TOP + 34, z + side * 30, 5, '#111', { rough: 0.5 });
+        r.beam(this.X0, 37, z + side * 30, this.X1, this.TOP + 37, z + side * 30, 1.5, owner ? owner.color : '#888', { glow: true });
+      }
+      // degraus descendo junto com a escada
+      for (let t = d.stepAnim - 24; t < len; t += 24) {
+        const x = this.X1 - t, y = (x - this.X0) * slope;
+        if (x < this.X0 || x > this.X1) continue;
+        r.box(x, y - 8, z, 22, 8, 52, '#5b6672', { metal: 0.6, rough: 0.4 });
+      }
+    }
+    // corredores
+    for (const p of g.players) {
+      const s = p.data;
+      if (s.state === 'fell') {
+        if (s.fallT > 2) continue;
+        const w = this.world(s.lane, 0);
+        r.character({ ...p, x: w.x - 45, y: w.z }, { key: p.id, pose: 'fall', y: -s.fallT * s.fallT * 140, dir: 0, label: false });
+        continue;
+      }
+      const w = this.world(s.lane, Math.min(s.s, 1.08));
+      const running = s.state === 'top' || s.speed > 0.05;
+      r.character({ ...p, x: w.x, y: w.z }, { key: p.id, y: w.y, dir: 0, pose: running ? 'walk' : 'idle', flash: s.wrong > 0.2, label: false });
+    }
+  },
+
+  // HUD 2D por cima do 3D: velocidade da escada + seta pedida de cada jogador presa acima da cabeça
+  drawOverlay(g, c) {
+    if (!TN.R3.available || !g.uses3d()) return;
+    const D = TN.draw, d = g.data;
+    D.panel(c, 14, 44, 250, 50, { fill: 'rgba(8,12,16,0.8)', stroke: '#4dd2ff' });
+    D.text(c, 'VELOCIDADE DA ESCADA', 26, 58, { size: 12, color: '#9fb3c8' });
+    D.bar(c, 26, 70, 170, 12, d.esc / this.ESC_MAX, d.esc > 0.95 ? '#ff6b6b' : '#4dd2ff', '#1b2229');
+    D.text(c, `${d.esc.toFixed(2)} ▼`, 206, 76, { size: 12, color: '#cde' });
+    for (const p of g.players) {
+      const s = p.data;
+      if (s.state === 'fell') continue;
+      const w = this.world(s.lane, Math.min(s.s, 1.08));
+      const q = TN.R3.project(w.x, w.y + 78, w.z);
+      D.text(c, p.label, q.x, q.y - 26, { size: 12, color: p.color, align: 'center' });
+      if (s.state === 'top') { D.text(c, '✔', q.x, q.y, { size: 20, color: '#46e27b', align: 'center' }); continue; }
+      D.panel(c, q.x - 16, q.y - 16, 32, 32, { fill: s.wrong > 0 ? '#5a1010' : s.good > 0 ? '#1d4a2c' : 'rgba(10,14,18,0.9)', stroke: p.color, radius: 5 });
+      this.drawArrow(c, q.x, q.y, 22, s.arrow, s.wrong > 0 ? '#ff8080' : '#fff');
+      const mx = q.x + 20, my = q.y - 16, mh = 32, t = s.speed / this.MAX_SPEED;
+      c.fillStyle = '#1b2229'; c.fillRect(mx, my, 5, mh);
+      c.fillStyle = s.speed >= d.esc - 0.001 ? '#46e27b' : '#ff6b6b'; c.fillRect(mx, my + mh * (1 - t), 5, mh * t);
+      const ey = my + mh * (1 - d.esc / this.MAX_SPEED);
+      c.fillStyle = '#fff'; c.fillRect(mx - 2, ey - 1, 9, 2);
+    }
+  },
+
+  // ------------------------------------------------------------------ desenho 2D (alternativa)
   drawArrow(c, x, y, size, dir, color) {
     const ang = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 }[dir];
     c.save(); c.translate(x, y); c.rotate(ang);

@@ -6,7 +6,8 @@
   TN.minigameOrder = [];   // ordem de registro
 
   TN.registerMinigame = function (def) {
-    const required = ['id', 'title', 'init', 'update', 'draw'];
+    const required = ['id', 'title', 'init', 'update'];
+    if (!def.draw && !def.draw3d) throw new Error(`Minigame sem draw3d (ou draw 2D): ${def.id}`);
     for (const k of required) if (!def[k]) throw new Error(`Minigame sem campo obrigatório "${k}": ${def.id || '?'}`);
     if (TN.minigames[def.id]) console.warn('Minigame registrado duas vezes:', def.id);
     def.rounds = def.rounds || 1;
@@ -168,15 +169,34 @@
       if (this._flash) { this._flash.t -= dt; if (this._flash.t <= 0) this._flash = null; }
       if (this._message) { this._message.t -= dt; if (this._message.t <= 0) this._message = null; }
     }
+    // true quando este minigame é desenhado em 3D (tem draw3d e o navegador suporta WebGL)
+    uses3d() { return !!(this.def.draw3d && TN.R3 && TN.R3.available && !TN.force2d); }
     draw(c) {
-      c.save();
-      if (this._shake > 0) c.translate(U.rand(-this._shake, this._shake), U.rand(-this._shake, this._shake));
-      this.def.draw(this, c);
-      for (const pt of this._particles) { c.globalAlpha = Math.min(1, pt.t * 2); c.fillStyle = pt.color; c.fillRect(pt.x - pt.size / 2, pt.y - pt.size / 2, pt.size, pt.size); }
-      c.globalAlpha = 1;
-      for (const pp of this._popups) { c.globalAlpha = Math.min(1, pp.t * 2); TN.draw.text(c, pp.text, pp.x, pp.y, { size: 18, color: pp.color, align: 'center' }); }
-      c.globalAlpha = 1;
-      c.restore();
+      if (this.uses3d()) {
+        TN.R3.renderRound(this, c);
+        if (this.def.drawOverlay) this.def.drawOverlay(this, c); // HUD 2D extra do minigame (opcional)
+        if (this.def.screenSpace) {   // jogo em coordenadas de tela: partículas/popups em 2D por cima
+          for (const pt of this._particles) { c.globalAlpha = Math.min(1, pt.t * 2); c.fillStyle = pt.color; c.fillRect(pt.x - pt.size / 2, pt.y - pt.size / 2, pt.size, pt.size); }
+          c.globalAlpha = 1;
+        }
+        for (const pp of this._popups) {
+          const s = this.def.screenSpace ? { x: pp.x, y: pp.y } : TN.R3.project(pp.x, 60 + (1 - pp.t) * 30, pp.y);
+          c.globalAlpha = Math.min(1, pp.t * 2); TN.draw.text(c, pp.text, s.x, s.y, { size: 18, color: pp.color, align: 'center' });
+        }
+        c.globalAlpha = 1;
+      } else if (this.def.draw) {
+        c.save();
+        if (this._shake > 0) c.translate(U.rand(-this._shake, this._shake), U.rand(-this._shake, this._shake));
+        this.def.draw(this, c);
+        for (const pt of this._particles) { c.globalAlpha = Math.min(1, pt.t * 2); c.fillStyle = pt.color; c.fillRect(pt.x - pt.size / 2, pt.y - pt.size / 2, pt.size, pt.size); }
+        c.globalAlpha = 1;
+        for (const pp of this._popups) { c.globalAlpha = Math.min(1, pp.t * 2); TN.draw.text(c, pp.text, pp.x, pp.y, { size: 18, color: pp.color, align: 'center' }); }
+        c.globalAlpha = 1;
+        c.restore();
+      } else {
+        c.fillStyle = '#111'; c.fillRect(0, 0, TN.W, TN.H);
+        TN.draw.text(c, 'Este minigame precisa de WebGL (3D).', TN.W / 2, TN.H / 2, { size: 22, color: '#f88', align: 'center' });
+      }
       if (this.def.hud !== false) this._drawHud(c);
       if (this._message) {
         c.globalAlpha = Math.min(1, this._message.t * 3);
