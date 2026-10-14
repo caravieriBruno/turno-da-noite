@@ -1,14 +1,13 @@
-// Entrada: até 4 esquemas de teclado + gamepads. Cada jogador é ligado a um "dispositivo".
+// Entrada: 3 esquemas de teclado (o 1º inclui o mouse) + gamepads. Cada jogador é ligado a um "dispositivo".
 // Estado por dispositivo: { x, y (−1..1), a, b (segurando), aPressed, bPressed (apertou neste frame) }
 (function () {
   const KB_SCHEMES = [
-    { id: 'kb1', label: 'WASD · Ação: ESPAÇO/F · Extra: G',
-      up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'], a: ['Space', 'KeyF'], b: ['KeyG'] },
-    { id: 'kb2', label: 'SETAS · Ação: ENTER · Extra: SHIFT DIR.',
-      up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'], a: ['Enter'], b: ['ShiftRight'] },
-    { id: 'kb3', label: 'IJKL · Ação: U · Extra: O',
+    { id: 'kb1', label: 'WASD/SETAS · Ação: ESPAÇO/CLIQUE · Extra: SHIFT/G/BOTÃO DIR.',
+      up: ['KeyW', 'ArrowUp'], down: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
+      a: ['Space', 'Mouse0'], b: ['ShiftLeft', 'ShiftRight', 'KeyG', 'Mouse2'] },
+    { id: 'kb2', label: 'IJKL · Ação: U · Extra: O',
       up: ['KeyI'], down: ['KeyK'], left: ['KeyJ'], right: ['KeyL'], a: ['KeyU'], b: ['KeyO'] },
-    { id: 'kb4', label: 'NUMPAD 8456 · Ação: NUM 0 · Extra: NUM .',
+    { id: 'kb3', label: 'NUMPAD 8456 · Ação: NUM 0 · Extra: NUM .',
       up: ['Numpad8'], down: ['Numpad5'], left: ['Numpad4'], right: ['Numpad6'], a: ['Numpad0'], b: ['NumpadDecimal'] },
   ];
 
@@ -25,6 +24,15 @@
     });
     window.addEventListener('keyup', (e) => down.delete(e.code));
     window.addEventListener('blur', () => down.clear());
+    // botões do mouse viram códigos "Mouse<botão>" (Mouse0 = esquerdo, Mouse2 = direito)
+    window.addEventListener('mousedown', (e) => {
+      const code = 'Mouse' + e.button;
+      if (!down.has(code)) pressedThisFrame.add(code);
+      down.add(code);
+      TN.audio && TN.audio.unlock();
+    });
+    window.addEventListener('mouseup', (e) => down.delete('Mouse' + e.button));
+    window.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('pointerdown', () => TN.audio && TN.audio.unlock());
   }
 

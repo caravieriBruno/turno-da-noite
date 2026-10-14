@@ -189,12 +189,12 @@ TN.registerMinigame({
   },
 
   // ---------- desenho 3D ----------
-  camera: { pos: [480, 620, 790], target: [480, 0, 295], fov: 40 },
+  camera: { pos: [480, 560, 840], target: [480, 0, 272], fov: 41 },
   env: { bg: '#07090c', ambient: 0.55, sun: 1.8, sunDir: [-0.2, 1, 0.5] },
 
   draw3d(g, r) {
     const a = g.arena, d = g.data, preview = d.phase === 'preview', T = this.WALL_T, WH = 44;
-    r.plane(480, -1, 290, 1600, 1100, '#0f1215');
+    r.room(a.x - 90, a.y - 70, a.x + a.w + 90, a.y + a.h + 60);   // corredor de celas
     const tile = 41;
     for (let x = a.x; x < a.x + a.w; x += tile) for (let z = a.y; z < a.y + a.h; z += tile) {
       r.plane(x + tile / 2, 0, z + tile / 2, tile - 1.5, tile - 1.5, ((x - a.x) / tile + (z - a.y) / tile) % 2 ? '#2b3138' : '#272c33');
@@ -206,14 +206,22 @@ TN.registerMinigame({
     r.box(a.x + a.w / 2, 0, a.y - 8, a.w + 16, 30, 16, '#3c444d');
     r.box(a.x - 8, 0, a.y + a.h / 2, 16, 30, a.h, '#3c444d');
     r.box(a.x + a.w + 8, 0, a.y + a.h / 2, 16, 30, a.h, '#3c444d');
-    // paredes com portas e lâmpadas
+    // paredes de cela (meia-parede pintada) com portas; cada porta tem o portão de grade aberto, correndo
+    // por fora da parede para o lado que tiver mais parede livre (não cobre outra porta)
     let lights = 0;
     for (const w of d.walls) {
       let y = a.y;
-      const seg = (z0, z1) => { if (z1 - z0 > 0.5) r.box(w.x, 0, (z0 + z1) / 2, T, WH, z1 - z0, '#5a636d', { metal: 0.3 }); };
+      const seg = (z0, z1) => {
+        if (z1 - z0 <= 0.5) return;
+        r.box(w.x, 0, (z0 + z1) / 2, T, 18, z1 - z0, '#35574a', { tex: 'tinta' });
+        r.box(w.x, 18, (z0 + z1) / 2, T, WH - 18, z1 - z0, '#a59c86', { tex: 'tinta' });
+      };
       for (const dr of w.doors) { seg(y, dr.y0); y = dr.y1; }
       seg(y, a.y + a.h);
       w.doors.forEach((dr, j) => {
+        const len = dr.y1 - dr.y0, antes = dr.y0 - (j ? w.doors[j - 1].y1 : a.y), depois = (j < w.doors.length - 1 ? w.doors[j + 1].y0 : a.y + a.h) - dr.y1;
+        const gl = Math.min(len, Math.max(antes, depois) - 2);
+        if (gl > 12) r.prop('grade', w.x + T / 2 + 3, depois >= antes ? dr.y1 + gl / 2 : dr.y0 - gl / 2, { w: gl, h: WH - 8, rotY: Math.PI / 2 });
         let col = null;
         if (preview) col = j === w.safe ? '#46e27b' : '#ff3b3b';
         else if (dr.flash > 0) col = dr.flashOk ? '#46e27b' : '#ff3b3b';

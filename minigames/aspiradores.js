@@ -122,13 +122,13 @@ TN.registerMinigame({
   },
 
   // ---------------- 3D (câmera fixa) ----------------
-  camera: { pos: [480, 560, 750], target: [480, 0, 300], fov: 40 },
+  camera: { pos: [480, 520, 860], target: [480, 0, 262], fov: 41 },
   env: { sunDir: [-0.3, 1, 0.4] },
 
   draw3d(g, r) {
     const a = g.arena;
     // chão: piso industrial quadriculado + entorno escuro
-    r.plane(480, -1, 290, 1600, 1100, '#111417');
+    r.room(a.x - 90, a.y - 70, a.x + a.w + 90, a.y + a.h + 60);
     const T = 44;
     for (let x = a.x; x < a.x + a.w; x += T) for (let z = a.y; z < a.y + a.h; z += T) {
       const k = (Math.floor((x - a.x) / T) + Math.floor((z - a.y) / T)) % 2;

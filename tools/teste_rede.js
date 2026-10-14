@@ -16,7 +16,7 @@ global.window = global;
 global.location = { protocol: 'http:', host: `127.0.0.1:${PORT}`, search: '' };
 global.localStorage = { getItem: () => null, setItem: () => {} };
 const load = (rel) => vm.runInThisContext(fs.readFileSync(path.join(ROOT, rel), 'utf8'), { filename: rel });
-['engine/util.js', 'engine/input.js', 'engine/audio.js', 'engine/draw.js', 'engine/render3d.js', 'engine/minigame.js', 'engine/session.js', 'engine/net.js', 'minigames/manifest.js'].forEach(load);
+['engine/util.js', 'engine/input.js', 'engine/audio.js', 'engine/draw.js', 'engine/render3d.js', 'engine/cenarios.js', 'engine/minigame.js', 'engine/session.js', 'engine/net.js', 'minigames/manifest.js'].forEach(load);
 for (const f of TN.MINIGAME_FILES) load('minigames/' + f);
 TN.settings.gameCount = 1; TN.settings.roundsMode = 1;
 // só Aspiradores (jogo com movimento livre) para testar o input remoto

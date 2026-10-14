@@ -14,10 +14,9 @@ Party game de navegador em **3D com câmera fixa**, com minigames curtos e morta
 
 | Jogador | Mover | Ação | Extra |
 |---|---|---|---|
-| Teclado 1 | WASD | Espaço / F | G |
-| Teclado 2 | Setas | Enter | Shift direito |
-| Teclado 3 | IJKL | U | O |
-| Teclado 4 | Numpad 8456 | Num 0 | Num . |
+| Teclado 1 | WASD / Setas | Espaço / clique esquerdo | Shift / G / clique direito |
+| Teclado 2 | IJKL | U | O |
+| Teclado 3 | Numpad 8456 | Num 0 | Num . |
 | Gamepad | analógico/d-pad | A | B |
 
 ESC pausa o jogo. As vagas vazias são preenchidas por bots, que dá para desligar no lobby com a tecla T.

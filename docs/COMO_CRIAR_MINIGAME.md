@@ -118,8 +118,13 @@ Os minigames são desenhados em **3D com câmera fixa**, como no Machine Party. 
 
 - **X** = `p.x` (direita), **Z** = `p.y` (em direção à câmera), **Y** = altura. 1 unidade = 1 pixel da lógica. O chão fica em `y = 0`.
 - Defina `camera: { pos: [x,y,z], target: [x,y,z], fov }`. O padrão é `{ pos: [480, 640, 860], target: [480, 0, 300], fov: 38 }`, que mostra a `g.arena` inteira em ângulo de cima.
-- Ajuste a luz com `env: { bg, fog: [perto, longe], ambient, sun, sunDir: [x,y,z], sunColor, envMap }`. Use `envMap: 0` para desligar os reflexos do ambiente e deixar a cena escura de verdade (ex.: apagão); `r.env({...})` dentro do `draw3d` muda a luz por fase. O padrão é um ambiente industrial escuro com sol quente e sombras.
+- Ajuste a luz com `env: { bg, fog: [perto, longe], ambient, sun, sunDir: [x,y,z], sunColor, envMap, spot, spotColor, spotPos: [x,y,z], spotTarget: [x,y,z], spotAngle }`. `spot` é o holofote de teto (intensidade; `0` desliga) que deixa o centro claro e as bordas escuras. Use `envMap: 0` para desligar os reflexos do ambiente e deixar a cena escura de verdade (ex.: apagão); `r.env({...})` dentro do `draw3d` muda a luz por fase. O padrão é a cadeia: pouca luz ambiente, tom quente e holofote no centro.
 - `draw3d` é chamado **a cada quadro** e descreve a cena inteira, como o `draw` 2D. O motor reaproveita os objetos 3D, então não há nada para criar ou destruir.
+
+**Visual de cadeia (padrão):** a cena é desenhada em 640×360 e ampliada com pixel duro, com redução de cores, texturas sujas e luz dura. `?visual=antigo` na URL volta ao visual liso (para comparar, ou em máquina sem fôlego). `TN.R3.RETRO` diz qual está ativo.
+- Toda primitiva sem `glow` ganha uma textura suja que **multiplica** a cor pedida. Pisos (`plane`, `disc`, `ring`) usam `piso` em coordenadas do mundo; o resto usa `concreto`, presa ao objeto (não escorrega quando ele anda); `metal >= 0.4` vira `metal`.
+- `o.tex` escolhe a textura (`'concreto' | 'piso' | 'metal' | 'tinta' | 'tecido' | 'tijolo' | 'azulejo' | 'caquinho' | 'madeira' | 'taco'`) ou desliga (`false`); nome errado é acusado pelo `tools/simular.js`. `o.texWorld: true` amarra a textura ao mundo em vez do objeto, o que deixa contínuos os ladrilhos vizinhos.
+- O que precisa saltar aos olhos (perigo, alvo, símbolo, seta) deve usar `glow: true`: não recebe textura nem luz, então o verde e o vermelho continuam puros no escuro.
 
 | chamada | o que faz |
 |---|---|
@@ -131,9 +136,12 @@ Os minigames são desenhados em **3D com câmera fixa**, como no Machine Party. 
 | `r.ring(x, y, z, raioInt, raioExt, cor, {arc})` | anel horizontal; `arc` de 0 a 1 vira barra de progresso circular |
 | `r.beam(x1,y1,z1, x2,y2,z2, espessura, cor, o)` | barra quadrada entre dois pontos (laser, cabo, corda, trilho) |
 | `r.tube(x1,y1,z1, x2,y2,z2, raio, cor, o)` | cilindro entre dois pontos (cano, roda, rolo, eixo, tronco) |
-| `r.light(x, y, z, cor, intensidade, alcance)` | luz pontual, com no máximo 6 por quadro |
+| `r.light(x, y, z, cor, intensidade, alcance, o)` | luz pontual, com no máximo 6 por quadro; `o.fundo: true` = luz de cenário, que só acende se sobrar vaga |
 | `r.label(x, y, z, texto, cor, tamanho)` | texto 2D preso a um ponto 3D |
-| `r.character(p, o)` | **personagem** (boneco de macacão na cor do jogador), animado sozinho (veja abaixo) |
+| `r.character(p, o)` | **personagem** (detento de uniforme na cor do jogador), animado sozinho (veja abaixo) |
+| `r.room(x1, z1, x2, z2, o)` | ambiente interno de cadeia em volta da arena (chão, paredes do fundo e laterais, detalhes, luminárias); `o.estilo`: `cela` (padrão), `oficina`, `refeitorio`, `subsolo`, `escritorio`; outras opções: `h`, `paint`, `top`, `floor` (cor, ou `false` para sem chão: o jogo desenha o piso com poço/buraco), `windows`, `lamps`, `lights`, `bars`, `frente`, `props: false`. Deixe ~60 de margem entre `z1` e a arena (objetos de canto). Acende até 2 luzes de fundo |
+| `r.yard(x1, z1, x2, z2, o)` | pátio de cadeia à noite (muros com arame farpado, postes de vapor de sódio, guarita com holofote que varre); opções: `h`, `floor`, `wall`, `quadra: false`, `guarita: false \| 'esquerda' \| 'direita'`, `holofote: false`, `postes`, `frente`. Acende até 2 luzes de fundo |
+| `r.prop(nome, x, z, o)` | objeto de cenário: `beliche`, `vaso`, `banco`, `mesa`, `tambor`, `pneu`, `colchao`, `grade` (`o.w`, `o.h`), `poste` (`o.luz`), `arquivo`; `o: { rotY, scale, y, color }` |
 | `r.camera(pos, target, fov)` | muda a câmera neste quadro (ex.: tremor, foco); normalmente use `def.camera` |
 | `r.project(x, y, z)` | converte para a posição na tela 2D: `{x, y}` |
 | `r.unproject(sx, sy, alturaY=0)` | ponto da tela → ponto no plano horizontal do mundo `{x, y, z}` |
@@ -152,7 +160,7 @@ Os minigames são desenhados em **3D com câmera fixa**, como no Machine Party. 
 - Aceita o jogador `p`, que já tem `x, y, dir, alive, color, label`, ou qualquer objeto com `x, y`.
 - Por padrão a pose é automática: anda quando o jogador se move, fica parado ou cai morto quando `p.alive` é falso.
 - `o.pose` força uma pose: `'idle' | 'walk' | 'dead' | 'sit' | 'crouch' | 'fall' | 'arms'`, em que `arms` são braços para frente (carregar, mirar).
-- Outras opções: `o.y` (elevação: pulo, cadeira, queda), `o.dir` (direção em rad), `o.lean` (inclinação do corpo em rad; positivo = para trás), `o.scale`, `o.flash`, `o.label` (texto ou `false`) e `o.key` (id para a animação, quando não é um jogador).
+- Outras opções: `o.y` (elevação: pulo, cadeira, queda), `o.dir` (direção em rad), `o.lean` (inclinação do corpo em rad; positivo = para trás), `o.scale`, `o.flash`, `o.label` (texto ou `false`) `o.key` (id para a animação, quando não é um jogador) e `o.number` (número de prontuário nas costas; padrão: 171, 155, 157 e 180 para os jogadores).
 - `p.dir` segue o padrão da lógica: 0 olha para +X e π/2 olha para +Z (em direção à câmera).
 
 **Outras regras:**
