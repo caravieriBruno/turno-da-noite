@@ -80,7 +80,7 @@
       D.text(c, 'TURNO DA NOITE', TN.W / 2, 80, { size: 64, color: '#3f6', align: 'center' });
       D.text(c, 'uma festa de minigames para 1–4 unidades de teste', TN.W / 2, 128, { size: 16, color: '#8a9', align: 'center' });
       menuList(c, this.items(), this.sel, TN.W / 2, 180, { size: 22, gap: 40 });
-      footer(c, 'Setas/WASD para navegar · ESPAÇO/ENTER para confirmar · ESC para voltar');
+      footer(c, 'WASD/Setas para navegar · ESPAÇO/CLIQUE para confirmar · ESC para voltar');
       D.crt(c, this.t);
     },
   };
@@ -508,13 +508,13 @@
 
   // ======================= ATALHOS POR URL (para testar rápido) =======================
   // index.html?game=<id>            → joga só esse minigame (P1 = teclado 1, resto bots)
-  // index.html?game=<id>&humans=2   → P1 teclado 1, P2 setas
+  // index.html?game=<id>&humans=2   → P1 teclado 1, P2 teclado 2 (IJKL)
   // index.html?game=<id>&humans=0   → só bots (assistir)
   TN.bootScene = function () {
     const id = params.get('game');
     if (id && TN.minigames[id]) {
       const humans = Number(params.get('humans') ?? 1);
-      const slots = [0, 1, 2, 3].map((i) => (i < humans ? { device: TN.input.KB_SCHEMES[i].id } : null));
+      const slots = [0, 1, 2, 3].map((i) => (i < humans && TN.input.KB_SCHEMES[i] ? { device: TN.input.KB_SCHEMES[i].id } : null));
       newSession(buildRoster(slots, true), [{ id, rounds: Number(params.get('rounds')) || TN.minigames[id].rounds }], { test: id });
       TN.go(new Brief());
     } else {
