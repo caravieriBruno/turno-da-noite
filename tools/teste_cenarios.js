@@ -59,6 +59,20 @@ for (const estilo of ['cela', 'oficina', 'refeitorio', 'subsolo', 'escritorio'])
 deveFalhar('room com estilo errado', (r) => r.room(0, 0, 100, 100, { estilo: 'cozinha' }), 'refeitorio');
 ok(!mesmas(trace((r) => r.room(40, 20, 920, 520, { estilo: 'subsolo' }), 0), trace((r) => r.room(40, 20, 920, 520, { estilo: 'subsolo' }), 0.4)), 'room subsolo: giroflex muda com o tempo');
 
+{
+  // quando a fluorescente do meio pisca, a luz só some: nenhuma lâmpada que estava apagada ganha luz
+  const luzes = (t) => trace((r) => r.room(40, 20, 920, 520), t).calls.filter(([k]) => k === 'light').map(([, a]) => a[0] + ',' + a[2]);
+  const piscando = (t) => trace((r) => r.room(40, 20, 920, 520), t).calls.some(([k, a]) => k === 'box' && a[6] === '#3c403c');
+  let tp = 0; while (!piscando(tp) && tp < 20) tp += 0.01;
+  ok(piscando(tp) && !piscando(0), `room: achou um instante com a fluorescente piscando (t=${tp.toFixed(2)})`);
+  const antes = new Set(luzes(0));
+  ok(luzes(tp).every((p) => antes.has(p)), 'room: a piscada não muda a luz de lugar');
+}
+
+// --- o.tex: nome errado é acusado pelo validador (como estilo/objeto errado) ---
+ok(trace((r) => r.box(0, 0, 0, 10, 10, 10, '#fff', { tex: 'tijollo' })).errs.some((e) => e.includes('tijolo')), 'o.tex com nome errado: o validador acusa e lista os nomes');
+ok(trace((r) => { r.box(0, 0, 0, 10, 10, 10, '#fff', { tex: 'tijolo' }); r.plane(0, 0, 0, 10, 10, '#fff', { tex: false }); }).errs.length === 0, 'o.tex válido ou false: sem erro');
+
 // --- r.yard ---
 cenarioValido('yard padrão', (r) => r.yard(40, 20, 920, 520));
 cenarioValido('yard sem guarita, 4 postes', (r) => r.yard(40, 20, 920, 520, { guarita: false, postes: 4 }));

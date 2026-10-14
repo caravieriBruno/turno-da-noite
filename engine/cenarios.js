@@ -78,26 +78,28 @@
 
   // luminárias no fundo: fluorescente (a do meio pisca), pendente (lâmpada amarela) ou giroflex vermelho
   function luminarias(r, tipo, b, o) {
-    const n = o.lamps ?? 3, t = r.time || 0, maxLuz = Math.min(2, o.lights ?? 2);
-    let acesas = 0;
+    const n = o.lamps ?? 3, t = r.time || 0, maxLuz = Math.min(2, n, o.lights ?? 2);
+    // quais lâmpadas têm luz de verdade é decidido antes (espalhadas pela sala); a que pisca só escurece,
+    // em vez de passar a luz para outra lâmpada
+    const comLuz = new Set(Array.from({ length: maxLuz }, (_, k) => Math.round((k + 0.5) * n / maxLuz - 0.5)));
     for (let i = 0; i < n; i++) {
       const lx = b.x1 + b.w * (i + 0.5) / n;
       if (tipo === 'fluor') {
         const pisca = i === Math.floor(n / 2) && Math.sin(t * 17) + Math.sin(t * 5.3 + 1) > 1.25;
         r.box(lx, b.PH + 8, b.z1 + 6, 100, 9, 12, '#5d5f5c', { metal: 0.5 });
         r.box(lx, b.PH + 4, b.z1 + 9, 90, 4, 6, pisca ? '#3c403c' : '#eafff0', { glow: true });
-        if (!pisca && acesas < maxLuz) { r.light(lx, b.PH + 10, b.z1 + 70, '#d9ffe6', 0.7, 700, { fundo: true }); acesas++; }
+        if (!pisca && comLuz.has(i)) r.light(lx, b.PH + 10, b.z1 + 70, '#d9ffe6', 0.7, 700, { fundo: true });
       } else if (tipo === 'pendente') {
         const ly = b.H - 60, lz = b.z1 + 80;
         r.beam(lx, b.H + 40, lz, lx, ly + 14, lz, 1.5, '#111111');
         r.cone(lx, ly + 2, lz, 16, 12, '#2f3a33', { metal: 0.5 });
         r.sphere(lx, ly + 2, lz, 5, '#ffd28a', { glow: true });
-        if (acesas < maxLuz) { r.light(lx, ly - 10, lz, '#ffc477', 0.8, 650, { fundo: true }); acesas++; }
+        if (comLuz.has(i)) r.light(lx, ly - 10, lz, '#ffc477', 0.8, 650, { fundo: true });
       } else {   // 'emergencia': giroflex
         const ang = t * 4 + i, k = 0.5 + 0.5 * Math.cos(ang);
         r.cyl(lx, b.PH + 20, b.z1 + 8, 7, 6, '#222222', { metal: 0.5 });
         r.sphere(lx, b.PH + 30, b.z1 + 8, 6, k > 0.5 ? '#ff2a1a' : '#5a0d08', { glow: true });
-        if (acesas < maxLuz) { r.light(lx + Math.cos(ang) * 60, b.PH + 30, b.z1 + 8 + Math.abs(Math.sin(ang)) * 60, '#ff3a22', 0.4 + 0.6 * k, 500, { fundo: true }); acesas++; }
+        if (comLuz.has(i)) r.light(lx + Math.cos(ang) * 60, b.PH + 30, b.z1 + 8 + Math.abs(Math.sin(ang)) * 60, '#ff3a22', 0.4 + 0.6 * k, 500, { fundo: true });
       }
     }
   }

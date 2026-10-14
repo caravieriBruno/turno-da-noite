@@ -16,6 +16,8 @@
   const DEFAULT_CAMERA = { pos: [480, 640, 860], target: [480, 0, 300], fov: 38 };
   // visual "cadeia PS2": baixa resolução, texturas sujas, luz dura. ?visual=antigo volta ao visual liso.
   const RETRO = !(typeof location !== 'undefined' && /[?&]visual=antigo/.test(location.search));
+  // texturas sujas disponíveis em o.tex (geradas em makeTexture; nome errado é acusado pelo validador)
+  const TEX_NOMES = ['concreto', 'piso', 'metal', 'tinta', 'tecido', 'tijolo', 'azulejo', 'caquinho', 'madeira', 'taco'];
   const DEFAULT_ENV = RETRO
     ? { bg: '#030404', fog: [1000, 2200], ambient: 0.16, sun: 0.45, sunDir: [-0.35, 1, 0.45], sunColor: '#ffc987', hemiSky: '#8fae98', hemiGround: '#140e09', spot: 5.5, spotColor: '#ffdcaa', envMap: 0.4 }
     : { bg: '#0a0d11', fog: [1300, 3000], ambient: 0.7, sun: 2.4, sunDir: [-0.45, 1, 0.55], sunColor: '#ffe9cf', hemiSky: '#9fb7d8', hemiGround: '#20160f', spot: 0 };
@@ -37,6 +39,7 @@
       for (let i = 0; i < args.length; i++) {
         const a = args[i];
         if (typeof a === 'number' && !Number.isFinite(a)) errs.push(`${name}: argumento ${i + 1} inválido (${a})`);
+        else if (a && typeof a === 'object' && 'tex' in a && a.tex !== false && !TEX_NOMES.includes(a.tex)) errs.push(`${name}: o.tex desconhecido "${a.tex}" (use: ${TEX_NOMES.join(', ')} ou false)`);
       }
     };
     const api = {};
@@ -202,7 +205,13 @@
   }
   const TEX_SIZE = { concreto: 300, piso: 420, metal: 220, tinta: 340, tecido: 60, tijolo: 170, azulejo: 110, caquinho: 190, madeira: 130, taco: 150 };   // unidades de mundo por repetição
   const textures = {};
-  const texOf = (kind) => textures[kind] || (textures[kind] = makeTexture(kind));
+  const texOf = (kind) => {
+    if (!TEX_NOMES.includes(kind)) {   // o simular.js acusa; no navegador avisa uma vez e usa concreto
+      if (!textures['?' + kind]) { console.warn(`o.tex desconhecido "${kind}" (use: ${TEX_NOMES.join(', ')})`); textures['?' + kind] = true; }
+      kind = 'concreto';
+    }
+    return textures[kind] || (textures[kind] = makeTexture(kind));
+  };
   // Projeção triplanar: a textura é amarrada ao objeto (não "escorrega" quando ele anda) e não estica
   // com a escala. world = true usa coordenadas do mundo (pisos montados em ladrilhos ficam contínuos).
   function texturize(m, kind, world) {

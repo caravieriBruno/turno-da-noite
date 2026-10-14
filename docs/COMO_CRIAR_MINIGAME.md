@@ -123,7 +123,7 @@ Os minigames são desenhados em **3D com câmera fixa**, como no Machine Party. 
 
 **Visual de cadeia (padrão):** a cena é desenhada em 640×360 e ampliada com pixel duro, com redução de cores, texturas sujas e luz dura. `?visual=antigo` na URL volta ao visual liso (para comparar, ou em máquina sem fôlego). `TN.R3.RETRO` diz qual está ativo.
 - Toda primitiva sem `glow` ganha uma textura suja que **multiplica** a cor pedida. Pisos (`plane`, `disc`, `ring`) usam `piso` em coordenadas do mundo; o resto usa `concreto`, presa ao objeto (não escorrega quando ele anda); `metal >= 0.4` vira `metal`.
-- `o.tex` escolhe a textura (`'concreto' | 'piso' | 'metal' | 'tinta' | 'tecido' | 'tijolo' | 'azulejo' | 'caquinho' | 'madeira' | 'taco'`) ou desliga (`false`). `o.texWorld: true` amarra a textura ao mundo em vez do objeto, o que deixa contínuos os ladrilhos vizinhos.
+- `o.tex` escolhe a textura (`'concreto' | 'piso' | 'metal' | 'tinta' | 'tecido' | 'tijolo' | 'azulejo' | 'caquinho' | 'madeira' | 'taco'`) ou desliga (`false`); nome errado é acusado pelo `tools/simular.js`. `o.texWorld: true` amarra a textura ao mundo em vez do objeto, o que deixa contínuos os ladrilhos vizinhos.
 - O que precisa saltar aos olhos (perigo, alvo, símbolo, seta) deve usar `glow: true`: não recebe textura nem luz, então o verde e o vermelho continuam puros no escuro.
 
 | chamada | o que faz |
