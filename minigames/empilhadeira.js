@@ -300,7 +300,7 @@ TN.registerMinigame({
   },
 
   // ---------- 3D (câmera fixa) ----------
-  camera: { pos: [480, 720, 880], target: [480, 0, 300], fov: 37 },
+  camera: { pos: [480, 600, 950], target: [480, 0, 282], fov: 39 },
   env: { ambient: 0.55, sun: 1.9, sunDir: [-0.35, 1, 0.5] },
 
   // cilindro deitado centrado em x,z, eixo apontando para o ângulo `ang` da lógica (rodas, tubos)
@@ -356,24 +356,26 @@ TN.registerMinigame({
 
   draw3d(g, r) {
     const a = g.arena, d = g.data;
-    // chão do galpão
-    r.plane(480, -1, 290, 1700, 1200, '#0f1215');
+    // almoxarifado da oficina em volta
+    const zp = a.y - 60;   // parede do fundo
+    r.room(a.x - 90, zp, a.x + a.w + 90, a.y + a.h + 60, { estilo: 'oficina', props: false });
     const TX = a.w / 8, TZ = a.h / 4;
     for (let i = 0; i < 8; i++) for (let j = 0; j < 4; j++) {
       r.plane(a.x + TX * (i + 0.5), 0, a.y + TZ * (j + 0.5), TX - 2, TZ - 2, (i + j) % 2 ? '#30333a' : '#2b2e33', { rough: 0.95 });
     }
-    // paredes: fundo alto com prateleiras, laterais e frente baixas
-    r.box(480, 0, a.y - 12, a.w + 60, 130, 20, '#3b4148', { metal: 0.3 });
+    // muretas (fundo, laterais e frente) e prateleiras com caixas encostadas na parede do almoxarifado
+    r.box(480, 0, a.y - 12, a.w + 60, 40, 20, '#454c54', { metal: 0.3 });
     r.box(a.x - 12, 0, a.y + a.h / 2, 20, 40, a.h + 4, '#454c54', { metal: 0.3 });
     r.box(a.x + a.w + 12, 0, a.y + a.h / 2, 20, 40, a.h + 4, '#454c54', { metal: 0.3 });
     r.box(480, 0, a.y + a.h + 10, a.w + 44, 16, 16, '#454c54', { metal: 0.3 });
     for (let i = 0; i < 9; i++) r.box(a.x + 6 + i * (a.w - 12) / 8, 0, a.y - 1, 26, 4, 2, i % 2 ? '#111' : '#f5c400', { shadow: false });
-    for (const lx of [a.x + 300, a.x + a.w - 300]) {
-      r.box(lx, 0, a.y - 30, 140, 4, 30, '#5a3d1e');            // prateleira com caixas ao fundo
-      r.box(lx, 70, a.y - 30, 140, 4, 30, '#5a3d1e');
-      for (const k of [-45, 0, 45]) { r.box(lx + k, 4, a.y - 32, 30, 30, 24, '#8a5f30'); if (k) r.box(lx + k * 0.6, 74, a.y - 32, 28, 26, 24, '#7a542b'); }
+    for (const lx of [a.x + 60, a.x + 300, a.x + a.w - 300, a.x + a.w - 60]) {
+      const zs = zp + 18;
+      for (const sx of [-68, 68]) r.box(lx + sx, 0, zs, 4, 104, 28, '#3d3b37', { metal: 0.5 });   // montantes
+      r.box(lx, 0, zs, 140, 4, 30, '#5a3d1e', { tex: 'madeira' });
+      r.box(lx, 70, zs, 140, 4, 30, '#5a3d1e', { tex: 'madeira' });
+      for (const k of [-45, 0, 45]) { r.box(lx + k, 4, zs - 2, 30, 30, 24, '#8a5f30'); if (k) r.box(lx + k * 0.6, 74, zs - 2, 28, 26, 24, '#7a542b'); }
     }
-    for (const lx of [a.x + 140, 480, a.x + a.w - 140]) r.box(lx, 116, a.y - 1, 46, 6, 3, '#ffe2b0', { glow: true });
     // corredor central tracejado
     for (let x = a.x + this.ZONE_W + 30; x < a.x + a.w - this.ZONE_W - 20; x += 46) r.plane(x + 11, 0.4, a.y + a.h / 2, 24, 4, '#f5c400', { glow: true, opacity: 0.4 });
     // luzes

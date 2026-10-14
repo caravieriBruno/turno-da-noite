@@ -238,9 +238,8 @@
 
     draw3d(g, r) {
       const d = g.data, S = this.S3D;
-      // piso de madeira gasta e parede de fundo
-      r.plane(480, 0, 300, 1500, 1000, '#2a2420', { rough: 0.95 });
-      r.box(480, 0, 60, 1400, 520, 30, '#1b1715');
+      // oficina de artesanato (parede de tijolo ao fundo, atrás do telão)
+      r.room(-140, 75, 1100, 560, { estilo: 'oficina', h: 460, props: false });
       // telão com o bloco-alvo (prismas virados para a câmera)
       r.box(480, 120, 98, 330, 280, 18, '#0d0f11', { metal: 0.5 });
       r.box(480, 126, 108, 310, 266, 2, d.phase === 'memo' ? '#1b2a20' : '#0a0d0f', { emissive: d.phase === 'memo' ? '#0c2a16' : '#050607' });
