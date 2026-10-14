@@ -148,7 +148,7 @@ TN.registerMinigame({
   },
 
   // ---------- desenho 3D (câmera fixa) ----------
-  camera: { pos: [480, 600, 760], target: [480, 0, 290], fov: 38 },
+  camera: { pos: [480, 540, 850], target: [480, 0, 262], fov: 40 },
   env: { bg: '#040507', fog: [900, 1900], ambient: 0.5, sun: 1.3, sunDir: [-0.3, 1, 0.45], sunColor: '#ffe6cc' },
   LASER_Y: 8,
 
@@ -174,7 +174,20 @@ TN.registerMinigame({
     const d = g.data, cx = this.CX, cy = this.CY, R = this.R, t = g.time;
     const warn = d.revWarn > 0 && Math.floor(t * 12) % 2 === 0;
     const col = warn ? '#ffd23f' : '#ff3b6b';
-    // poço escuro com grade lá embaixo
+    // casa de máquinas do subsolo: laje em volta de um poço (a plataforma fica suspensa no meio)
+    const PX0 = cx - R - 70, PX1 = cx + R + 70, PZ0 = cy - R - 70, PZ1 = cy + R + 70, lj = '#2b2c2b', lo = { tex: 'piso', texWorld: true };
+    r.room(-20, -70, 980, 560, { estilo: 'subsolo', floor: false });
+    r.plane(480, 0, (PZ0 - 600) / 2, 2400, PZ0 + 600, lj, lo);
+    r.plane((PX0 - 1200) / 2, 0, 800, PX0 + 1200, 1600, lj, lo);
+    r.plane((PX1 + 2160) / 2, 0, 800, 2160 - PX1, 1600, lj, lo);
+    r.plane(cx, 0, (PZ1 + 1600) / 2, PX1 - PX0, 1600 - PZ1, lj, lo);
+    for (const [x, z, w, dd] of [[cx, PZ0, PX1 - PX0, 8], [cx, PZ1, PX1 - PX0, 8], [PX0, cy, 8, PZ1 - PZ0], [PX1, cy, 8, PZ1 - PZ0]]) r.box(x, -220, z, w, 220, dd, '#232524');
+    for (let x = PX0; x <= PX1 + 1; x += (PX1 - PX0) / 8) r.tube(x, 0, PZ0 - 6, x, 32, PZ0 - 6, 1.6, '#c9a400', { metal: 0.4 });   // guarda-corpo
+    r.tube(PX0, 32, PZ0 - 6, PX1, 32, PZ0 - 6, 2, '#c9a400', { metal: 0.4 });
+    for (const x of [PX0 - 6, PX1 + 6]) {
+      for (let z = PZ0; z <= PZ1 + 1; z += (PZ1 - PZ0) / 8) r.tube(x, 0, z, x, 32, z, 1.6, '#c9a400', { metal: 0.4 });
+      r.tube(x, 32, PZ0, x, 32, PZ1, 2, '#c9a400', { metal: 0.4 });
+    }
     r.plane(480, -220, 290, 2200, 1500, '#07080a');
     for (let k = -8; k <= 8; k++) r.plane(cx + k * 70, -219, 290, 2, 1400, '#1a2a30', { glow: true, opacity: 0.5 });
     // plataforma circular suspensa

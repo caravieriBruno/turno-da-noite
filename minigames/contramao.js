@@ -158,11 +158,19 @@ TN.registerMinigame({
 
   draw3d(g, r) {
     const d = g.data, len = this.X1 - this.X0, slope = this.TOP / len;
-    // piso do shopping (com o buraco à esquerda das escadas) e parede do fundo
-    r.plane(560, 0, 300, 900, 900, '#262b33');
-    r.plane(-80, 0, 300, 300, 900, '#262b33');
-    r.box(480, -260, 90, 1400, 700, 20, '#151a21');
-    for (let k = 0; k < 6; k++) r.box(80 + k * 170, 230, 102, 120, 60, 4, '#1d2530', { emissive: '#0e1a28' }); // vitrines apagadas
+    // poço de transferência do subsolo: piso de concreto (com o buraco à esquerda das escadas), parede úmida
+    // com canos, respiros gradeados e giroflex
+    r.plane(560, 0, 300, 900, 900, '#2f302e');
+    r.plane(-80, 0, 300, 300, 900, '#2f302e');
+    r.box(480, -260, 90, 1400, 700, 20, '#333635', { tex: 'concreto' });
+    for (let k = 0; k < 6; k++) {
+      const vx = 80 + k * 170;
+      r.box(vx, 230, 101, 120, 60, 2, '#0a0c0c', { tex: false });
+      for (let b = 0; b < 8; b++) r.tube(vx - 52 + b * 15, 230, 103, vx - 52 + b * 15, 290, 103, 1.6, '#4a4844', { metal: 0.6 });
+    }
+    r.tube(-240, 190, 106, 1200, 190, 106, 9, '#4d4038', { metal: 0.5 });
+    r.tube(-240, 170, 108, 1200, 170, 108, 6, '#39443f', { metal: 0.5 });
+    { const k = 0.5 + 0.5 * Math.cos(g.time * 4); r.sphere(480, 320, 104, 7, k > 0.5 ? '#ff2a1a' : '#5a0d08', { glow: true }); }
     // buraco: paredes escuras, fundo com espinhos e brilho vermelho
     r.box(this.X0 - 60, -170, 290, 100, 170, 330, '#050505', { shadow: false });
     for (let k = 0; k < 10; k++) r.cone(this.X0 - 95 + (k % 5) * 18, -60, 150 + Math.floor(k / 5) * 160 + (k % 5) * 30, 6, 40, '#b8b8b8', { metal: 0.9, rough: 0.3 });
@@ -176,7 +184,7 @@ TN.registerMinigame({
       r.box(this.X1 + 158, this.TOP, this.laneZ(i), 4, 56, 40, '#0b1f14', { emissive: '#1f7a42', emissiveIntensity: 0.9 });
     }
     r.light(this.X1 + 120, this.TOP + 90, 300, '#7dffaa', 0.8, 380);
-    r.light(420, 330, 300, '#ffd9a8', 1.0, 900);
+    r.light(420, 330, 300, '#ffd9a8', 1.25, 900);
     // escadas
     for (let i = 0; i < 4; i++) {
       const z = this.laneZ(i), owner = g.players[i];

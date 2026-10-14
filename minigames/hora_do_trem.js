@@ -266,22 +266,22 @@ TN.registerMinigame({
     for (const side of [-1, 1]) {
       const far = side < 0, H = far ? this.FAR_H : this.NEAR_H;
       const wall = far ? ft : fb, back = far ? wall - this.NOOK_D : wall + this.NOOK_D;
-      const brick = far ? '#3a3330' : '#3b3533';
+      const brick = far ? '#4d3329' : '#4a342c', bo = { rough: 0.95, tex: 'tijolo' };
       // parte de trás (fundo dos nichos), contínua
       const bz = far ? back - 40 : back + 24;
-      r.box(MX, 0, bz, LEN, H, 80 * (far ? 1 : 0.6), brick, { rough: 0.95 });
+      r.box(MX, 0, bz, LEN, H, 80 * (far ? 1 : 0.6), brick, bo);
       // segmentos entre os nichos
       const ns = d.nooks.filter((n) => n.side === side).sort((n1, n2) => n1.cx - n2.cx);
       let x = X0;
       for (const n of [...ns, { cx: X1 + this.NOOK_W / 2, w: this.NOOK_W }]) {
         const x2 = n.cx - n.w / 2;
-        if (x2 > x) r.box((x + x2) / 2, 0, (wall + back) / 2, x2 - x, H, this.NOOK_D, brick, { rough: 0.95 });
+        if (x2 > x) r.box((x + x2) / 2, 0, (wall + back) / 2, x2 - x, H, this.NOOK_D, brick, bo);
         x = n.cx + n.w / 2;
       }
       if (far) {
         // canos e cabos na parede do fundo
         // vergas sobre os nichos (o nicho vira uma porta baixa), canos e beirada escura do teto
-        for (const n of ns) r.box(n.cx, 84, (wall + back) / 2, n.w, H - 84, this.NOOK_D, brick, { rough: 0.95 });
+        for (const n of ns) r.box(n.cx, 84, (wall + back) / 2, n.w, H - 84, this.NOOK_D, brick, bo);
         r.beam(X0, 104, ft + 5, X1, 104, ft + 5, 9, '#4d5560', { metal: 0.7, rough: 0.4 });
         r.beam(X0, 119, ft + 4, X1, 119, ft + 4, 5, '#6b3a22', { metal: 0.6, rough: 0.5 });
         r.box(MX, H, ft - 60, LEN, 6, 130, '#121314', { rough: 1 });

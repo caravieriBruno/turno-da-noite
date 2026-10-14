@@ -296,11 +296,12 @@ TN.registerMinigame({
   draw3d(g, r) {
     const d = g.data, t = g.time, S = this.S3, PZ = this.PZ3, PL = this.PIT_L, PR = this.PIT_R, CX = this.CENTER, PD = this.PIT_D;
     const Z0 = 260, Z1 = 540;   // fundo e frente das plataformas
-    // ---- galpão ----
-    r.box(480, -300, Z0 - 40, 2000, 900, 20, '#121418');
-    for (let x = -480; x < 1500; x += 120) r.box(x, -300, Z0 - 29, 8, 900, 3, '#0d0f12');
-    r.box(480, 120, Z0 - 28, 2000, 10, 4, '#22262c');
-    r.box(480, 300, Z0 - 28, 2000, 6, 4, '#22262c');
+    // ---- caldeira do subsolo: parede de concreto úmido com pilares e canos ----
+    r.box(480, -300, Z0 - 40, 2000, 900, 20, '#2d302f', { tex: 'concreto' });
+    for (let x = -480; x < 1500; x += 240) r.box(x, -300, Z0 - 26, 30, 900, 10, '#262928', { tex: 'concreto' });
+    r.tube(-520, 120, Z0 - 18, 1480, 120, Z0 - 18, 9, '#4d4038', { metal: 0.5 });
+    r.tube(-520, 96, Z0 - 20, 1480, 96, Z0 - 20, 6, '#39443f', { metal: 0.5 });
+    r.tube(-520, 300, Z0 - 20, 1480, 300, Z0 - 20, 7, '#4d4038', { metal: 0.5 });
     r.plane(480, -PD - 60, 600, 2600, 1400, '#060505');
     // ---- plataformas ----
     for (const [x0, x1] of [[-200, PL], [PR, 1160]]) {

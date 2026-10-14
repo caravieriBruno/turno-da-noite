@@ -196,7 +196,7 @@ TN.registerMinigame({
   },
 
   // ---------- desenho 3D (câmera fixa) ----------
-  camera: { pos: [480, 640, 790], target: [480, 0, 285], fov: 40 },
+  camera: { pos: [480, 560, 840], target: [480, 0, 268], fov: 41 },
   env: { bg: '#08070b', fog: [1100, 2600], ambient: 0.5, sun: 1.8, sunDir: [-0.3, 1, 0.55], sunColor: '#ffe6d0' },
   PIT: 420,
 
@@ -254,7 +254,9 @@ TN.registerMinigame({
     const a = g.arena, d = g.data, t = g.time, PIT = this.PIT;
     const warn = d.phase === 'play' && d.timer < 3 && Math.floor(t * 6) % 2 === 0;
     // fundo do poço e entorno
-    for (const [px, pz, pw, ph] of [[480, a.y - 400, 1800, 800], [480, a.y + a.h + 400, 1800, 800], [a.x - 400, a.y + a.h / 2, 800, a.h], [a.x + a.w + 400, a.y + a.h / 2, 800, a.h]]) r.plane(px, -1, pz, pw, ph, '#0d0c10');
+    // refeitório em volta (sem chão do r.room: o piso de caquinho abaixo deixa o poço aberto)
+    r.room(a.x - 90, a.y - 70, a.x + a.w + 90, a.y + a.h + 60, { estilo: 'refeitorio', floor: false });
+    for (const [px, pz, pw, ph] of [[480, a.y - 400, 1800, 800], [480, a.y + a.h + 400, 1800, 800], [a.x - 400, a.y + a.h / 2, 800, a.h], [a.x + a.w + 400, a.y + a.h / 2, 800, a.h]]) r.plane(px, -1, pz, pw, ph, '#4e241d', { tex: 'caquinho', texWorld: true });
     if (d.open > 0) {
       // fundo do poço: triturador com rolos dentados e grade vermelha brilhando
       r.plane(a.x + a.w / 2, -PIT, a.y + a.h / 2, a.w, a.h, '#1e1416', { rough: 0.9 });
