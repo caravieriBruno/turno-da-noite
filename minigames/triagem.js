@@ -128,7 +128,7 @@ TN.registerMinigame({
   },
 
   // ---------- 3D (câmera fixa): X = x da lógica, Z = baia, esteiras correndo da esquerda para a direita ----------
-  camera: { pos: [480, 720, 830], target: [480, 0, 292], fov: 37 },
+  camera: { pos: [480, 600, 930], target: [480, 0, 280], fov: 39 },
   env: { ambient: 0.5, sun: 1.7, sunDir: [-0.4, 1, 0.5] },
 
   // item 3D low-poly sobre uma bandeja vermelha (arte) ou verde (tecnologia); base em y
@@ -180,9 +180,13 @@ TN.registerMinigame({
   draw3d(g, r) {
     const a = g.arena, d = g.data;
     const BX0 = this.SLOT_X - 34, BX1 = a.x + a.w - 96, BH = 22, SX = this.SLOT_X;
-    // chão, paredes e luz geral
-    r.plane(480, -1, 290, 1700, 1200, '#0e1013');
-    r.box(480, 0, a.y - 14, a.w + 60, 120, 20, '#363b42', { metal: 0.3 });
+    // incinerador do subsolo: sala de concreto com a boca da fornalha na parede; mureta atrás das baias
+    const zp = a.y - 60;
+    r.room(a.x - 90, zp, a.x + a.w + 90, a.y + a.h + 60, { estilo: 'subsolo' });
+    r.box(480, 0, zp + 6, 200, 120, 14, '#2a2725', { metal: 0.4 });                       // fornalha
+    r.box(480, 14, zp + 13, 150, 70, 2, '#1a0a04', { tex: false });
+    r.box(480, 21, zp + 14.5, 136, 56, 1, '#ff5a1a', { glow: true, opacity: 0.55 });
+    r.box(480, 0, a.y - 14, a.w + 60, 40, 20, '#363b42', { metal: 0.3 });
     for (let i = 0; i < 9; i++) r.box(a.x + 6 + i * (a.w - 12) / 8, 0, a.y - 3, 26, 4, 2, i % 2 ? '#111' : '#f5c400', { shadow: false });
     r.box(a.x - 12, 0, a.y + a.h / 2, 20, 46, a.h + 8, '#40464e', { metal: 0.3 });
     r.box(a.x + a.w + 12, 0, a.y + a.h / 2, 20, 46, a.h + 8, '#40464e', { metal: 0.3 });

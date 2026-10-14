@@ -152,25 +152,15 @@ TN.registerMinigame({
 
   draw3d(g, r) {
     const d = g.data, h = d.host, t = g.time, S = this.S3, TH = this.TH3, GZ = this.GZ3, TZ = this.TZ3, HX = 480, HZ = this.HZ3;
-    // ---- sala de jantar (fábrica reformada) ----
-    r.plane(480, -1, 400, 2200, 1400, '#0d0a0b');
-    for (let x = -100; x < 1060; x += 40) r.plane(x + 20, 0, 420, 38, 700, (x / 40) % 2 ? '#2a1d17' : '#30221b', { rough: 0.8 });
-    r.box(480, 0, 150, 1600, 460, 16, '#24161c');
-    for (let x = -300; x < 1300; x += 48) r.box(x, 0, 160, 22, 460, 3, '#2d1c24');
-    r.box(480, 0, 162, 1600, 26, 6, '#160d11');
-    r.box(480, 168, 162, 1600, 8, 5, '#1a1015');
-    // quadros na parede
-    for (const [fx, col] of [[190, '#1e2a33'], [770, '#332a1e']]) {
-      r.box(fx, 190, 162, 130, 96, 6, '#5a4630', { metal: 0.4, rough: 0.5 });
-      r.box(fx, 198, 166, 112, 80, 2, col, { emissive: col, emissiveIntensity: 0.4 });
-    }
+    // ---- refeitório da cadeia: azulejo encardido, piso de caquinho, passa-pratos gradeado atrás do diretor ----
+    r.room(-200, 158, 1160, 900, { estilo: 'refeitorio', h: 460, paintH: 200, lamps: 2, paint: '#8f8b80', top: '#6b6555', floor: '#4e241d' });
     // cano industrial atravessando a sala
     r.beam(-200, 330, 175, 1200, 330, 175, 14, '#3a3f46', { metal: 0.7, rough: 0.4 });
-    // lustre
-    r.beam(HX, 460, 380, HX, 244, 380, 2, '#a08850', { metal: 0.8 });
-    r.cyl(HX, 230, 380, 30, 14, '#c9a74a', { metal: 0.9, rough: 0.25 });
-    for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3; r.sphere(HX + Math.cos(a) * 34, 248, 380 + Math.sin(a) * 34, 4.5, '#ffe6a8', { glow: true }); }
-    r.light(HX, 270, 400, '#ffd9a0', 2.4, 900);
+    // fluorescente pendurada sobre a mesa
+    for (const sx of [-50, 50]) r.beam(HX + sx, 460, 380, HX + sx, 252, 380, 1.5, '#222222');
+    r.box(HX, 244, 380, 150, 8, 18, '#5d5f5c', { metal: 0.5 });
+    r.box(HX, 241, 380, 140, 3, 10, '#eafff0', { glow: true });
+    r.light(HX, 236, 400, '#e8f4dc', 2.4, 900);
     r.light(140, 220, 260, '#ff9a5a', 0.8, 420);
     r.light(820, 220, 260, '#ff9a5a', 0.8, 420);
     // ---- Anfitrião (em pé atrás da mesa) ----
@@ -231,14 +221,10 @@ TN.registerMinigame({
   drawHost3d(g, r) {
     const d = g.data, h = d.host, t = g.time, HX = 480, HZ = this.HZ3, HS = 2.05;
     const watching = h.state === 'watch' || !!d.shot;
-    r.character({ id: 'host', x: HX, y: HZ, alive: true, color: '#16181c', label: false }, { pose: 'arms', dir: Math.PI / 2, scale: HS, key: 'host' });
-    // camisa, gravata, cartola
+    // o diretor da cadeia: terno cinza, camisa, gravata e a placa na mesa
+    r.character({ id: 'host', x: HX, y: HZ, alive: true, color: '#3a3d42', label: false }, { pose: 'arms', dir: Math.PI / 2, scale: HS, key: 'host' });
     r.box(HX, 62, HZ + 11.5, 8, 22, 1.5, '#eeeeee', { shadow: false });
     r.box(HX, 66, HZ + 12.5, 3, 16, 1, '#a01818', { shadow: false });
-    const top = 52 * HS + 8.2 * HS;
-    r.cyl(HX, top - 6, HZ, 20, 2.5, '#111');
-    r.cyl(HX, top - 4, HZ, 12.5, 30, '#111', { rough: 0.5 });
-    r.cyl(HX, top - 3, HZ, 12.8, 6, '#a01818');
     // olhos (vermelhos quando vigia)
     for (const ex of [-6, 6]) r.sphere(HX + ex, 52 * HS + 1, HZ + 14.5, 3, watching ? '#ff2a2a' : '#5fe8e8', { glow: true });
     if (watching) r.light(HX, 52 * HS, HZ + 40, '#ff2a2a', 1.4, 260);
