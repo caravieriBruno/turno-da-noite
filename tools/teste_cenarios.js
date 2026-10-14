@@ -86,6 +86,12 @@ cenarioValido('yard guarita à esquerda', (r) => r.yard(40, 20, 920, 520, { guar
 ok(mesmas(trace((r) => r.yard(920, 520, 40, 20)), trace((r) => r.yard(40, 20, 920, 520))), 'yard com cantos invertidos = cantos na ordem');
 cenarioValido('yard degenerado (largura 0)', (r) => r.yard(300, 100, 300, 100));
 ok(!mesmas(trace((r) => r.yard(40, 20, 920, 520), 1), trace((r) => r.yard(40, 20, 920, 520), 3)), 'yard: holofote varre com o tempo');
+{
+  // floor: false também no pátio (para jogos com abismo, como a sucata); as linhas de quadra somem junto
+  const planos = (o) => trace((r) => r.yard(40, 20, 920, 520, o)).calls.filter(([k]) => k === 'plane').length;
+  ok(planos({ quadra: false }) === 1 && planos({ floor: false }) === 0, 'yard com floor: false não desenha chão nem linhas de quadra');
+  cenarioValido('yard sem chão', (r) => r.yard(40, 20, 920, 520, { floor: false }));
+}
 
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

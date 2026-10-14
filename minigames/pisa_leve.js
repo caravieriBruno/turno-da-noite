@@ -207,7 +207,7 @@ TN.registerMinigame({
   // ---------------- 3D (câmera fixa) ----------------
   // Campo minado à noite: terra com mato, cerca de arame, minas reveladas pelo sonar, a colheitadeira
   // vermelha com o rolo de lâminas girando à esquerda e a van (caçamba aberta) depois da chegada.
-  camera: { pos: [480, 640, 800], target: [480, 0, 285], fov: 40 },
+  camera: { pos: [480, 560, 870], target: [480, 0, 270], fov: 41 },
   env: { bg: '#05070a', fog: [950, 2100], ambient: 0.42, sun: 0.9, sunDir: [0.35, 1, -0.5], sunColor: '#a9c1ff', hemiSky: '#6f86b0', hemiGround: '#1a140c' },
 
   draw3d(g, r) {
@@ -215,7 +215,9 @@ TN.registerMinigame({
     const q = (v) => Math.round(U.clamp(v, 0, 1) * 10) / 10;           // opacidade em degraus (poucos materiais)
     const fx0 = a.x + 70, fieldW = d.goalX - fx0;
     // ---- chão ----
-    r.plane(480, -1, 290, 2200, 1500, '#0d0f0c', { rough: 1 });          // entorno (mato escuro)
+    // terreno entre os muros do pátio (o muro da esquerda fica longe, atrás da colheitadeira); sem o
+    // holofote do pátio, que lavaria as minas e os rótulos ao passar
+    r.yard(a.x - 260, a.y - 70, a.x + a.w + 60, a.y + a.h + 60, { quadra: false, holofote: false });
     for (let i = 0; i < 9; i++) r.plane(fx0 + fieldW / 2, 0, a.y + (a.h / 9) * (i + 0.5), fieldW, a.h / 9 + 0.5, i % 2 ? '#3d3424' : '#352d1f', { rough: 1 });
     // tufos de mato (mesma semente do 2D)
     let s = d.seed;

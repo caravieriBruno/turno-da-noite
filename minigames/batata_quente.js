@@ -209,7 +209,7 @@ TN.registerMinigame({
   },
 
   // ---------- desenho 3D (câmera fixa) ----------
-  camera: { pos: [480, 560, 780], target: [480, 0, 300], fov: 38 },
+  camera: { pos: [480, 500, 880], target: [480, 0, 268], fov: 40 },
   env: { bg: '#060708', fog: [900, 2000], ambient: 0.35, sun: 0.9, sunDir: [-0.2, 1, 0.35], sunColor: '#ffe2c0' },
 
   // cor da batata conforme o calor (quantizada para reaproveitar materiais)
@@ -220,14 +220,8 @@ TN.registerMinigame({
 
   draw3d(g, r) {
     const d = g.data, cx = this.CX, cy = this.CY, R = this.RING_R, t = g.time, U = TN.util;
-    // piso: entorno escuro + ladrilhos só na área iluminada da roda
-    r.plane(480, -1, 290, 2000, 1400, '#0a0b0d');
-    const T = 48;
-    for (let i = -7; i <= 7; i++) for (let j = -7; j <= 7; j++) {
-      const x = cx + i * T, z = cy + j * T;
-      if (Math.hypot(i, j) * T > 340) continue;
-      r.plane(x, 0, z, T - 1.5, T - 1.5, (i + j) % 2 ? '#24282e' : '#1f2328', { rough: 0.9 });
-    }
+    // pátio da cadeia à noite (sem linhas de quadra: a roda pintada é a marcação do chão)
+    r.yard(cx - 420, cy - 225, cx + 420, cy + 230, { quadra: false });
     // roda pintada no chão + setas do sentido horário
     r.ring(cx, 0.4, cy, R - 17, R + 17, '#ff9a2e', { glow: true, opacity: 0.16 });
     r.ring(cx, 0.5, cy, R + 16, R + 18, '#ffc878', { glow: true, opacity: 0.35 });

@@ -272,6 +272,16 @@ TN.registerMinigame({
     const U = TN.util, d = g.data;
     const q = (v) => Math.round(U.clamp(v, 0, 1) * 10) / 10;
     const lights = [];
+    // ---- ferro-velho do pátio: laje de cimento em volta de um fosso, com sucata encostada no muro ----
+    const PX0 = 16, PX1 = 944, PZ0 = 20, PZ1 = 540, lj = '#3b3934';
+    r.yard(-60, -60, 1020, 580, { floor: false });
+    r.plane(480, 0, (PZ0 - 700) / 2, 2600, PZ0 + 700, lj);
+    r.plane((PX0 - 1200) / 2, 0, 900, PX0 + 1200, 1800, lj);
+    r.plane((PX1 + 2160) / 2, 0, 900, 2160 - PX1, 1800, lj);
+    r.plane(480, 0, (PZ1 + 1800) / 2, PX1 - PX0, 1800 - PZ1, lj);
+    for (const [x, z, w, dd] of [[480, PZ0, PX1 - PX0, 10], [480, PZ1, PX1 - PX0, 10], [PX0, (PZ0 + PZ1) / 2, 10, PZ1 - PZ0], [PX1, (PZ0 + PZ1) / 2, 10, PZ1 - PZ0]]) r.box(x, -700, z, w, 700, dd, '#2a2926');
+    for (let k = 0; k < 15; k++) r.box(PX0 + 30 + k * 62, -2, PZ1 + 8, 30, 3, 6, k % 2 ? '#141414' : '#c9a400', { shadow: false });
+    for (const [x, z, n] of [[-25, 0, 'pneu'], [-5, -30, 'tambor'], [985, 10, 'tambor'], [960, -32, 'pneu'], [990, 70, 'pneu']]) r.prop(n, x, z, { rotY: x * 0.01 });
     // ---- abismo: fundo distante e vigas perdidas na névoa ----
     r.plane(480, -700, 280, 3000, 2400, '#0a0e14');
     for (const [x, z] of [[20, 40], [940, 40], [480, 10], [250, 0], [710, 0]]) r.box(x, -700, z, 18, 640, 18, '#1a1f26', { metal: 0.5 });

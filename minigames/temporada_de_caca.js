@@ -275,12 +275,9 @@ TN.registerMinigame({
 
   draw3d(g, r) {
     const d = g.data, F = this.FIELD;
-    // chão, árvores ao fundo e sol poente
-    r.plane(480, 0, -900, 7000, 4200, '#4a6a30', { rough: 1 });
-    for (let k = 0; k < 46; k++) {
-      const x = -2200 + k * 110 + ((k * 37) % 50), z = -1700 - ((k * 53) % 260);
-      r.cone(x, 0, z, 46 + ((k * 13) % 20), 190 + ((k * 29) % 80), '#1a2a1e', { rough: 1 });
-    }
+    // pátio visto da guarita: chão de cimento, muro com arame farpado ao fundo e sol poente
+    // (só cenário; a câmera e os pontos de tela não mudam, então mira e acertos continuam iguais)
+    r.yard(-3000, -1750, 4000, 900, { quadra: false, guarita: false, postes: 0, floor: '#55513f' });
     r.sphere(1500, 230, -3000, 140, '#ffd9a0', { glow: true });
     // linhas de largada e de saída (seguem a perspectiva: ligam o ponto de tela de perto ao de longe)
     const line = (sx, col, glow) => {
@@ -309,14 +306,14 @@ TN.registerMinigame({
 
   cover3d(r, cv) {
     const A = this.anchor(r, cv.x, cv.y), w = cv.w * A.upp, hgt = cv.h * A.upp, dep = w * 0.6, z = A.z - dep / 2;
-    if (cv.kind === 'feno') {
-      r.box(A.x, 0, z, w, hgt, dep, '#c9a43a', { rough: 1 });
-      r.box(A.x - w * 0.22, 0, z, w * 0.06, hgt * 1.01, dep * 1.02, '#6b4a1a');
-      r.box(A.x + w * 0.22, 0, z, w * 0.06, hgt * 1.01, dep * 1.02, '#6b4a1a');
+    if (cv.kind === 'feno') {   // pilha de colchões amarrada (mesma caixa do fardo de feno)
+      for (let k = 0; k < 4; k++) r.box(A.x + (k % 2 ? 1 : -1) * w * 0.02, k * hgt / 4, z, w * 0.96, hgt / 4 - 0.5, dep, k % 2 ? '#8a8468' : '#7a7660', { tex: 'tecido', rough: 1 });
+      r.box(A.x - w * 0.22, 0, z, w * 0.06, hgt * 1.01, dep * 1.02, '#3d3a30');
+      r.box(A.x + w * 0.22, 0, z, w * 0.06, hgt * 1.01, dep * 1.02, '#3d3a30');
     } else if (cv.kind === 'arbusto') {
       for (let k = 0; k < 4; k++) r.sphere(A.x - w * 0.33 + k * w * 0.22, hgt * (0.42 + 0.1 * Math.sin(k * 1.7 + cv.seed)), z, hgt * 0.5, k % 2 ? '#2d6a32' : '#3c8442', { rough: 1 });
     } else if (cv.kind === 'tronco') {
-      r.cyl(A.x - w / 2, hgt / 2, z, hgt / 2, w, '#6b4526', { rotZ: -Math.PI / 2, rough: 1 });
+      r.cyl(A.x - w / 2, hgt / 2, z, hgt / 2, w, '#8a867a', { rotZ: -Math.PI / 2, rough: 1, tex: 'concreto' });   // manilha de concreto
     } else {
       r.box(A.x, 0, z, w, hgt / 2, dep, '#8a6438', { rough: 0.9 });
       r.box(A.x, hgt / 2, z, w * 0.85, hgt / 2, dep * 0.85, '#94703f', { rough: 0.9 });
