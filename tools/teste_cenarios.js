@@ -37,6 +37,12 @@ cenarioValido('room degenerado (largura 0)', (r) => r.room(300, 100, 300, 100));
 ok(trace((r) => r.room(NaN, 20, 920, 520)).errs.length > 0, 'room com NaN: o validador acusa');
 
 // CASOS EXTRAS (as tarefas seguintes acrescentam aqui)
+{
+  // floor: false não desenha o chão (para jogos com poço ou buraco no piso, como o piso_falso)
+  const planos = (o) => trace((r) => r.room(40, 20, 920, 520, o)).calls.filter(([k]) => k === 'plane').length;
+  ok(planos({}) === 1 && planos({ floor: false }) === 0, 'room com floor: false não desenha o chão');
+  cenarioValido('room sem chão', (r) => r.room(40, 20, 920, 520, { floor: false }));
+}
 
 // --- r.prop ---
 for (const nome of ['beliche', 'vaso', 'banco', 'mesa', 'tambor', 'pneu', 'colchao', 'grade', 'poste', 'arquivo']) {

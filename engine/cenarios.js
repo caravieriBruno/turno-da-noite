@@ -106,6 +106,7 @@
 
   // Ambiente interno: chão, parede do fundo e laterais (a frente fica aberta para a câmera), detalhes do
   // estilo e luminárias. o: { estilo, h, paintH, paint, top, floor, windows, lamps, lights, bars, frente, props }
+  // (floor: false = sem chão, para o jogo desenhar o próprio piso com poço ou buraco)
   function room(r, x1, z1, x2, z2, o = {}) {
     const nome = o.estilo || 'cela', est = ESTILOS[nome];
     if (!est) throw new Error(`r.room: estilo desconhecido "${o.estilo}" (use: ${Object.keys(ESTILOS).join(', ')})`);
@@ -113,7 +114,7 @@
     const H = o.h ?? 200, PH = o.paintH ?? H * 0.45, T = 16, w = x2 - x1, cx = (x1 + x2) / 2;
     const paint = o.paint ?? est.paint, top = o.top ?? est.top, floor = o.floor ?? est.floor;
     const zFront = z2 + (o.frente ?? 500), sideD = zFront - z1, sideZ = (z1 + zFront) / 2;
-    r.plane(cx, -1.5, sideZ, w + 1400, sideD + 900, floor, { tex: est.texFloor });
+    if (floor !== false) r.plane(cx, -1.5, sideZ, w + 1400, sideD + 900, floor, { tex: est.texFloor });
     const wall = (x, z, ww, dd) => {
       r.box(x, 0, z, ww, PH, dd, paint, { tex: est.texPaint });
       r.box(x, PH, z, ww, H - PH, dd, top, { tex: est.texTop });

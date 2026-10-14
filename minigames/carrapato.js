@@ -217,7 +217,7 @@ TN.registerMinigame({
   },
 
   // ---------- desenho 3D (câmera fixa) ----------
-  camera: { pos: [480, 700, 740], target: [480, 0, 288], fov: 40 },
+  camera: { pos: [480, 560, 840], target: [480, 0, 268], fov: 41 },
   env: { bg: '#07090b', fog: [1150, 2700], ambient: 0.5, sun: 1.7, sunDir: [-0.35, 1, 0.5], sunColor: '#d6e8ff' },
 
   // a luz do carrapato está acesa neste quadro? (mesma regra do 2D: pisca mais rápido perto do fim)
@@ -253,8 +253,8 @@ TN.registerMinigame({
 
   draw3d(g, r) {
     const a = g.arena, d = g.data, dev = d.dev, t = g.time;
-    // piso: entorno escuro + ladrilhos de concreto esverdeado
-    r.plane(480, -1, 290, 1800, 1200, '#0b0e0f');
+    // galeria de celas em volta + ladrilhos de concreto esverdeado
+    r.room(a.x - 90, a.y - 70, a.x + a.w + 90, a.y + a.h + 60);
     const T = 55;
     for (let i = 0; i * T < a.w; i++) for (let j = 0; j * T < a.h; j++) {
       const x0 = a.x + i * T, z0 = a.y + j * T, w = Math.min(T, a.x + a.w - x0), h = Math.min(T, a.y + a.h - z0);

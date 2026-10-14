@@ -197,7 +197,7 @@ TN.registerMinigame({
   // Grade de ladrilhos de metal sobre um poço escuro com borda zebrada. Ladrilhos que caem afundam no
   // poço (y negativo) e voltam subindo; símbolos brilhantes em cima (✖ = duas barras, ■ = placa, ● = anel).
   // Dois monitores altos nas laterais mostram o símbolo seguro e a barra do tempo.
-  camera: { pos: [480, 650, 790], target: [480, 0, 280], fov: 43 },
+  camera: { pos: [480, 610, 830], target: [480, 0, 268], fov: 43 },
   env: { bg: '#07060a', fog: [1000, 2200], ambient: 0.5, sun: 1.6, sunDir: [-0.25, 1, 0.45], sunColor: '#f1dcff' },
 
   // símbolo deitado no chão (em cima do ladrilho)
@@ -225,12 +225,20 @@ TN.registerMinigame({
     const d = g.data, T = this.TILE, U = TN.util;
     const W = this.COLS * T, H = this.ROWS * T, cx0 = d.gx + W / 2, cz0 = d.gy + H / 2, PIT = 420;
     const lights = [];
-    // ---- piso do galpão em volta, poço, borda ----
-    const outer = '#1b1d22';
-    r.box(cx0, -20, d.gy - 140, 1800, 20, 280 - 20, outer, { rough: 0.95 });
-    r.box(cx0, -20, d.gy + H + 160, 1800, 20, 300 + 20, outer, { rough: 0.95 });
-    r.box(d.gx - 300 - 10, -20, cz0, 600, 20, H + 20, outer, { rough: 0.95 });
-    r.box(d.gx + W + 300 + 10, -20, cz0, 600, 20, H + 20, outer, { rough: 0.95 });
+    // ---- pavilhão de celas em volta (sem chão: o piso abaixo deixa o poço aberto), poço, borda ----
+    const zf = d.gy - 90;
+    r.room(d.gx - 160, zf, d.gx + W + 160, d.gy + H + 60, { floor: false, windows: 0 });
+    for (let i = 0; i < 5; i++) {   // galeria de celas na parede do fundo: vão escuro + porta gradeada
+      const x = d.gx - 60 + (i + 0.5) * (W + 120) / 5;
+      r.box(x, 0, zf + 1, 96, 130, 3, '#07090a', { tex: false });
+      r.prop('grade', x, zf + 5, { w: 96, h: 130 });
+      r.label(x, 150, zf + 4, 'C-' + (11 + i), '#8f8a76', 10);
+    }
+    const outer = '#3e3c38', po = { rough: 0.95, tex: 'piso', texWorld: true };
+    r.box(cx0, -20, d.gy - 140, 1800, 20, 280 - 20, outer, po);
+    r.box(cx0, -20, d.gy + H + 160, 1800, 20, 300 + 20, outer, po);
+    r.box(d.gx - 300 - 10, -20, cz0, 600, 20, H + 20, outer, po);
+    r.box(d.gx + W + 300 + 10, -20, cz0, 600, 20, H + 20, outer, po);
     // paredes internas do poço e fundo
     r.box(cx0, -PIT, d.gy - 6, W + 12, PIT - 8, 12, '#16131c', { rough: 1 });
     r.box(cx0, -PIT, d.gy + H + 6, W + 12, PIT - 8, 12, '#16131c', { rough: 1 });
