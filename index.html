@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Turno da Noite</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+    body { display: flex; align-items: center; justify-content: center; }
+    canvas { display: block; image-rendering: pixelated; background: #0b0f13; }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Motor -->
+  <script src="engine/util.js"></script>
+  <script src="engine/input.js"></script>
+  <script src="engine/audio.js"></script>
+  <script src="engine/draw.js"></script>
+  <script src="engine/minigame.js"></script>
+  <script src="engine/session.js"></script>
+  <script src="engine/net.js"></script>
+
+  <!-- Lista de minigames (adicione o arquivo novo lá) -->
+  <script src="minigames/manifest.js"></script>
+
+  <script src="engine/main.js"></script>
+</body>
+</html>

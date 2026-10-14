@@ -1,0 +1,13 @@
+# Pesquisa/engenharia reversa do jogo original (contém código decompilado de terceiros) — fica só local
+research/
+
+# Sistema / editores
+.DS_Store
+Thumbs.db
+*.log
+node_modules/
+.vscode/
+.idea/
+
+# Screenshots de teste
+screenshot_*.png
