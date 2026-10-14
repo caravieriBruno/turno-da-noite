@@ -221,12 +221,13 @@
   // Pátio à noite: chão com linhas de quadra apagadas, muros com arame farpado no fundo e nas laterais,
   // postes de vapor de sódio e guarita com holofote que varre o pátio (só depende de r.time).
   // o: { h, floor, wall, quadra, guarita: true|false|'esquerda'|'direita', holofote, postes, frente }
+  // (floor: false = sem chão nem linhas de quadra, para o jogo desenhar o próprio piso com abismo)
   function yard(r, x1, z1, x2, z2, o = {}) {
     ({ x1, z1, x2, z2 } = rect(x1, z1, x2, z2));
     const H = o.h ?? 260, T = 24, w = x2 - x1, d = z2 - z1, cx = (x1 + x2) / 2, mz = (z1 + z2) / 2, t = r.time || 0;
     const zFront = z2 + (o.frente ?? 500), sideD = zFront - z1, sideZ = (z1 + zFront) / 2, muro = o.wall ?? '#5f5c55';
-    r.plane(cx, -1.5, sideZ, w + 1600, sideD + 1000, o.floor ?? '#3b3934');
-    if (o.quadra !== false && w > 120 && d > 120) {   // linhas de quadra apagadas
+    if (o.floor !== false) r.plane(cx, -1.5, sideZ, w + 1600, sideD + 1000, o.floor ?? '#3b3934');
+    if (o.floor !== false && o.quadra !== false && w > 120 && d > 120) {   // linhas de quadra apagadas
       const m = 40, lc = '#77735f', y = -1.2, L = { tex: false, opacity: 0.5 };
       const ix1 = x1 + m, ix2 = x2 - m, iz1 = z1 + m, iz2 = z2 - m;
       r.plane(cx, y, iz1, ix2 - ix1, 4, lc, L); r.plane(cx, y, iz2, ix2 - ix1, 4, lc, L);

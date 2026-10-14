@@ -176,38 +176,19 @@ TN.registerMinigame({
   draw3d(g, r) {
     const d = g.data, S = this.S3, SH = this.STOOL_H, Z = this.FLOOR_Y - 70, oy = SH - 20 * S, dir = this.DIR3;
     const t = g.time;
-    // ---- sala: piso, parede, rodapé, canos ----
-    r.plane(480, -1, 420, 2200, 1400, '#0e1013');
-    for (let x = -60; x < 1040; x += 80) for (let z = 200; z < 640; z += 80) {
-      const k = (Math.floor(x / 80) + Math.floor(z / 80)) % 2;
-      r.plane(x + 40, 0, z + 40, 78, 78, k ? '#2b3036' : '#262a30', { rough: 0.95 });
-    }
-    r.box(480, 0, 196, 1500, 420, 16, '#1a1e24', { rough: 0.9 });
-    for (let x = -120; x < 1100; x += 120) r.box(x, 0, 206, 6, 420, 4, '#14171c');
-    r.box(480, 0, 207, 1500, 14, 6, '#0d0f12');
-    r.box(480, 150, 207, 1500, 4, 4, '#0f1216');
-    r.beam(-200, 300, 216, 1200, 300, 216, 12, '#3a3f46', { metal: 0.7, rough: 0.4 });
-    r.beam(-200, 282, 220, 1200, 282, 220, 7, '#5a3a22', { metal: 0.5, rough: 0.5 });
+    // ---- fumódromo do pátio: muro com arame farpado ao fundo, guarita à esquerda ----
+    r.yard(-60, 204, 1020, 640, { quadra: false, guarita: 'esquerda', postes: 0, h: 300 });
     // faixa de segurança no chão, à frente dos bancos
     for (let i = 0; i < 26; i++) r.box(-40 + i * 40 + 10, 0.4, 470, 20, 1, 8, i % 2 ? '#141414' : '#c9a100', { shadow: false });
-    // ---- janela com a noite lá fora ----
-    r.box(865, 120, 205, 150, 120, 4, '#2b323a', { metal: 0.5 });
-    r.box(865, 126, 208, 136, 108, 2, '#05080f', { glow: true });
-    r.sphere(900, 205, 210, 9, '#cfd8ff', { glow: true });
-    r.sphere(906, 208, 211, 8.5, '#05080f', { glow: true });
-    for (const [sx, sy] of [[820, 220], [850, 160], [880, 140], [915, 150], [835, 190]]) r.box(sx, sy, 210, 2, 2, 1, '#9aa', { glow: true });
-    r.box(865, 120, 211, 5, 120, 3, '#2b323a', { metal: 0.5 });
     // ---- placa ÁREA DE FUMANTES ----
     r.box(560, 196, 207, 190, 48, 4, '#2a1d0f', { emissive: '#1a0d00' });
     r.box(560, 196, 209, 186, 3, 2, '#ff9f43', { glow: true });
     r.box(560, 241, 209, 186, 3, 2, '#ff9f43', { glow: true });
     r.label(560, 228, 212, 'ÁREA DE FUMANTES', '#ffcf8a', 15);
-    // ---- luminárias do teto (luz quente) ----
+    // ---- postes de vapor de sódio atrás dos bancos (a cabeça do poste fica sobre lx) ----
     for (const lx of [215, 595]) {
-      r.beam(lx, 330, 360, lx, 260, 360, 2, '#222');
-      r.cone(lx, 236, 360, 30, 24, '#2b2f35', { metal: 0.6, rough: 0.4, rotX: Math.PI });
-      r.sphere(lx, 236, 360, 8, '#ffe2b0', { glow: true });
-      r.light(lx, 225, 380, '#ffcf96', 2.0, 560);
+      r.prop('poste', lx - 52, 232);
+      r.light(lx, 225, 380, '#ffb870', 2.0, 560);
     }
     r.light(862, 230, 400, '#cfe0ff', 0.8, 420);
     // ---- bancos, cinzeiros e fumantes ----

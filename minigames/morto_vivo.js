@@ -158,11 +158,8 @@ TN.registerMinigame({
   draw3d(g, r) {
     const d = g.data, n = g.players.length, lw = g.W / n, LZ = this.LZ3, S = this.S3, t = g.time;
     const BZ = 320, FZ = 520, CH = 250;   // fundo, frente e teto das cabines
-    // piso e parede do galpão
-    r.plane(480, -1, 500, 2600, 1600, '#0c0e11');
-    for (let x = -200; x < 1160; x += 80) for (let z = 520; z < 760; z += 80) r.plane(x + 40, 0, z + 40, 78, 78, ((x + z) / 80) % 2 ? '#24282e' : '#20242a', { rough: 0.95 });
-    r.box(480, 0, BZ - 30, 1800, 520, 20, '#14171b');
-    for (let x = -420; x < 1400; x += 64) r.box(x, 0, BZ - 19, 4, 520, 2, '#191d22');
+    // contagem no pátio: chão de cimento e muro alto atrás das cabines (guarita e holofote ficariam escondidos)
+    r.yard(-260, BZ - 20, 1220, 700, { quadra: false, guarita: false, postes: 0, h: 520 });
     // faixa de perigo na frente das cabines
     for (let i = 0; i < 40; i++) r.box(-10 + i * 25 + 6, 0.3, FZ + 8, 12.5, 1, 12, i % 2 ? '#111' : '#f5c400', { shadow: false });
     // viga superior com o nome do setor
@@ -171,7 +168,7 @@ TN.registerMinigame({
     for (let i = 0; i < n; i++) {
       const p = g.players[i], x = p.data.laneX, alive = p.alive;
       // cabine: fundo, piso e divisórias
-      r.box(x, 0, BZ - 8, lw - 10, CH, 8, '#262c33', { rough: 0.85 });
+      r.box(x, 0, BZ - 8, lw - 10, CH, 8, '#3a3833', { rough: 0.85, tex: 'concreto' });
       r.box(x, 0, BZ - 3, lw - 40, 6, 2, '#3a4048');
       r.plane(x, 0.2, (BZ + FZ) / 2, lw - 12, FZ - BZ, alive ? '#30363e' : '#2a2023', { rough: 0.9 });
       for (let k = 0; k < 4; k++) r.plane(x, 0.4, BZ + 30 + k * 50, lw - 30, 2, '#20252b', { shadow: false });

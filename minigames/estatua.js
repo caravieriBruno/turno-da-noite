@@ -198,7 +198,7 @@ TN.registerMinigame({
   },
 
   // ---------------- desenho 3D (câmera fixa) ----------------
-  camera: { pos: [480, 690, 870], target: [480, 0, 280], fov: 41 },
+  camera: { pos: [480, 560, 930], target: [480, 0, 270], fov: 41 },
   env: { bg: '#07060a', fog: [1200, 2800], ambient: 0.45, sun: 1.1, sunDir: [-0.3, 1, 0.5], sunColor: '#e8dcff' },
 
   // mistura duas cores hex (k de 0 a 1, quantizado para reaproveitar materiais)
@@ -216,7 +216,8 @@ TN.registerMinigame({
     const pulse = music ? 1 - Math.min(1, d.beatT / d.beatInt) : 0;
     // a luz da sala muda com a fase: festa (lilás) x alerta (vermelho)
     if (!music) r.env({ bg: '#0b0405', fog: [1200, 2800], ambient: 0.35, sun: 0.85, sunDir: [-0.3, 1, 0.5], sunColor: '#ff8a8a', hemiSky: '#a05a5a' });
-    r.plane(480, -1, 290, 2000, 1400, '#0a090c');
+    // baile no pátio: muros com arame, guarita e postes; a pista é montada no chão de cimento
+    r.yard(F.x - 130, 4, F.x + F.w + 130, F.y + F.h + 60, { quadra: false, holofote: false });   // sem o holofote do pátio: confundiria com o holofote de bônus do jogo
     r.plane(F.x + F.w / 2, -0.5, F.y + F.h / 2, F.w, F.h, '#040405');
     // pista de dança: ladrilhos que acendem no ritmo
     const T = 56;
@@ -237,8 +238,7 @@ TN.registerMinigame({
     r.box(F.x + F.w / 2, 0, F.y + F.h + 5, F.w + 20, 6, 10, rim, ro);
     r.box(F.x - 5, 0, F.y + F.h / 2, 10, 6, F.h, rim, ro);
     r.box(F.x + F.w + 5, 0, F.y + F.h / 2, 10, 6, F.h, rim, ro);
-    // cabine do Supervisor ao fundo: parede, caixas de som e equalizador
-    r.box(480, 0, 14, 1100, 170, 20, '#141519', { rough: 0.9 });
+    // cabine do Supervisor ao fundo, encostada no muro: caixas de som e equalizador
     r.box(480, 0, 62, 330, 38, 46, '#0e0f14', { metal: 0.4, rough: 0.5 });
     for (let i = 0; i < 18; i++) {
       let h;
