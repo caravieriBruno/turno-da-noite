@@ -1,6 +1,6 @@
 # TURNO DA NOITE
 
-Party game de navegador em **3D com câmera fixa**, com minigames curtos e mortais para 1–4 jogadores. É inspirado no **Machine Party**: o jogo original foi analisado por engenharia reversa e os minigames dele foram recriados do zero, junto com jogos originais. Pode ser jogado no mesmo computador ou em **rede local**.
+Party game de navegador em **3D com câmera fixa**, com minigames curtos e mortais para 1–4 jogadores. É inspirado no **Machine Party**.
 
 ## Como jogar
 
@@ -39,10 +39,6 @@ node tools/teste_rede.js         # teste de rede de ponta a ponta (servidor prec
 ```
 
 Para jogar um minigame específico, abra `index.html?game=<id>`. Também funcionam os parâmetros `&humans=2`, `&humans=0` (só bots) e `&speed=3`.
-
-## Pesquisa
-
-A análise de como o Machine Party funciona fica numa pasta `research/` local e **não é versionada**, porque contém material extraído do jogo original. A pasta reúne o formato do pacote Godot, o código decompilado, os textos oficiais e as regras de cada minigame. Os minigames deste repositório são reimplementações próprias.
 
 ## Créditos
 
