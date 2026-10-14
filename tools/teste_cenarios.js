@@ -38,5 +38,18 @@ ok(trace((r) => r.room(NaN, 20, 920, 520)).errs.length > 0, 'room com NaN: o val
 
 // CASOS EXTRAS (as tarefas seguintes acrescentam aqui)
 
+// --- r.prop ---
+for (const nome of ['beliche', 'vaso', 'banco', 'mesa', 'tambor', 'pneu', 'colchao', 'grade', 'poste', 'arquivo']) {
+  const t = trace((r) => r.prop(nome, 300, 200, { rotY: 0.7, scale: 1.2 }));
+  ok(t.errs.length === 0 && t.calls.length >= 1 && (t.counts.light || 0) === 0, `prop ${nome}: válido, sem luz`);
+}
+{ const t = trace((r) => r.prop('poste', 300, 200, { luz: true })); ok(t.counts.light === 1, 'prop poste com luz: acende 1 luz'); }
+deveFalhar('prop com nome errado', (r) => r.prop('belixe', 0, 0), 'beliche');
+{
+  // girar 180° em torno de (300,200) espelha os pontos: a 1ª gaveta (x local 15.5) vai de x=315.5 para x=284.5
+  const a = trace((r) => r.prop('arquivo', 300, 200)).calls[1][1], b = trace((r) => r.prop('arquivo', 300, 200, { rotY: Math.PI })).calls[1][1];
+  ok(Math.abs((a[0] - 300) + (b[0] - 300)) < 1e-6 && Math.abs((a[2] - 200) + (b[2] - 200)) < 1e-6, 'prop girado 180° espelha em torno do ponto');
+}
+
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

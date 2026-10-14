@@ -1,5 +1,6 @@
 // CENÁRIOS DE CADEIA: peças prontas de cenário para o draw3d.
 //   r.room(x1, z1, x2, z2, o)  ambientes internos (a frente fica aberta para a câmera)
+//   r.prop(nome, x, z, o)     objetos (beliche, vaso, banco, mesa, tambor, pneu, colchao, grade, poste, arquivo)
 // Usam só as primitivas públicas da API do draw3d (box, tube, light...), então rodam igual no navegador
 // e no validador do tools/simular.js. Regras:
 //   - tudo que pisca ou se mexe depende só de r.time (fica igual no host e nos clientes);
@@ -57,5 +58,81 @@
     }
   }
 
-  TN.cenarios = { room };
+  // Desenha em coordenadas locais (lx, lz) em torno de (x, z), girado por o.rotY (mesmo sentido do
+  // rotation.y do Three), escalado por o.scale e elevado por o.y.
+  function montador(r, x, z, o) {
+    const s = o.scale ?? 1, a = o.rotY || 0, c = Math.cos(a), sn = Math.sin(a), y0 = o.y || 0;
+    const P = (lx, lz) => [x + s * (lx * c + lz * sn), z + s * (-lx * sn + lz * c)];
+    return {
+      box(lx, ly, lz, w, h, d, cor, op = {}) { const [wx, wz] = P(lx, lz); r.box(wx, y0 + ly * s, wz, w * s, h * s, d * s, cor, { ...op, rotY: a + (op.rotY || 0) }); },
+      cyl(lx, ly, lz, rad, h, cor, op = {}) { const [wx, wz] = P(lx, lz); r.cyl(wx, y0 + ly * s, wz, rad * s, h * s, cor, op); },
+      tube(ax, ay, az, bx, by, bz, rad, cor, op = {}) { const [px, pz] = P(ax, az), [qx, qz] = P(bx, bz); r.tube(px, y0 + ay * s, pz, qx, y0 + by * s, qz, rad * s, cor, op); },
+      sphere(lx, ly, lz, rad, cor, op = {}) { const [wx, wz] = P(lx, lz); r.sphere(wx, y0 + ly * s, wz, rad * s, cor, op); },
+      light(lx, ly, lz, cor, k, dist) { const [wx, wz] = P(lx, lz); r.light(wx, y0 + ly * s, wz, cor, k, dist * s, { fundo: true }); },
+    };
+  }
+
+  const FERRO = '#4a4b47', INOX = '#9a9d9a', CIMENTO = '#6e6b63';
+  const PROPS = {
+    beliche(m) {
+      for (const [px, pz] of [[-22, -48], [22, -48], [-22, 48], [22, 48]]) m.box(px, 0, pz, 4, 112, 4, FERRO, { metal: 0.6 });
+      for (const y of [18, 72]) { m.box(0, y, 0, 46, 4, 100, FERRO, { metal: 0.6 }); m.box(0, y + 4, 0, 42, 9, 94, '#6d6a58', { tex: 'tecido' }); }
+    },
+    vaso(m) {
+      m.cyl(0, 0, 0, 8, 16, INOX, { metal: 0.8, rough: 0.3 });
+      m.cyl(0, 16, 0, 13, 6, INOX, { metal: 0.8, rough: 0.3 });
+      m.cyl(0, 21.5, 0, 9, 1, '#2a3a3a', { tex: false });
+      m.box(-14, 0, 0, 8, 34, 24, INOX, { metal: 0.8, rough: 0.3 });
+    },
+    banco(m) {
+      m.box(-34, 0, 0, 10, 20, 22, CIMENTO); m.box(34, 0, 0, 10, 20, 22, CIMENTO);
+      m.box(0, 20, 0, 92, 6, 26, CIMENTO);
+    },
+    mesa(m) {
+      const tampo = '#7c7e79';
+      m.box(0, 0, 0, 14, 32, 14, CIMENTO);
+      m.box(0, 32, 0, 140, 5, 58, tampo, { metal: 0.6, rough: 0.4 });
+      for (const pz of [-48, 48]) { m.box(0, 0, pz, 12, 18, 12, CIMENTO); m.box(0, 18, pz, 140, 4, 18, tampo, { metal: 0.6, rough: 0.4 }); }
+    },
+    tambor(m, o) {
+      const cor = o.color ?? '#4f5e3a';
+      m.cyl(0, 0, 0, 16, 44, cor, { metal: 0.5 });
+      for (const y of [12, 30]) m.cyl(0, y, 0, 16.8, 2, cor, { metal: 0.5 });
+      m.cyl(0, 44, 0, 15, 0.6, '#1d1f1c', { metal: 0.5 });
+    },
+    pneu(m) {
+      m.cyl(0, 0, 0, 18, 10, '#1a1a1a', { rough: 0.95, tex: false });
+      m.cyl(0, 0.2, 0, 9, 10.2, '#070707', { tex: false });
+    },
+    colchao(m, o) { m.box(0, 0, 0, 50, 8, 100, o.color ?? '#7a7660', { tex: 'tecido' }); },
+    grade(m, o) {   // trecho de grade ao longo do eixo X local; o.w = largura, o.h = altura
+      const w = o.w ?? 100, h = o.h ?? 140, ferro = '#55534e';
+      for (let x = -w / 2; x <= w / 2 + 0.1; x += 12) m.tube(x, 0, 0, x, h, 0, 2, ferro, { metal: 0.6 });
+      m.box(0, h, 0, w + 4, 5, 5, ferro, { metal: 0.6 });
+      m.box(0, h * 0.5, 0, w + 4, 4, 4, ferro, { metal: 0.6 });
+    },
+    poste(m, o) {   // poste de vapor de sódio; o braço aponta para +X local; o.luz acende 1 luz de fundo
+      const ferro = '#3d3e3b';
+      m.tube(0, 0, 0, 0, 230, 0, 4, ferro, { metal: 0.5 });
+      m.tube(0, 226, 0, 46, 236, 0, 2.5, ferro, { metal: 0.5 });
+      m.box(52, 228, 0, 26, 8, 14, ferro, { metal: 0.5 });
+      m.box(52, 226, 0, 20, 2, 10, '#ffb04a', { glow: true });
+      if (o.luz) m.light(52, 200, 0, '#ffa040', 1, 700);
+    },
+    arquivo(m) {   // arquivo de aço; a frente (gavetas) olha para +X local
+      const aco = '#6b6f6a';
+      m.box(0, 0, 0, 30, 80, 36, aco, { metal: 0.55 });
+      for (let i = 0; i < 4; i++) {
+        m.box(15.5, 6 + i * 19, 0, 1, 1.2, 32, '#2a2c2a', { tex: false });
+        m.box(16, 14 + i * 19, 0, 1.5, 2, 8, '#b9bcb6', { metal: 0.8 });
+      }
+    },
+  };
+  function prop(r, nome, x, z, o = {}) {
+    const f = PROPS[nome];
+    if (!f) throw new Error(`r.prop: objeto desconhecido "${nome}" (use: ${Object.keys(PROPS).join(', ')})`);
+    f(montador(r, x, z, o), o);
+  }
+
+  TN.cenarios = { room, prop };
 })();

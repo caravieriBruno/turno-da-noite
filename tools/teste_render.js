@@ -33,6 +33,10 @@
   // cenas de referência: as tarefas do kit de cenários acrescentam as suas aqui
   const CENAS = [
     ['cela (r.room padrão)', (g, r) => r.room(40, 20, 920, 520)],
+    ['objetos (r.prop)', (g, r) => {
+      ['beliche', 'vaso', 'banco', 'mesa', 'tambor', 'pneu', 'colchao', 'grade', 'poste', 'arquivo']
+        .forEach((n, i) => r.prop(n, 120 + (i % 5) * 180, 180 + Math.floor(i / 5) * 200, { rotY: i * 0.4 }));
+    }],
   ];
   // ?ver=<trecho do nome>: só desenha essa cena (para olhar ou tirar screenshot) e não roda os testes
   const ver = new URLSearchParams(location.search).get('ver');

@@ -139,6 +139,7 @@ Os minigames são desenhados em **3D com câmera fixa**, como no Machine Party. 
 | `r.light(x, y, z, cor, intensidade, alcance, o)` | luz pontual, com no máximo 6 por quadro; `o.fundo: true` = luz de cenário, que só acende se sobrar vaga |
 | `r.label(x, y, z, texto, cor, tamanho)` | texto 2D preso a um ponto 3D |
 | `r.character(p, o)` | **personagem** (detento de uniforme na cor do jogador), animado sozinho (veja abaixo) |
+| `r.prop(nome, x, z, o)` | objeto de cenário: `beliche`, `vaso`, `banco`, `mesa`, `tambor`, `pneu`, `colchao`, `grade` (`o.w`, `o.h`), `poste` (`o.luz`), `arquivo`; `o: { rotY, scale, y, color }` |
 | `r.camera(pos, target, fov)` | muda a câmera neste quadro (ex.: tremor, foco); normalmente use `def.camera` |
 | `r.project(x, y, z)` | converte para a posição na tela 2D: `{x, y}` |
 | `r.unproject(sx, sy, alturaY=0)` | ponto da tela → ponto no plano horizontal do mundo `{x, y, z}` |
