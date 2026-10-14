@@ -33,6 +33,10 @@
   // cenas de referência: as tarefas do kit de cenários acrescentam as suas aqui
   const CENAS = [
     ['cela (r.room padrão)', (g, r) => r.room(40, 20, 920, 520)],
+    ['oficina', (g, r) => r.room(40, 20, 920, 520, { estilo: 'oficina' })],
+    ['refeitório', (g, r) => r.room(40, 20, 920, 520, { estilo: 'refeitorio' })],
+    ['subsolo', (g, r) => r.room(40, 20, 920, 520, { estilo: 'subsolo' })],
+    ['escritório', (g, r) => r.room(40, 20, 920, 520, { estilo: 'escritorio' })],
     ['objetos (r.prop)', (g, r) => {
       ['beliche', 'vaso', 'banco', 'mesa', 'tambor', 'pneu', 'colchao', 'grade', 'poste', 'arquivo']
         .forEach((n, i) => r.prop(n, 120 + (i % 5) * 180, 180 + Math.floor(i / 5) * 200, { rotY: i * 0.4 }));

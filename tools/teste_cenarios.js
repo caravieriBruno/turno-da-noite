@@ -51,5 +51,13 @@ deveFalhar('prop com nome errado', (r) => r.prop('belixe', 0, 0), 'beliche');
   ok(Math.abs((a[0] - 300) + (b[0] - 300)) < 1e-6 && Math.abs((a[2] - 200) + (b[2] - 200)) < 1e-6, 'prop girado 180° espelha em torno do ponto');
 }
 
+// --- r.room: estilos ---
+for (const estilo of ['cela', 'oficina', 'refeitorio', 'subsolo', 'escritorio']) {
+  cenarioValido(`room estilo ${estilo}`, (r) => r.room(40, 20, 920, 520, { estilo }));
+  ok(mesmas(trace((r) => r.room(920, 520, 40, 20, { estilo })), trace((r) => r.room(40, 20, 920, 520, { estilo }))), `room ${estilo}: cantos invertidos = cantos na ordem`);
+}
+deveFalhar('room com estilo errado', (r) => r.room(0, 0, 100, 100, { estilo: 'cozinha' }), 'refeitorio');
+ok(!mesmas(trace((r) => r.room(40, 20, 920, 520, { estilo: 'subsolo' }), 0), trace((r) => r.room(40, 20, 920, 520, { estilo: 'subsolo' }), 0.4)), 'room subsolo: giroflex muda com o tempo');
+
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
