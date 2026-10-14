@@ -20,10 +20,19 @@
     ? { bg: '#030404', fog: [1000, 2200], ambient: 0.16, sun: 0.45, sunDir: [-0.35, 1, 0.45], sunColor: '#ffc987', hemiSky: '#8fae98', hemiGround: '#140e09', spot: 5.5, spotColor: '#ffdcaa', envMap: 0.4 }
     : { bg: '#0a0d11', fog: [1300, 3000], ambient: 0.7, sun: 2.4, sunDir: [-0.45, 1, 0.55], sunColor: '#ffe9cf', hemiSky: '#9fb7d8', hemiGround: '#20160f', spot: 0 };
 
+  // r.room / r.yard / r.prop: montados por engine/cenarios.js usando as primitivas da própria API
+  // (por isso funcionam igual no navegador e no validador)
+  const KIT = ['room', 'yard', 'prop'];
+  const viaCenarios = (api, k) => (...args) => {
+    const f = TN.cenarios && TN.cenarios[k];
+    if (!f) throw new Error(`r.${k}: engine/cenarios.js não foi carregado (ou não tem "${k}")`);
+    return f(api, ...args);
+  };
+
   // ====================== VALIDADOR (Node / sem WebGL) ======================
-  // Mesmo formato da API real; só confere se os números são válidos.
+  // Mesmo formato da API real; confere se os números são válidos e registra as chamadas (para testes).
   function makeValidator() {
-    const errs = [];
+    const errs = [], counts = {}, calls = [];
     const chk = (name, args) => {
       for (let i = 0; i < args.length; i++) {
         const a = args[i];
@@ -31,13 +40,17 @@
       }
     };
     const api = {};
-    for (const k of ['camera', 'env', 'box', 'cyl', 'sphere', 'cone', 'plane', 'disc', 'ring', 'beam', 'tube', 'light', 'label', 'character', 'room']) {
-      api[k] = (...args) => { if (k === 'character') { const p = args[0] || {}; chk(k, [p.x, p.y, p.dir || 0]); } else chk(k, args); };
+    for (const k of ['camera', 'env', 'box', 'cyl', 'sphere', 'cone', 'plane', 'disc', 'ring', 'beam', 'tube', 'light', 'label', 'character']) {
+      api[k] = (...args) => {
+        counts[k] = (counts[k] || 0) + 1; calls.push([k, args]);
+        if (k === 'character') { const p = args[0] || {}; chk(k, [p.x, p.y, p.dir || 0]); } else chk(k, args);
+      };
     }
+    for (const k of KIT) api[k] = viaCenarios(api, k);
     api.W = TN.W; api.H = TN.H; api.time = 0;
     api.project = () => ({ x: 0, y: 0, visible: true });
     api.unproject = (sx, sy, py = 0) => ({ x: sx, y: py, z: sy });
-    return { api, errs };
+    return { api, errs, counts, calls };
   }
 
   TN.R3 = {
@@ -50,6 +63,13 @@
       const { api, errs } = makeValidator();
       round.def.draw3d(round, api);
       return errs;
+    },
+    // usado pelo tools/teste_cenarios.js: roda fn(api) no validador com r.time = time e devolve o rastro
+    trace(fn, time = 0) {
+      const v = makeValidator();
+      v.api.time = time;
+      fn(v.api);
+      return { errs: v.errs, counts: v.counts, calls: v.calls };
     },
   };
   if (!hasThree || typeof document === 'undefined') return;
@@ -287,6 +307,14 @@
 
   // ---------------- luzes pontuais ----------------
   const lightPool = { list: [], n: 0 };
+  const luzesFundo = [];   // luzes de cenário do quadro atual, acesas depois das do minigame
+  function addLight(x, y, z, color, intensity, distance) {
+    if (lightPool.n >= 6) return;
+    let l = lightPool.list[lightPool.n];
+    if (!l) { l = new THREE.PointLight('#fff', 1, 300, 1.6); scene.add(l); lightPool.list.push(l); }
+    lightPool.n++;
+    l.visible = true; l.position.set(x, y, z); l.color.set(color); l.intensity = intensity * 60000 / 100; l.distance = distance;
+  }
 
   // ---------------- rótulos (texto 2D projetado) ----------------
   let labels = [];
@@ -348,13 +376,10 @@
       m.quaternion.setFromUnitVectors(upY, dirV.normalize());
       return m;
     },
-    // luz pontual (máx. 6 por quadro)
-    light(x, y, z, color = '#fff', intensity = 1, distance = 300) {
-      if (lightPool.n >= 6) return;
-      let l = lightPool.list[lightPool.n];
-      if (!l) { l = new THREE.PointLight('#fff', 1, 300, 1.6); scene.add(l); lightPool.list.push(l); }
-      lightPool.n++;
-      l.visible = true; l.position.set(x, y, z); l.color.set(color); l.intensity = intensity * 60000 / 100; l.distance = distance;
+    // luz pontual (máx. 6 por quadro). o.fundo: luz de cenário, que só ocupa vaga sobrando depois do minigame
+    light(x, y, z, color = '#fff', intensity = 1, distance = 300, o = {}) {
+      if (o.fundo) { luzesFundo.push([x, y, z, color, intensity, distance]); return; }
+      addLight(x, y, z, color, intensity, distance);
     },
     // texto 2D preso a um ponto 3D
     label(x, y, z, text, color = '#fff', size = 14) { labels.push({ x, y, z, text: String(text), color, size }); },
@@ -427,53 +452,10 @@
       if (o.label !== false && (o.label || p.label)) labels.push({ x: p.x, y: (o.y || 0) + 72 * scale, z: p.y, text: o.label || p.label, color: alive ? color : '#888', size: 12 });
       return c.root;
     },
-    // Cenário de cadeia em volta da arena: chão, parede do fundo e laterais com pintura de meia-parede,
-    // janelas gradeadas, cano e luminárias fluorescentes (uma pisca). (x1,z1) = canto do fundo à esquerda,
-    // (x2,z2) = canto da frente à direita. A frente fica aberta para a câmera.
-    // o: { h, paintH, paint, top, floor, windows, lamps (nº), lights (quantas acendem luz de verdade), bars (grade lateral) }
-    room(x1, z1, x2, z2, o = {}) {
-      const H = o.h ?? 200, PH = o.paintH ?? H * 0.45, T = 16, w = x2 - x1, cx = (x1 + x2) / 2;
-      const paint = o.paint ?? '#35574a', top = o.top ?? '#857d6b', floor = o.floor ?? '#3e3c38', dark = '#1b1d1c';
-      const zFront = z2 + 500, sideD = zFront - z1, sideZ = (z1 + zFront) / 2;
-      api.plane(cx, -1.5, sideZ, w + 1400, sideD + 900, floor);
-      // parede do fundo + laterais (meia-parede pintada, faixa escura, parte de cima clara)
-      const wall = (x, z, ww, dd) => {
-        api.box(x, 0, z, ww, PH, dd, paint, { tex: 'tinta' });
-        api.box(x, PH, z, ww, H - PH, dd, top, { tex: 'tinta' });
-        api.box(x, PH - 3, z, ww + 2, 6, dd + 2, dark, { tex: 'tinta' });
-        api.box(x, 0, z, ww + 2, 9, dd + 2, dark);
-      };
-      wall(cx, z1 - T / 2, w + T * 2, T);
-      wall(x1 - T / 2, sideZ, T, sideD);
-      wall(x2 + T / 2, sideZ, T, sideD);
-      // janelas altas gradeadas no fundo
-      const nWin = o.windows ?? Math.max(1, Math.round(w / 320));
-      for (let i = 0; i < nWin; i++) {
-        const wx = x1 + w * (i + 0.5) / nWin, wy = H * 0.55, ww = 74, wh = H * 0.28;
-        api.box(wx, wy, z1 + 0.5, ww + 10, wh + 10, 3, '#3a3a36', { metal: 0.5 });
-        api.box(wx, wy + 5, z1 + 1, ww, wh, 3, '#06080a', { tex: false });
-        for (let b = 0; b < 7; b++) api.tube(wx - ww / 2 + (b + 0.5) * ww / 7, wy + 5, z1 + 4, wx - ww / 2 + (b + 0.5) * ww / 7, wy + 5 + wh, z1 + 4, 1.6, '#4a4844', { metal: 0.6 });
-      }
-      // cano correndo no alto da parede do fundo
-      api.tube(x1, H - 22, z1 + 10, x2, H - 22, z1 + 10, 5, '#6b5846', { metal: 0.5 });
-      // grade de cela na lateral esquerda
-      if (o.bars !== false) {
-        const bz = z1 + 60, bl = Math.min(220, sideD * 0.4);
-        api.box(x1 + 1, 0, bz + bl / 2, 3, H * 0.7, bl, '#07090a', { tex: false });
-        for (let z = bz; z <= bz + bl; z += 14) api.tube(x1 + 5, 0, z, x1 + 5, H * 0.7, z, 2, '#55534e', { metal: 0.6 });
-        api.box(x1 + 5, H * 0.7, bz + bl / 2, 5, 6, bl + 4, '#55534e', { metal: 0.6 });
-      }
-      // luminárias fluorescentes no fundo; a do meio pisca (determinístico: igual no host e nos clientes)
-      const nLamp = o.lamps ?? 3, t = api.time || 0;
-      let lit = 0;
-      for (let i = 0; i < nLamp; i++) {
-        const lx = x1 + w * (i + 0.5) / nLamp;
-        const flick = i === Math.floor(nLamp / 2) && Math.sin(t * 17) + Math.sin(t * 5.3 + 1) > 1.25;
-        api.box(lx, PH + 8, z1 + 6, 100, 9, 12, '#5d5f5c', { metal: 0.5 });
-        api.box(lx, PH + 4, z1 + 9, 90, 4, 6, flick ? '#3c403c' : '#eafff0', { glow: true });
-        if (!flick && lit < (o.lights ?? 2)) { api.light(lx, PH + 10, z1 + 70, '#d9ffe6', 0.7, 700); lit++; }
-      }
-    },
+    // cenários de cadeia (engine/cenarios.js)
+    room: (...a) => viaCenarios(api, 'room')(...a),
+    yard: (...a) => viaCenarios(api, 'yard')(...a),
+    prop: (...a) => viaCenarios(api, 'prop')(...a),
   };
 
   let envTexture = null, fogObj = null;
@@ -592,12 +574,14 @@
     renderRound(round, c) {
       const def = round.def;
       for (const k in pools) pools[k].n = 0;
-      charPool.n = 0; lightPool.n = 0; labels = [];
+      charPool.n = 0; lightPool.n = 0; labels = []; luzesFundo.length = 0;
       applyEnv({ ...DEFAULT_ENV, ...(def.env || {}) });
       const cam = def.camera || DEFAULT_CAMERA;
       api.camera(cam.pos, cam.target, cam.fov || 38);
       api.time = round.time;
       def.draw3d(round, api);
+      for (const l of luzesFundo) addLight(...l);   // cenário ocupa só as vagas que sobraram
+      luzesFundo.length = 0;
       // partículas do motor viram cubinhos brilhantes perto do chão (exceto em jogos de coordenadas de tela)
       if (!def.screenSpace) for (const pt of round._particles) api.box(pt.x, 10 + (1 - pt.t) * 18, pt.y, pt.size * 1.6, pt.size * 1.6, pt.size * 1.6, pt.color, { glow: true });
       // esconde o que não foi usado neste quadro
@@ -621,6 +605,8 @@
         if (s.visible) TN.draw.text(c, l.text, s.x, s.y, { size: l.size, color: l.color, align: 'center' });
       }
     },
+    // para testes (tools/teste_render.js): o que o último quadro acendeu
+    stats() { return { luzes: lightPool.list.slice(0, lightPool.n).map((l) => ({ x: l.position.x, y: l.position.y, z: l.position.z })) }; },
     project: (x, y, z) => project(x, y, z),
     unproject: (sx, sy, py) => unproject(sx, sy, py),
     setVisible(v) { if (canvas3d) canvas3d.style.visibility = v ? 'visible' : 'hidden'; },

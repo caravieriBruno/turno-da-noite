@@ -42,7 +42,7 @@ function load(rel) {
   const file = path.join(ROOT, rel);
   vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
 }
-['engine/util.js', 'engine/input.js', 'engine/audio.js', 'engine/draw.js', 'engine/render3d.js', 'engine/minigame.js', 'engine/session.js', 'engine/net.js', 'minigames/manifest.js'].forEach(load);
+['engine/util.js', 'engine/input.js', 'engine/audio.js', 'engine/draw.js', 'engine/render3d.js', 'engine/cenarios.js', 'engine/minigame.js', 'engine/session.js', 'engine/net.js', 'minigames/manifest.js'].forEach(load);
 
 let failures = 0;
 for (const f of TN.MINIGAME_FILES) {

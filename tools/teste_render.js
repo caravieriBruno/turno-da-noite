@@ -53,6 +53,14 @@
   }
 
   // TESTES EXTRAS (as tarefas seguintes acrescentam blocos aqui)
+  // luzes do minigame têm prioridade sobre as do cenário (o motor tem 6 vagas)
+  try {
+    desenhar((g, r) => { r.room(40, 20, 920, 520); for (let i = 0; i < 6; i++) r.light(100 + i * 150, 40, 300, '#f00', 1, 200); }, 1);
+    const luzes = TN.R3.stats().luzes;
+    ok(luzes.length === 6 && luzes.every((l) => Math.abs(l.y - 40) < 0.01), 'luzes do jogo têm prioridade sobre as do cenário');
+    desenhar((g, r) => { r.room(40, 20, 920, 520); r.light(480, 40, 300, '#f00', 1, 200); }, 1);
+    ok(TN.R3.stats().luzes.length === 3, 'sobrando vaga, as luzes do cenário acendem (1 do jogo + 2 do cenário)');
+  } catch (e) { ok(false, 'prioridade de luz: exceção ' + e.message); }
 
   // tempo médio de quadro: cela + piso em ladrilhos + 4 personagens (parecido com um minigame real)
   const tipico = (g, r) => {
