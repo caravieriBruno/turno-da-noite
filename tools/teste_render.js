@@ -53,6 +53,32 @@
   }
 
   // TESTES EXTRAS (as tarefas seguintes acrescentam blocos aqui)
+  // texturas: todas existem, não são lisas, têm brilho de multiplicador (0.5..1) e são diferentes entre si
+  try {
+    const nomes = ['concreto', 'piso', 'metal', 'tinta', 'tecido', 'tijolo', 'azulejo', 'caquinho', 'madeira', 'taco'];
+    const assinaturas = new Set();
+    for (const n of nomes) {
+      const d = TN.R3._textura(n).image.data;
+      let soma = 0, soma2 = 0, h = 2166136261;
+      for (let i = 0; i < d.length; i += 4) { const v = d[i] / 255; soma += v; soma2 += v * v; h = Math.imul(h ^ d[i], 16777619); }
+      const qtd = d.length / 4, media = soma / qtd, desvio = Math.sqrt(Math.max(0, soma2 / qtd - media * media));
+      ok(media > 0.5 && media < 0.98 && desvio > 0.02, `textura ${n}: média ${media.toFixed(2)}, desvio ${desvio.toFixed(3)}`);
+      assinaturas.add(h >>> 0);
+    }
+    ok(assinaturas.size === nomes.length, 'as texturas são todas diferentes entre si');
+    // cada textura de peças tem o seu padrão: as juntas (rejunte, frestas) são bem mais escuras que as peças
+    const N = 128, val = (n) => { const d = TN.R3._textura(n).image.data; return (x, y) => d[(y * N + x) * 4]; };
+    const juntaEscura = (n, eJunta) => {
+      const v = val(n); let sj = 0, nj = 0, sp = 0, np = 0;
+      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { if (eJunta(x, y)) { sj += v(x, y); nj++; } else { sp += v(x, y); np++; } }
+      return sj / nj < 0.75 * (sp / np);
+    };
+    ok(juntaEscura('tijolo', (x, y) => y % 16 < 2), 'tijolo: fiadas com junta escura a cada 16 px');
+    ok(juntaEscura('azulejo', (x, y) => y % 32 < 2 || x % 32 < 2), 'azulejo: rejunte escuro a cada 32 px');
+    ok(juntaEscura('madeira', (x) => x % 16 === 0), 'madeira: fresta entre tábuas a cada 16 px');
+    ok(juntaEscura('taco', (x, y) => x % 32 === 0 || y % 32 === 0), 'taco: bordas escuras dos blocos de 32 px');
+    { const v = val('caquinho'); let r = 0; for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (v(x, y) === 127) r++; ok(r / (N * N) > 0.04, 'caquinho: rejunte entre os cacos'); }
+  } catch (e) { ok(false, 'texturas: exceção ' + e.message); }
   // luzes do minigame têm prioridade sobre as do cenário (o motor tem 6 vagas)
   try {
     desenhar((g, r) => { r.room(40, 20, 920, 520); for (let i = 0; i < 6; i++) r.light(100 + i * 150, 40, 300, '#f00', 1, 200); }, 1);

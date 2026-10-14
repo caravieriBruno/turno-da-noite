@@ -123,6 +123,9 @@
     const rnd = rng(kind.length * 7919 + kind.charCodeAt(0));
     const n4 = noiseFn(4, rnd), n8 = noiseFn(8, rnd), n16 = noiseFn(16, rnd), n32 = noiseFn(32, rnd);
     const col = Array.from({ length: N }, () => rnd());   // variação por coluna (riscos verticais, escorridos)
+    const per = Array.from({ length: 64 }, () => rnd());   // tom de cada peça (tijolo, azulejo, tábua, taco)
+    // caquinho: pontos de Voronoi (cacos), com distância que "dá a volta" para repetir sem emenda
+    const pts = kind === 'caquinho' ? Array.from({ length: 36 }, () => [rnd() * N, rnd() * N, 0.72 + 0.28 * rnd()]) : null;
     const px = new Float32Array(N * N * 3);
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const u = x / N, v = y / N, i = (y * N + x) * 3;
@@ -142,6 +145,32 @@
         else if (peel > 0.61) k *= 0.55;
         const drip = col[x] > 0.93 ? 0.14 * (1 - ((v * 2) % 1)) : 0;
         r = g = b = k - drip;
+      } else if (kind === 'tijolo') {   // fiadas de 16 px, tijolos de 32 px, juntas escuras
+        const fiada = Math.floor(y / 16), off = fiada % 2 ? 16 : 0, tij = Math.floor((x + off) / 32) % 4;
+        const junta = y % 16 < 2 || (x + off) % 32 < 2;
+        r = g = b = junta ? 0.5 : 0.78 + 0.18 * per[(fiada * 4 + tij) % 64] + 0.08 * n32(u, v) - 0.05 * rnd();
+      } else if (kind === 'azulejo') {   // azulejo de 32 px, rejunte escuro, encardido
+        const junta = x % 32 < 2 || y % 32 < 2;
+        const sujo = Math.max(0, n8(u, v) - 0.55) * 0.9;
+        const k = (junta ? 0.55 : 0.93 + 0.04 * per[(Math.floor(y / 32) * 4 + Math.floor(x / 32)) % 64]) - sujo;
+        r = k; g = k * 0.99; b = k * 0.95;
+      } else if (kind === 'caquinho') {   // piso de caquinho: cacos irregulares com rejunte
+        let d1 = 1e9, d2 = 1e9, tom = 1;
+        for (const [qx, qy, qv] of pts) {
+          let dx = Math.abs(x - qx), dy = Math.abs(y - qy); dx = Math.min(dx, N - dx); dy = Math.min(dy, N - dy);
+          const d = Math.hypot(dx, dy);
+          if (d < d1) { d2 = d1; d1 = d; tom = qv; } else if (d < d2) d2 = d;
+        }
+        r = g = b = d2 - d1 < 1.6 ? 0.5 : tom + 0.05 * n32(u, v) - 0.04 * rnd();
+      } else if (kind === 'madeira') {   // tábuas verticais de 16 px com veio
+        const tab = Math.floor(x / 16);
+        const veio = 0.08 * Math.sin((u * 6 + n16(u, v) * 2.5 + per[tab % 64] * 6) * Math.PI * 2);
+        r = g = b = x % 16 === 0 ? 0.5 : 0.78 + veio + 0.1 * per[tab % 64] + 0.04 * rnd();
+      } else if (kind === 'taco') {   // taco em blocos de 32 px alternando o sentido, réguas de 8 px
+        const bx = Math.floor(x / 32), by = Math.floor(y / 32), lx = x % 32, ly = y % 32;
+        const deitado = (bx + by) % 2 === 0, faixa = Math.floor((deitado ? ly : lx) / 8);
+        const junta = (deitado ? ly : lx) % 8 === 0 || lx === 0 || ly === 0;
+        r = g = b = junta ? 0.5 : 0.76 + 0.16 * per[((by * 4 + bx) * 4) % 64 + faixa] + 0.05 * n32(u, v);
       } else {   // 'concreto' e 'piso'
         const piso = kind === 'piso';
         let k = 0.82 + (piso ? 0.1 : 0.12) * n8(u, v) + 0.08 * n16(u, v) + 0.06 * n32(u, v) + 0.07 * (rnd() - 0.5);
@@ -171,7 +200,7 @@
     tex.needsUpdate = true;
     return tex;
   }
-  const TEX_SIZE = { concreto: 300, piso: 420, metal: 220, tinta: 340, tecido: 60 };   // unidades de mundo por repetição
+  const TEX_SIZE = { concreto: 300, piso: 420, metal: 220, tinta: 340, tecido: 60, tijolo: 170, azulejo: 110, caquinho: 190, madeira: 130, taco: 150 };   // unidades de mundo por repetição
   const textures = {};
   const texOf = (kind) => textures[kind] || (textures[kind] = makeTexture(kind));
   // Projeção triplanar: a textura é amarrada ao objeto (não "escorrega" quando ele anda) e não estica
@@ -605,6 +634,7 @@
         if (s.visible) TN.draw.text(c, l.text, s.x, s.y, { size: l.size, color: l.color, align: 'center' });
       }
     },
+    _textura: (nome) => texOf(nome),   // para testes (tools/teste_render.js)
     // para testes (tools/teste_render.js): o que o último quadro acendeu
     stats() { return { luzes: lightPool.list.slice(0, lightPool.n).map((l) => ({ x: l.position.x, y: l.position.y, z: l.position.z })) }; },
     project: (x, y, z) => project(x, y, z),
