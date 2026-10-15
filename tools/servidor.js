@@ -155,6 +155,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  TURNO DA NOITE — servidor rodando\n`);
   console.log(`  Neste computador:   http://localhost:${PORT}`);
   for (const ip of lanAddresses()) console.log(`  Na rede local:      http://${ip}:${PORT}`);
-  console.log(`\n  Para jogar em rede: um computador escolhe "CRIAR SALA EM REDE";`);
-  console.log(`  os outros abrem o endereço da rede local e escolhem "ENTRAR EM SALA".\n`);
+  console.log(`\n  Para jogar em rede: um computador escolhe "CHAMAR COMPARSAS (REDE LOCAL)";`);
+  console.log(`  os outros abrem o endereço da rede local e escolhem "ENTRAR NO PLANO (REDE LOCAL)".\n`);
 });

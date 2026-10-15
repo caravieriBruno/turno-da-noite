@@ -196,11 +196,23 @@ function secaoTelasDaPartida() {
   ok(semVisualAntigo(['Setup', 'Picker', 'Brief', 'ScoreScreen', 'Final'].map((n) => TN.cenaDeTeste(n))), 'telas da partida: só giz (sem robô, painel ou CRT)');
 }
 
+// --- 6. as instruções fora do jogo citam os itens de menu que existem ---
+function secaoInstrucoes() {
+  const ler = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+  const VELHOS = ['CRIAR SALA EM REDE', 'ENTRAR EM SALA', 'TESTAR UM MINIGAME'];
+  for (const rel of ['tools/servidor.js', 'README.md', 'CLAUDE.md']) {
+    const txt = ler(rel), achou = VELHOS.filter((v) => txt.includes(v));
+    ok(!achou.length, `${rel} não cita itens de menu que não existem mais` + (achou.length ? ` (${achou.join(', ')})` : ''));
+  }
+  ok(ler('tools/servidor.js').includes('CHAMAR COMPARSAS') && ler('README.md').includes('ENTRAR NO PLANO'), 'servidor e README ensinam a rede com os nomes novos do menu');
+}
+
 secaoDono();
 secaoGiz();
 secaoCenas();
 secaoTelasSemSessao();
 secaoTelasDaPartida();
+secaoInstrucoes();
 // CHAMADAS EXTRAS (as tarefas seguintes acrescentam aqui)
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

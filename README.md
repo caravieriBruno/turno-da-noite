@@ -7,8 +7,8 @@ Party game de navegador em **3D com câmera fixa**, com minigames curtos e morta
 - **Neste computador:** abra o `index.html` no navegador (Chrome, Edge ou Firefox, com WebGL). Não precisa instalar nada. Com `?2d=1` no endereço, o jogo usa os gráficos 2D simples.
 - **Em rede local:**
   1. Num computador com [Node.js](https://nodejs.org), dê dois cliques em `JOGAR_EM_REDE.bat` (ou rode `node tools/servidor.js`).
-  2. Nesse computador, escolha **CRIAR SALA EM REDE LOCAL**.
-  3. Nos outros computadores ou notebooks da mesma rede, abra o endereço que o servidor mostrar (ex.: `http://192.168.0.10:8765`) e escolha **ENTRAR EM SALA**.
+  2. Nesse computador, escolha **CHAMAR COMPARSAS (REDE LOCAL)**.
+  3. Nos outros computadores ou notebooks da mesma rede, abra o endereço que o servidor mostrar (ex.: `http://192.168.0.10:8765`) e escolha **ENTRAR NO PLANO (REDE LOCAL)**.
   4. No lobby, cada pessoa aperta **AÇÃO** para pegar uma vaga. Dá para misturar jogadores locais e da rede, e as vagas que sobrarem viram bots.
   5. Se o Windows perguntar sobre o Firewall, permita "redes privadas".
 

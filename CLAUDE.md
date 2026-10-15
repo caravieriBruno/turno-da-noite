@@ -32,7 +32,7 @@ Party game de navegador com minigames (1 a 4 jogadores locais/rede e bots), insp
 4. Adicione `'<id>.js'` em `minigames/manifest.js`.
 5. Rode `node tools/simular.js <id> --vezes 3` e `node tools/simular.js <id> --parado`. As duas precisam terminar com "Tudo certo".
 6. Faça a checagem visual: suba `node tools/servidor.js 8765` em background, rode `bash tools/screenshot.sh <id> <segundos> out.png` e leia o PNG.
-7. Para jogar: `index.html?game=<id>`. Também há o menu "TESTAR UM MINIGAME".
+7. Para jogar: `index.html?game=<id>`. Também há o menu "ENSAIAR UMA ETAPA".
 
 ## Regras
 - Não altere o motor para um jogo específico. Se algo genérico faltar, adicione ao motor e documente em `docs/COMO_CRIAR_MINIGAME.md`.
