@@ -340,7 +340,7 @@
       G.linhas(c, lines.join('\n'), 55, 390, { size: 17, color: L, lineHeight: 26, papel: true, maxWidth: 550 });
       G.texto(c, `${entry.rounds > 1 ? entry.rounds + ' TENTATIVAS' : '1 TENTATIVA'} · ETAPA ${s.index + 1}/${s.playlist.length}`, 55, 490, { size: 14, color: L, papel: true });
       // quanto cada um já cavou
-      G.retangulo(c, 650, 24, 280, 492, { color: G.CORES.apagadoForte });
+      G.retangulo(c, 650, 24, 280, 492, { color: G.CORES.apagadoForte, fill: 'rgba(29,35,33,0.9)' });   // esconde a planta atrás
       G.texto(c, 'TÚNEL CAVADO', 790, 55, { size: 18, align: 'center' });
       const sorted = s.roster.slice().sort((a, b) => s.totals[b.id] - s.totals[a.id]);
       sorted.forEach((p, i) => {
@@ -516,23 +516,25 @@
       G.titulo(c, 'O APITO TOCOU', TN.W / 2, 50, 40);
       G.texto(c, `P${w.id + 1} ${w.isBot ? '(BOT) ' : ''}FUGIU!`, TN.W / 2, 100, { size: 26, color: G.desbotar(w.color), align: 'center' });
       // o muro: o 1º desenhado do lado de fora, os outros dentro; o último vai para a solitária
-      const MX = 600, CHAO = 400;
+      const MX = 600, CHAO = 380;
       G.linha(c, 40, CHAO, TN.W - 40, CHAO, { lw: 2.5 });
       G.retangulo(c, MX - 18, 150, 36, CHAO - 150, { lw: 2.5 });
       for (let y = 176; y < CHAO; y += 26) G.linha(c, MX - 18, y, MX + 18, y, { lw: 1, alpha: 0.6 });   // tijolos
       for (let x = MX - 30; x < MX + 30; x += 10) G.linha(c, x, 146, x + 8, 136, { lw: 1 });             // arame farpado
       G.texto(c, '1º', 780, CHAO - 110, { size: 26, color: G.CORES.destaque, align: 'center' });
       G.detento(c, 780, CHAO - 40 + Math.sin(this.t * 4) * 6, 26, w.color, { comemorando: true });
-      G.texto(c, `${s.totals[w.id]} m · FUGIU`, 780, CHAO + 24, { size: 18, color: G.CORES.destaque, align: 'center' });
+      G.texto(c, `${s.totals[w.id]} m`, 780, CHAO + 22, { size: 18, color: G.CORES.destaque, align: 'center' });
+      G.texto(c, 'FUGIU', 780, CHAO + 42, { size: 15, color: G.CORES.destaque, align: 'center' });
       const dentro = sorted.slice(1);
       dentro.forEach((p, i) => {
         const x = 130 + i * 150, ultimo = i === dentro.length - 1;
         G.texto(c, `${i + 2}º`, x, CHAO - 100, { size: 22, align: 'center' });
         G.detento(c, x, CHAO - (ultimo ? 14 : 40), 22, p.color, { caido: ultimo });
         if (ultimo) { G.linha(c, x - 24, CHAO - 66, x + 24, CHAO - 14, { color: G.CORES.perigo, lw: 3 }); G.linha(c, x + 24, CHAO - 66, x - 24, CHAO - 14, { color: G.CORES.perigo, lw: 3 }); }
-        G.texto(c, `${s.totals[p.id]} m · ${ultimo ? 'SOLITÁRIA' : 'RECAPTURADO'}`, x, CHAO + 24, { size: 15, color: ultimo ? G.CORES.perigo : G.CORES.giz, align: 'center' });
+        G.texto(c, `${s.totals[p.id]} m`, x, CHAO + 22, { size: 16, align: 'center' });
+        G.texto(c, ultimo ? 'SOLITÁRIA' : 'RECAPTURADO', x, CHAO + 42, { size: 14, color: ultimo ? G.CORES.perigo : G.CORES.giz, align: 'center', maxWidth: 140 });
       });
-      menuGiz(c, ['TENTAR DE NOVO', 'VOLTAR PRA CELA'], this.sel, TN.W / 2, 465, this.t - (this.selAt || 0), { size: 20, gap: 32 });
+      menuGiz(c, ['TENTAR DE NOVO', 'VOLTAR PRA CELA'], this.sel, TN.W / 2, 468, this.t - (this.selAt || 0), { size: 20, gap: 30 });
       rodape(c, 'só o P1 mexe no menu');
     }
   }

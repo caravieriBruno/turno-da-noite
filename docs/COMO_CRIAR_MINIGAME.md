@@ -171,6 +171,7 @@ Os minigames são desenhados em **3D com câmera fixa**, como no Machine Party. 
 - Jogos de visão lateral (mesa, cabo de guerra, escada) também usam 3D: monte o cenário com a câmera de frente ou de lado e converta as coordenadas da lógica como for mais natural, por exemplo `Y = altura`.
 - `draw(g, c)` em 2D é **opcional**: serve de alternativa quando não há WebGL ou com `?2d=1`. Minigames novos podem ter só `draw3d`.
 - Para conferir as poses do personagem, use a cena de teste: `index.html?game=_teste3d&extra=_teste3d&humans=0&t=4`.
+- **Menus (fora do minigame):** são desenhados com `TN.giz` (`engine/giz.js`, tema "mapa de fuga a giz") e só o host navega neles (`TN.donoDoMenu(roster)`: o P1 no mesmo computador; jogador remoto nunca). Um minigame não precisa mexer nisso: o `title`, a `tagline` e o `brief` dele aparecem na roleta e no briefing como estão.
 
 ## Compatibilidade com o modo em rede (obrigatória)
 

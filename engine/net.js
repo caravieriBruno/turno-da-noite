@@ -222,7 +222,7 @@
       G.parede(c);
       if (this.msg !== 'ERRO') { G.texto(c, this.msg, TN.W / 2, 250, { size: 26, color: G.CORES.destaque, align: 'center' }); return; }
       G.titulo(c, 'Não consegui falar com o servidor de rede.', TN.W / 2, 160, 24, G.CORES.perigo);
-      G.bilhete(c, 150, 210, 660, 170, { rot: -0.005 });
+      G.bilhete(c, 150, 210, 660, 130, { rot: -0.005 });
       G.linhas(c, 'Para jogar em rede local, inicie o servidor neste computador:\n\n    node tools/servidor.js        (ou dê dois cliques em JOGAR_EM_REDE)\n\ne abra o jogo pelo endereço que ele mostrar (http://localhost:8765).', TN.W / 2, 240, { size: 15, color: G.CORES.lapis, papel: true, align: 'center' });
       G.texto(c, 'AÇÃO ou ESC para voltar', TN.W / 2, 420, { size: 14, color: G.CORES.apagadoForte, align: 'center' });
     }
