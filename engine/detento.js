@@ -98,7 +98,10 @@
         if (!m.clipes.has(clipe)) return;
         if (clipe !== this.atual) {
           const nova = mixer.clipAction(m.clipes.get(clipe));
-          nova.reset();
+          // a morte recomeça do início; clipe em loop continua de onde estava (troca rápida walk/idle,
+          // como um bot hesitando ou a rede a 30 snapshots/s, não pode reiniciar a corrida)
+          if (UMA_VEZ.has(clipe)) nova.reset();
+          else { nova.stopFading(); nova.enabled = true; nova.paused = false; }
           nova.setLoop(UMA_VEZ.has(clipe) ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
           nova.clampWhenFinished = UMA_VEZ.has(clipe);
           nova.play();

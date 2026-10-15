@@ -279,7 +279,7 @@
   }
 
   // ---------------- personagem (detento de uniforme; no visual antigo, boneco de macacão com visor) ----------------
-  const charPool = { list: [], n: 0 };
+  const charPool = { list: [], n: 0, quadro: 0 };   // c.quadro = último quadro em que a vaga foi usada
   const charState = new Map(); // key -> { x, z, phase, t }
   // detento glTF (visual novo): carregado em segundo plano no init; até ficar pronto, ou se falhar, o pool
   // usa o boneco de caixas. Quando fica pronto, o pool é refeito com o modelo.
@@ -465,20 +465,33 @@
     // o: { pose: 'auto'|'idle'|'walk'|'dead'|'sit'|'crouch'|'fall'|'lie'|'arms'|'aim',
     //      y (elevação), scale, color, flash, label (texto ou false), key (id do cache), dir (rad) }
     character(p, o = {}) {
-      let c = charPool.list[charPool.n];
+      const key = o.key ?? p.id ?? charPool.n + 1;
+      let c;
+      if (detento) {
+        // detento glTF: a animação é estado da vaga, então cada key fica com a sua (a ordem de desenho
+        // muda quando alguém morre); senão pega uma vaga que não foi usada nem no quadro anterior
+        c = charPool.list.find((v) => v.chave === key && v.quadro !== charPool.quadro)
+          || charPool.list.find((v) => v.quadro < charPool.quadro - 1);
+      } else c = charPool.list.find((v) => v.quadro !== charPool.quadro);
       if (!c) { c = makeCharacter(); charPool.list.push(c); }
       charPool.n++;
+      c.chave = key; c.quadro = charPool.quadro;
       c.root.visible = true;
-      const key = o.key ?? p.id ?? charPool.n;
-      const st = charState.get(key) || { x: p.x, z: p.y, phase: 0, moving: 0, seed: Math.random() * 6 };
+      const st = charState.get(key) || { x: p.x, z: p.y, phase: 0, moving: 0, seed: Math.random() * 6, vel: 0, t: 0, andando: false };
       const moved = Math.hypot(p.x - st.x, p.y - st.z);
       st.phase += moved * 0.11;
       st.moving += ((moved > 0.4 ? 1 : 0) - st.moving) * 0.25;
       st.x = p.x; st.z = p.y; charState.set(key, st);
+      // velocidade (px/s) suavizada em ~0,2 s: a posição só muda nos passos da simulação (60/s) ou nos
+      // snapshots da rede (30/s), então quadro a quadro ela alterna entre parada e o dobro
+      const agora = performance.now() / 1000, dtKey = st.t ? Math.min(0.1, agora - st.t) : 0;
+      st.t = agora;
+      if (dtKey > 0) st.vel += (moved / dtKey - st.vel) * Math.min(1, dtKey * 5);
+      st.andando = st.andando ? st.vel > 15 : st.vel > 30;   // histerese: não fica trocando walk/idle
 
       const alive = p.alive !== false;
       let pose = o.pose || 'auto';
-      if (pose === 'auto') pose = !alive ? 'dead' : st.moving > 0.3 ? 'walk' : 'idle';
+      if (pose === 'auto') pose = !alive ? 'dead' : (c.gltf ? st.andando : st.moving > 0.3) ? 'walk' : 'idle';
       const scale = (o.scale || 1) * ((p.r || 16) / 16);
       const color = o.color || p.color || '#999';
       c.suit.color.set(color);
@@ -499,9 +512,9 @@
       c.root.scale.setScalar(scale);
       if (c.gltf) {
         // detento glTF: a pose vira um clipe; dt local (animação é só visual, não vai para a rede)
-        const agora = performance.now() / 1000, dt = c.ultimoT ? Math.min(0.1, agora - c.ultimoT) : 0;
+        const dt = c.ultimoT ? Math.min(0.1, agora - c.ultimoT) : 0;
         c.ultimoT = agora;
-        c.gltf.pose(pose, dt > 0 ? moved / dt : 0);
+        c.gltf.pose(pose, st.vel);
         c.gltf.avancar(dt);
         c.body.rotation.set(0, 0, o.lean || 0);
       } else {
@@ -661,7 +674,7 @@
     renderRound(round, c) {
       const def = round.def;
       for (const k in pools) pools[k].n = 0;
-      charPool.n = 0; lightPool.n = 0; labels = []; luzesFundo.length = 0;
+      charPool.n = 0; charPool.quadro++; lightPool.n = 0; labels = []; luzesFundo.length = 0;
       applyEnv({ ...DEFAULT_ENV, ...(def.env || {}) });
       const cam = def.camera || DEFAULT_CAMERA;
       api.camera(cam.pos, cam.target, cam.fov || 38);
@@ -673,7 +686,7 @@
       if (!def.screenSpace) for (const pt of round._particles) api.box(pt.x, 10 + (1 - pt.t) * 18, pt.y, pt.size * 1.6, pt.size * 1.6, pt.size * 1.6, pt.color, { glow: true });
       // esconde o que não foi usado neste quadro
       for (const k in pools) { const pl = pools[k]; for (let i = pl.n; i < pl.list.length; i++) pl.list[i].visible = false; }
-      for (let i = charPool.n; i < charPool.list.length; i++) charPool.list[i].root.visible = false;
+      for (const c of charPool.list) if (c.quadro !== charPool.quadro) c.root.visible = false;
       for (let i = lightPool.n; i < lightPool.list.length; i++) lightPool.list[i].visible = false;
       // tremor de tela
       if (round._shake > 0) camera.position.add(new THREE.Vector3((Math.random() - 0.5) * round._shake * 2, (Math.random() - 0.5) * round._shake * 2, 0));

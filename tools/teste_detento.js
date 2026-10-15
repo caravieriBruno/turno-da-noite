@@ -94,6 +94,10 @@ async function secaoDetento() {
   ok(Math.hypot(p1.x - p0.x, p1.z - p0.z) < 6, `corrida no lugar (pélvis andou ${Math.hypot(p1.x - p0.x, p1.z - p0.z).toFixed(1)})`);
   ok(Math.abs(a.acao.timeScale - 1) < 0.05, 'velocidade 170 → animação em 1x');
   a.pose('walk', 340); ok(a.acao.timeScale > 1.7, 'mais rápido → a corrida anima mais rápido');
+  // walk → idle → walk rápido (bot hesitando, rede a 30 snapshots/s): a corrida continua de onde estava
+  a.pose('walk', 170); a.avancar(0.4); const tCorrida = a.acao.time;
+  a.pose('idle'); a.avancar(0.05); a.pose('walk', 170); a.avancar(0.05);
+  ok(a.atual === 'Jog_Fwd_Loop' && a.acao.time > tCorrida, `troca rápida walk/idle não reinicia a corrida (t ${tCorrida.toFixed(2)} → ${a.acao.time.toFixed(2)})`);
   const b = D.criar(m, mats()); b.pose('sit');
   ok(b.atual === 'Sitting_Idle_Loop' && a.atual !== b.atual, 'duas instâncias com animações independentes');
   const semSentar = { ...m, clipes: new Map([...m.clipes].filter(([n]) => n !== 'Sitting_Idle_Loop')) };

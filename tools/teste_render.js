@@ -113,6 +113,14 @@
     ok(Math.abs(bx.max.y - bx.min.y - 60) < 6, 'altura na cena ~60 (deu ' + (bx.max.y - bx.min.y).toFixed(1) + ')');
     umBoneco({ pose: 'sit' }); ok(c.gltf.atual === 'Sitting_Idle_Loop', 'pose sit → Sitting_Idle_Loop');
     umBoneco({ pose: 'dead' }); ok(c.gltf.atual === 'Death01', 'pose dead → Death01');
+    // a animação é estado da vaga do pool: cada personagem fica com a sua, mesmo mudando a ordem de desenho
+    let raizes = [];
+    const dois = (ordem) => TN.R3.renderRound({ def: { draw3d: (g, r) => { raizes = ordem.map((id) => r.character({ id, x: 300 + id * 200, y: 280, dir: 0, color: '#c33', alive: true })); } }, time: 1, _particles: [], _shake: 0 }, ctx);
+    dois([0, 1]); const r0 = raizes[0], r1 = raizes[1];
+    dois([1, 0]);
+    ok(raizes[1] === r0 && raizes[0] === r1, 'cada personagem fica com a mesma vaga do pool, mesmo mudando a ordem de desenho');
+    dois([1]);
+    ok(r1.visible && !r0.visible, 'vaga não usada no quadro fica escondida');
   } else {
     ok(pronto === false && TN.R3.estadoDetento() === 'desligado' && !TN.R3._personagens()[0].gltf, 'visual antigo: boneco de caixas, sem carregar o modelo');
   }
