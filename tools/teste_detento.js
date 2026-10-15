@@ -59,9 +59,56 @@ async function secaoLoaders() {
   ok(!!malha && malha.skeleton.bones.length === 65, 'malha com esqueleto de 65 ossos');
 }
 
+// --- 3. engine/detento.js ---
+async function secaoDetento() {
+  if (!carregarThree()) return;
+  if (!existe('engine/detento.js')) { ok(false, 'engine/detento.js existe'); return; }
+  global.window = global;
+  global.localStorage = global.localStorage || { getItem: () => null, setItem() {} };
+  for (const f of ['engine/util.js', 'assets/detento.glb.js', 'engine/detento.js']) vm.runInThisContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), { filename: f });
+  const D = TN.Detento;
+  const mats = () => ({ suit: new THREE.MeshStandardMaterial(), skin: new THREE.MeshStandardMaterial(), placa: new THREE.MeshStandardMaterial(), coleira: new THREE.MeshStandardMaterial(), luz: new THREE.MeshBasicMaterial(), olho: new THREE.MeshBasicMaterial() });
+  const m = await D.carregar(TN.ASSETS.detento);
+  const a = D.criar(m, mats());
+  const W = (inst, n) => inst.root.getObjectByName(n).getWorldPosition(new THREE.Vector3());
+  a.pose('idle'); a.avancar(0.3); a.root.updateMatrixWorld(true);
+  const caixa = new THREE.Box3().setFromObject(a.root, true), alt = caixa.max.y - caixa.min.y;
+  ok(Math.abs(alt - D.ALTURA) < 6, `altura ~${D.ALTURA} (deu ${alt.toFixed(1)})`);
+  ok(Math.abs(caixa.min.y) < 3, `pés no chão (y mínimo ${caixa.min.y.toFixed(1)})`);
+  const frente = W(a, 'ball_l').sub(W(a, 'foot_l')).add(W(a, 'ball_r').sub(W(a, 'foot_r')));   // média dos dois pés
+  frente.y = 0; frente.normalize();
+  ok(frente.x > 0.9, `olha para +X, como o boneco de caixas (frente ${frente.x.toFixed(2)}, ${frente.z.toFixed(2)})`);
+  const geo = a.root.getObjectByProperty('isSkinnedMesh', true).geometry;
+  ok(geo.groups.length === 2 && geo.groups[1].count > 0 && geo.groups[0].count > geo.groups[1].count, 'malha dividida em uniforme (grupo 0, maior) e pele (grupo 1: cabeça, pescoço e mãos)');
+  ok(a.luz.parent && a.luz.parent.name === 'neck_01' && a.placa.parent && a.placa.parent.name === 'spine_03', 'coleira com luz presa ao pescoço e placa de prontuário presa ao tronco');
+  for (const [pose, clipe] of Object.entries(D.POSE_CLIPE)) { a.pose(pose); ok(a.atual === clipe, `pose ${pose} → ${clipe}`); }
+  a.pose('xyz'); ok(a.atual === 'Idle_Loop', 'pose desconhecida → Idle_Loop');
+  // a morte toca uma vez e para no último quadro; voltar para idle (mesma vaga do pool) reinicia o loop
+  a.pose('dead'); a.avancar(5);
+  ok(Math.abs(a.acao.time - m.clipes.get('Death01').duration) < 0.05, 'morte toca uma vez e fica no último quadro');
+  a.pose('idle'); a.avancar(0.2);
+  ok(a.atual === 'Idle_Loop' && a.acao.isRunning(), 'depois da morte, idle volta a animar');
+  // corrida no lugar: o clipe não pode levar o boneco embora de p.x/p.y
+  a.pose('walk', 170); a.avancar(0.3); a.root.updateMatrixWorld(true);
+  const p0 = W(a, 'pelvis'); a.avancar(1); a.root.updateMatrixWorld(true); const p1 = W(a, 'pelvis');
+  ok(Math.hypot(p1.x - p0.x, p1.z - p0.z) < 6, `corrida no lugar (pélvis andou ${Math.hypot(p1.x - p0.x, p1.z - p0.z).toFixed(1)})`);
+  ok(Math.abs(a.acao.timeScale - 1) < 0.05, 'velocidade 170 → animação em 1x');
+  a.pose('walk', 340); ok(a.acao.timeScale > 1.7, 'mais rápido → a corrida anima mais rápido');
+  const b = D.criar(m, mats()); b.pose('sit');
+  ok(b.atual === 'Sitting_Idle_Loop' && a.atual !== b.atual, 'duas instâncias com animações independentes');
+  const semSentar = { ...m, clipes: new Map([...m.clipes].filter(([n]) => n !== 'Sitting_Idle_Loop')) };
+  const c = D.criar(semSentar, mats()); c.pose('sit');
+  ok(c.atual === 'Idle_Loop', 'falta o clipe da pose → Idle_Loop');
+  for (const [nome, dado] of [['base64 inválido', '!!!'], ['bytes que não são glTF', 'AAAAAAAA'], ['asset ausente', undefined]]) {
+    const r = await D.carregar(dado).then(() => 'carregou', (e) => 'erro: ' + e.message);
+    ok(r.startsWith('erro'), `carregar com ${nome} rejeita (${r})`);
+  }
+}
+
 (async () => {
   secaoAsset();
   await secaoLoaders();
+  await secaoDetento();
   // CHAMADAS EXTRAS (as tarefas seguintes acrescentam aqui)
   console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
   process.exit(falhas ? 1 : 0);
