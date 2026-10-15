@@ -196,18 +196,18 @@
   TN.audio.beep = function (...a) { if (net.mode === 'host' && net.sfx.length < 20) net.sfx.push(a); return playRaw.beep(...a); };
 
   // ===================== Telas =====================
-  function bg(c) { c.fillStyle = '#0b0f13'; c.fillRect(0, 0, TN.W, TN.H); }
+  const G = TN.giz;
 
   class NetMessage {
     constructor(title, sub) { this.title = title; this.sub = sub; }
     update() { const m = TN.input.menu(TN.donoDoMenu()); if ((m.ok || m.back) && this.t > 0.5) TN.go(TN.TitleScene); }
     draw(c) {
-      bg(c);
-      D.text(c, this.title, TN.W / 2, 220, { size: 30, color: '#f55', align: 'center' });
-      D.lines(c, this.sub, TN.W / 2, 270, { size: 16, color: '#cdd', align: 'center' });
-      D.text(c, 'Aperte AÇÃO para voltar', TN.W / 2, 400, { size: 14, color: '#7a8', align: 'center' });
-      D.crt(c, this.t);
+      G.parede(c);
+      G.titulo(c, this.title, TN.W / 2, 210, 30, G.CORES.perigo);
+      G.linhas(c, this.sub, TN.W / 2, 275, { size: 16, align: 'center' });
+      G.texto(c, 'Aperte AÇÃO para voltar', TN.W / 2, 400, { size: 14, color: G.CORES.apagadoForte, align: 'center' });
     }
+
   }
 
   // HOST: cria a sala e vai para o lobby
@@ -219,13 +219,14 @@
     }
     update() { if (this.msg === 'ERRO' && TN.input.menu(TN.donoDoMenu()).back || TN.input.keyPressed('Escape')) { net.close(); TN.go(TN.TitleScene); } if (this.msg === 'ERRO' && TN.input.menu(TN.donoDoMenu()).ok) TN.go(TN.TitleScene); }
     draw(c) {
-      bg(c);
-      if (this.msg !== 'ERRO') { D.text(c, this.msg, TN.W / 2, 250, { size: 26, color: '#3f6', align: 'center' }); return; }
-      D.text(c, 'Não consegui falar com o servidor de rede.', TN.W / 2, 170, { size: 24, color: '#f55', align: 'center' });
-      D.lines(c, 'Para jogar em rede local, inicie o servidor neste computador:\n\n    node tools/servidor.js        (ou dê dois cliques em JOGAR_EM_REDE.bat)\n\ne abra o jogo pelo endereço que ele mostrar (http://localhost:8765).', TN.W / 2, 230, { size: 16, color: '#cdd', align: 'center' });
-      D.text(c, 'AÇÃO ou ESC para voltar', TN.W / 2, 420, { size: 14, color: '#7a8', align: 'center' });
-      D.crt(c, this.t);
+      G.parede(c);
+      if (this.msg !== 'ERRO') { G.texto(c, this.msg, TN.W / 2, 250, { size: 26, color: G.CORES.destaque, align: 'center' }); return; }
+      G.titulo(c, 'Não consegui falar com o servidor de rede.', TN.W / 2, 160, 24, G.CORES.perigo);
+      G.bilhete(c, 150, 210, 660, 170, { rot: -0.005 });
+      G.linhas(c, 'Para jogar em rede local, inicie o servidor neste computador:\n\n    node tools/servidor.js        (ou dê dois cliques em JOGAR_EM_REDE)\n\ne abra o jogo pelo endereço que ele mostrar (http://localhost:8765).', TN.W / 2, 240, { size: 15, color: G.CORES.lapis, papel: true, align: 'center' });
+      G.texto(c, 'AÇÃO ou ESC para voltar', TN.W / 2, 420, { size: 14, color: G.CORES.apagadoForte, align: 'center' });
     }
+
   }
 
   // CLIENTE: lista as salas do servidor e entra
@@ -248,25 +249,25 @@
       if (m.ok && rooms[this.sel]) { TN.audio.play('select'); net.join(rooms[this.sel].room); }
     }
     draw(c) {
-      bg(c);
-      D.text(c, 'ENTRAR EM SALA (REDE LOCAL)', TN.W / 2, 60, { size: 30, color: '#3f6', align: 'center' });
+      G.parede(c);
+      G.titulo(c, 'ENTRAR NO PLANO (REDE LOCAL)', TN.W / 2, 56, 30);
       if (this.err) {
-        D.lines(c, 'Não foi possível conectar ao servidor.\n\nAbra o jogo pelo endereço que o HOST mostrou\n(ex.: http://192.168.0.10:8765) e tente de novo.', TN.W / 2, 200, { size: 18, color: '#f88', align: 'center' });
+        G.linhas(c, 'Não foi possível conectar ao servidor.\n\nAbra o jogo pelo endereço que o HOST mostrou\n(ex.: http://192.168.0.10:8765) e tente de novo.', TN.W / 2, 200, { size: 18, color: G.CORES.perigo, align: 'center' });
       } else {
         const rooms = net.rooms;
-        if (!rooms) D.text(c, 'Procurando salas…', TN.W / 2, 200, { size: 20, color: '#9ab', align: 'center' });
-        else if (!rooms.length) D.lines(c, 'Nenhuma sala aberta neste servidor.\nNo computador do host: menu → CRIAR SALA EM REDE.', TN.W / 2, 200, { size: 18, color: '#9ab', align: 'center' });
+        if (!rooms) G.texto(c, 'Procurando salas…', TN.W / 2, 200, { size: 20, align: 'center' });
+        else if (!rooms.length) G.linhas(c, 'Nenhuma sala aberta neste servidor.\nNo computador do host: menu → CHAMAR COMPARSAS.', TN.W / 2, 200, { size: 18, align: 'center' });
         else rooms.forEach((r, i) => {
-          const on = i === this.sel;
-          D.panel(c, TN.W / 2 - 260, 130 + i * 70, 520, 56, { stroke: on ? '#3f6' : '#355' });
-          D.text(c, `SALA ${r.room}`, TN.W / 2 - 240, 158 + i * 70, { size: 24, color: on ? '#3f6' : '#cdd' });
-          D.text(c, `${r.players} conectado(s)`, TN.W / 2 + 240, 158 + i * 70, { size: 16, color: '#9ab', align: 'right' });
+          const on = i === this.sel, y = 158 + i * 70;
+          G.retangulo(c, TN.W / 2 - 260, y - 28, 520, 56, { color: on ? G.CORES.destaque : G.CORES.apagadoForte, lw: on ? 2.5 : 1.5 });
+          G.texto(c, `SALA ${r.room}`, TN.W / 2 - 240, y, { size: 24, color: on ? G.CORES.destaque : G.CORES.giz });
+          G.texto(c, `${r.players} conectado(s)`, TN.W / 2 + 240, y, { size: 16, color: G.CORES.apagadoForte, align: 'right' });
         });
-        if (net.status) D.text(c, net.status, TN.W / 2, 450, { size: 16, color: '#f88', align: 'center' });
+        if (net.status) G.texto(c, net.status, TN.W / 2, 450, { size: 16, color: G.CORES.perigo, align: 'center' });
       }
-      D.text(c, 'AÇÃO entra · ESC volta  ·  depois de entrar, aperte AÇÃO no lobby para pegar uma vaga', TN.W / 2, TN.H - 20, { size: 13, color: '#7a8', align: 'center' });
-      D.crt(c, this.t);
+      G.texto(c, 'AÇÃO entra · ESC volta · depois de entrar, aperte AÇÃO no lobby para escolher a cela', TN.W / 2, TN.H - 20, { size: 13, color: G.CORES.apagadoForte, align: 'center' });
     }
+
   }
 
   // CLIENTE: mostra a tela do host e envia a entrada local
@@ -281,8 +282,8 @@
     }
     draw(c) {
       const v = net.view;
-      if (!v) { bg(c); D.text(c, `Conectado à sala ${net.room}. Aguardando o host…`, TN.W / 2, 250, { size: 20, color: '#3f6', align: 'center' }); return; }
-      try { v.draw(c); } catch (e) { bg(c); D.text(c, 'Erro ao desenhar: ' + e.message, 20, 250, { size: 14, color: '#f55' }); }
+      if (!v) { G.parede(c); D.text(c, `Conectado à sala ${net.room}. Aguardando o host…`, TN.W / 2, 250, { size: 20, color: '#3f6', align: 'center' }); return; }
+      try { v.draw(c); } catch (e) { G.parede(c); D.text(c, 'Erro ao desenhar: ' + e.message, 20, 250, { size: 14, color: '#f55' }); }
       // quem sou eu?
       const pref = 'n' + net.myId + ':';
       const mine = [];

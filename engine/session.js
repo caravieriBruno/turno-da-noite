@@ -1,6 +1,7 @@
 // Fluxo da partida: Título → Lobby → Configuração → [Roleta → Briefing → (Rodada → Contagem → Jogo → Resultado)* → Placar]* → Pódio
 (function () {
   const U = TN.util, D = TN.draw;
+  const G = TN.giz;
   const params = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
 
   // ---------- configurações salvas ----------
@@ -52,22 +53,39 @@
       D.text(c, (on ? '▶ ' : '  ') + it + (on ? ' ◀' : '  '), x, y + i * gap, { size, color: on ? '#3f6' : '#9aa', align });
     });
   }
+  // ---- menus de giz ----
+  // move a seleção com cima/baixo; selAt marca quando ela mudou (o círculo de giz se redesenha)
+  function navegar(cena, m, n) {
+    if (!n) return;
+    const antes = cena.sel;
+    if (m.up) cena.sel = (cena.sel + n - 1) % n;
+    if (m.down) cena.sel = (cena.sel + 1) % n;
+    if (cena.sel !== antes) { cena.selAt = cena.t; TN.audio.play('blip'); }
+  }
+  function menuGiz(c, itens, sel, x, y, selT, { size = 24, gap = 42 } = {}) {
+    itens.forEach((it, i) => {
+      const on = i === sel;
+      G.texto(c, it, x, y + i * gap, { size, color: on ? G.CORES.destaque : G.CORES.giz, align: 'center' });
+      if (on) G.selecao(c, it, x, y + i * gap, size, selT);
+    });
+  }
+  function rodape(c, texto) { G.texto(c, texto, TN.W / 2, TN.H - 18, { size: 14, color: G.CORES.apagadoForte, align: 'center', maxWidth: TN.W - 40 }); }
+
 
   // ======================= TÍTULO =======================
   const Title = {
     sel: 0,
     items() {
       const hosting = TN.net && TN.net.mode === 'host';
-      return [hosting ? `JOGAR (SALA ${TN.net.room} ABERTA)` : 'JOGAR (NESTE COMPUTADOR)',
-        hosting ? `FECHAR SALA ${TN.net.room}` : 'CRIAR SALA EM REDE LOCAL',
-        'ENTRAR EM SALA (REDE LOCAL)',
-        'TESTAR UM MINIGAME', 'CONTROLES', 'SOM: ' + (TN.audio.muted ? 'DESLIGADO' : 'LIGADO')];
+      return [hosting ? `PLANEJAR A FUGA (SALA ${TN.net.room} ABERTA)` : 'PLANEJAR A FUGA',
+        hosting ? `FECHAR SALA ${TN.net.room}` : 'CHAMAR COMPARSAS (REDE LOCAL)',
+        'ENTRAR NO PLANO (REDE LOCAL)',
+        'ENSAIAR UMA ETAPA', 'CONTROLES', 'SOM: ' + (TN.audio.muted ? 'DESLIGADO' : 'LIGADO')];
     },
-    enter() { this.bots = [0, 1, 2, 3].map((i) => ({ x: U.rand(100, 860), y: U.rand(440, 505), vx: U.rand(-60, 60), vy: U.rand(-20, 20), c: TN.PLAYER_COLORS[i] })); },
+    enter() { this.selAt = 0; this.bots = [0, 1, 2, 3].map((i) => ({ x: U.rand(100, 860), y: U.rand(440, 505), vx: U.rand(-60, 60), vy: U.rand(-20, 20), c: TN.PLAYER_COLORS[i] })); },
     update(dt) {
       const m = TN.input.menu(donoDoMenu()), n = this.items().length;
-      if (m.up) { this.sel = (this.sel + n - 1) % n; TN.audio.play('blip'); }
-      if (m.down) { this.sel = (this.sel + 1) % n; TN.audio.play('blip'); }
+      navegar(this, m, n);
       if (m.ok) {
         TN.audio.play('confirm');
         if (this.sel === 0) TN.go(new Lobby({}));
@@ -84,14 +102,14 @@
       }
     },
     draw(c) {
-      background(c, this.t);
-      for (const b of this.bots) D.robot(c, b.x, b.y, 18, b.c, { dir: Math.atan2(b.vy, b.vx) });
-      D.text(c, 'TURNO DA NOITE', TN.W / 2, 80, { size: 64, color: '#3f6', align: 'center' });
-      D.text(c, 'uma festa de minigames para 1–4 unidades de teste', TN.W / 2, 128, { size: 16, color: '#8a9', align: 'center' });
-      menuList(c, this.items(), this.sel, TN.W / 2, 180, { size: 22, gap: 40 });
-      footer(c, 'WASD/Setas para navegar · ESPAÇO/CLIQUE para confirmar · ESC para voltar');
-      D.crt(c, this.t);
+      G.parede(c);
+      for (const b of this.bots) G.detento(c, b.x, b.y, 16, b.c, { dir: Math.atan2(b.vy, b.vx) });
+      G.titulo(c, 'TURNO DA NOITE', TN.W / 2, 78, 60);
+      G.texto(c, '1 a 4 detentos · uma noite para cavar a saída', TN.W / 2, 132, { size: 17, color: G.CORES.apagadoForte, align: 'center' });
+      menuGiz(c, this.items(), this.sel, TN.W / 2, 185, this.t - (this.selAt || 0), { size: 22, gap: 40 });
+      rodape(c, 'WASD/Setas para navegar · ESPAÇO/CLIQUE para confirmar · ESC para voltar');
     },
+
   };
   TN.TitleScene = Title;
 
@@ -99,17 +117,19 @@
   const Controls = {
     update() { const m = TN.input.menu(donoDoMenu()); if (m.ok || m.back) { TN.audio.play('back'); TN.go(Title); } },
     draw(c) {
-      background(c, this.t);
-      D.text(c, 'CONTROLES', TN.W / 2, 60, { size: 40, color: '#3f6', align: 'center' });
+      G.parede(c);
+      G.titulo(c, 'CONTROLES', TN.W / 2, 56, 40);
       TN.input.KB_SCHEMES.forEach((s, i) => {
-        c.fillStyle = TN.PLAYER_COLORS[i]; c.fillRect(150, 122 + i * 60, 10, 30);
-        D.text(c, `TECLADO ${i + 1}`, 175, 128 + i * 60, { size: 20 });
-        D.text(c, s.label, 175, 150 + i * 60, { size: 15, color: '#9ab' });
+        const y = 110 + i * 78;
+        G.bilhete(c, 130, y, 700, 62, { rot: i % 2 ? 0.006 : -0.008 });
+        G.detento(c, 168, y + 31, 11, TN.PLAYER_COLORS[i]);
+        G.texto(c, `TECLADO ${i + 1}`, 200, y + 20, { size: 19, color: G.CORES.lapis, papel: true });
+        G.texto(c, s.label, 200, y + 44, { size: 14, color: G.CORES.lapis, papel: true, maxWidth: 610 });
       });
-      D.lines(c, 'Controles (gamepads) também funcionam: analógico/d-pad, A = Ação, B = Extra.\nCada jogador escolhe um esquema no lobby apertando o botão de AÇÃO dele.\nESC pausa o jogo. Vagas vazias são preenchidas por BOTS.', TN.W / 2, 390, { size: 15, color: '#cdd', align: 'center' });
-      footer(c, 'Aperte AÇÃO ou ESC para voltar');
-      D.crt(c, this.t);
+      G.linhas(c, 'Controles (gamepads) também funcionam: analógico/d-pad, A = Ação, B = Extra.\nNo lobby, cada detento escolhe a cela apertando AÇÃO no seu teclado/controle.\nESC pausa o jogo. Celas vazias são ocupadas por BOTS. Nos menus, quem manda é o P1.', TN.W / 2, 380, { size: 15, align: 'center' });
+      rodape(c, 'Aperte AÇÃO ou ESC para voltar');
     },
+
   };
 
   // ======================= LISTA DE TESTE =======================
@@ -117,27 +137,27 @@
     constructor() { this.sel = 0; this.scroll = 0; }
     update() {
       const ids = TN.minigameOrder, m = TN.input.menu(donoDoMenu());
-      if (m.up) { this.sel = (this.sel + ids.length - 1) % ids.length; TN.audio.play('blip'); }
-      if (m.down) { this.sel = (this.sel + 1) % ids.length; TN.audio.play('blip'); }
+      navegar(this, m, ids.length);
       if (m.back) { TN.audio.play('back'); TN.go(Title); }
       if (m.ok && ids.length) { TN.audio.play('confirm'); TN.go(new Lobby({ test: ids[this.sel] })); }
       this.scroll = U.clamp(this.sel - 6, 0, Math.max(0, ids.length - 13));
     }
     draw(c) {
-      background(c, this.t);
-      D.text(c, 'TESTAR UM MINIGAME', TN.W / 2, 45, { size: 34, color: '#3f6', align: 'center' });
-      const ids = TN.minigameOrder;
+      G.parede(c);
+      G.titulo(c, 'ENSAIAR UMA ETAPA', TN.W / 2, 45, 34);
+      const ids = TN.minigameOrder, selT = this.t - (this.selAt || 0);
       ids.slice(this.scroll, this.scroll + 13).forEach((id, k) => {
-        const i = k + this.scroll, def = TN.minigames[id], on = i === this.sel;
-        D.text(c, (on ? '▶ ' : '  ') + def.title, 90, 100 + k * 30, { size: 20, color: on ? '#3f6' : '#9aa' });
-        D.text(c, def.inspiredBy ? 'inspirado em ' + def.inspiredBy : 'original', 520, 100 + k * 30, { size: 13, color: '#567' });
+        const i = k + this.scroll, def = TN.minigames[id], on = i === this.sel, y = 100 + k * 30;
+        G.texto(c, def.title, 110, y, { size: 20, color: on ? G.CORES.destaque : G.CORES.giz, maxWidth: 400 });
+        if (on) G.selecao(c, def.title, 110, y, 20, selT, 'left');
+        G.texto(c, def.inspiredBy ? 'inspirado em ' + def.inspiredBy : 'original', 540, y, { size: 13, color: G.CORES.apagadoForte });
       });
-      if (!ids.length) D.text(c, 'Nenhum minigame registrado (veja minigames/manifest.js)', TN.W / 2, 250, { size: 18, color: '#f55', align: 'center' });
+      if (!ids.length) G.texto(c, 'Nenhuma etapa registrada (veja minigames/manifest.js)', TN.W / 2, 250, { size: 18, color: G.CORES.perigo, align: 'center' });
       const def = TN.minigames[ids[this.sel]];
-      if (def) D.text(c, def.tagline || '', TN.W / 2, TN.H - 50, { size: 16, color: '#cdd', align: 'center' });
-      footer(c, 'AÇÃO para escolher · ESC para voltar');
-      D.crt(c, this.t);
+      if (def) G.texto(c, def.tagline || '', TN.W / 2, TN.H - 50, { size: 16, align: 'center', maxWidth: TN.W - 80 });
+      rodape(c, 'AÇÃO para escolher · ESC volta pra cela');
     }
+
   }
 
   // ======================= LOBBY =======================
@@ -176,32 +196,33 @@
       } else this.startIn = null;
     }
     draw(c) {
-      background(c, this.t);
-      D.text(c, this.test ? 'TESTE: ' + TN.minigames[this.test].title : 'LOBBY', TN.W / 2, 50, { size: 36, color: '#3f6', align: 'center' });
-      D.text(c, 'Aperte AÇÃO no seu teclado/controle para entrar. AÇÃO de novo = PRONTO. EXTRA = sair.', TN.W / 2, 92, { size: 14, color: '#9ab', align: 'center' });
+      G.parede(c);
+      G.titulo(c, this.test ? 'ENSAIO: ' + TN.minigames[this.test].title : 'ESCOLHA SUA CELA', TN.W / 2, 46, 34);
+      G.texto(c, 'Aperte AÇÃO no seu teclado/controle para entrar. AÇÃO de novo = PRONTO. EXTRA = sair.', TN.W / 2, 92, { size: 14, color: G.CORES.apagadoForte, align: 'center' });
       for (let i = 0; i < 4; i++) {
-        const x = 40 + i * 225, y = 130, s = this.slots[i];
-        D.panel(c, x, y, 205, 280, { stroke: s ? TN.PLAYER_COLORS[i] : '#333' });
-        D.text(c, `P${i + 1}`, x + 102, y + 28, { size: 26, color: TN.PLAYER_COLORS[i], align: 'center' });
+        const x = 40 + i * 225, y = 125, s = this.slots[i], cor = TN.PLAYER_COLORS[i];
+        G.retangulo(c, x, y, 205, 285, { color: s ? G.desbotar(cor) : G.CORES.apagadoForte, lw: s ? 2.5 : 1.5 });
+        for (let gx = x + 18; gx < x + 205; gx += 24) G.linha(c, gx, y + 4, gx, y + 60, { color: G.CORES.apagadoForte, lw: 1.5 });   // grade
+        G.texto(c, `CELA ${i + 1}`, x + 102, y + 82, { size: 22, color: G.desbotar(cor), align: 'center' });
         if (s) {
-          D.robot(c, x + 102, y + 120, 34, TN.PLAYER_COLORS[i], { dir: Math.sin(this.t * 2 + i) * 0.6 + Math.PI / 2 });
-          D.lines(c, TN.input.deviceLabel(s.device).split(' · ').join('\n'), x + 102, y + 190, { size: 12, color: '#bcd', align: 'center', lineHeight: 16 });
-          D.text(c, s.ready ? 'PRONTO!' : 'aguardando…', x + 102, y + 255, { size: 20, color: s.ready ? '#3f6' : '#aa8', align: 'center' });
+          G.detento(c, x + 102, y + 160, 26, cor, { comemorando: s.ready && Math.sin(this.t * 6 + i) > 0 });
+          G.linhas(c, TN.input.deviceLabel(s.device).split(' · ').join('\n'), x + 102, y + 215, { size: 12, align: 'center', lineHeight: 15, maxWidth: 195 });
+          G.texto(c, s.ready ? 'PRONTO PRA FUGIR!' : 'na cela…', x + 102, y + 266, { size: 17, color: s.ready ? G.CORES.destaque : G.CORES.giz, align: 'center', maxWidth: 195 });
         } else {
-          if (TN.settings.bots) { c.globalAlpha = 0.35; D.robot(c, x + 102, y + 120, 34, TN.PLAYER_COLORS[i], { dir: Math.PI / 2 }); c.globalAlpha = 1; }
-          D.text(c, TN.settings.bots ? 'BOT' : 'vazio', x + 102, y + 200, { size: 20, color: '#666', align: 'center' });
+          if (TN.settings.bots) { c.save(); c.globalAlpha = 0.35; G.detento(c, x + 102, y + 160, 26, cor); c.restore(); }
+          G.texto(c, TN.settings.bots ? 'BOT' : 'cela vazia', x + 102, y + 230, { size: 18, color: G.CORES.apagadoForte, align: 'center' });
         }
       }
-      D.text(c, `[T] Completar vagas com bots: ${TN.settings.bots ? 'SIM' : 'NÃO'}`, TN.W / 2, 435, { size: 16, color: '#cdd', align: 'center' });
+      G.texto(c, `[T] Celas vazias com bots: ${TN.settings.bots ? 'SIM' : 'NÃO'}`, TN.W / 2, 437, { size: 16, align: 'center' });
       if (TN.net && TN.net.mode === 'host') {
         const n = Object.keys(TN.net.peers).length;
-        D.panel(c, 60, 452, 840, 50, { stroke: '#3fa9ff' });
-        D.text(c, `SALA ${TN.net.room} · ${n} computador(es) conectado(s)`, 80, 467, { size: 15, color: '#3fa9ff' });
-        D.text(c, `Nos outros PCs abra ${TN.net.urls.slice(0, 2).join('  ou  ') || 'http://<seu-ip>:8765'} → ENTRAR EM SALA`, 80, 488, { size: 13, color: '#cde', maxWidth: 800 });
+        G.bilhete(c, 60, 455, 840, 50, { rot: -0.004 });
+        G.texto(c, `SALA ${TN.net.room} · ${n} computador(es) conectado(s)`, 80, 470, { size: 15, color: G.CORES.lapis, papel: true });
+        G.texto(c, `Nos outros PCs abra ${TN.net.urls.slice(0, 2).join('  ou  ') || 'http://<seu-ip>:8765'} → ENTRAR NO PLANO`, 80, 491, { size: 13, color: G.CORES.lapis, papel: true, maxWidth: 800 });
       }
-      footer(c, 'Começa quando todos que entraram estiverem PRONTOS · ESC volta');
-      D.crt(c, this.t);
+      rodape(c, 'Começa quando todos estiverem PRONTOS PRA FUGIR · ESC volta pra cela');
     }
+
   }
 
   // ======================= CONFIGURAÇÃO DA PLAYLIST =======================

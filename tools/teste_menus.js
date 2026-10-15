@@ -143,9 +143,37 @@ function secaoCenas() {
   ok(TN.CENAS_DE_TESTE.length === 14, 'as 14 telas de menu da spec têm atalho');
 }
 
+// textos que uma tela desenha (fillText), para conferir o vocabulário novo
+const textos = (cena) => { const c = gravador(); cena.draw(c); return c.log.filter((e) => e[0] === 'fillText').map((e) => e[1]).join(' | '); };
+// nenhuma das telas desenha com o visual antigo (robô, painel e CRT do TN.draw)
+function semVisualAntigo(cenas) {
+  const D = TN.draw, orig = { robot: D.robot, panel: D.panel, crt: D.crt };
+  let n = 0;
+  D.robot = D.panel = D.crt = () => { n++; };
+  try { for (const cena of cenas) cena.draw(gravador()); } finally { Object.assign(D, orig); }
+  return n === 0;
+}
+
+// --- 4. telas antes da partida e de rede: giz e textos de fuga ---
+function secaoTelasSemSessao() {
+  const title = TN.cenaDeTeste('Title'), t = textos(title);
+  ok(['PLANEJAR A FUGA', 'CHAMAR COMPARSAS (REDE LOCAL)', 'ENTRAR NO PLANO (REDE LOCAL)', 'ENSAIAR UMA ETAPA', 'CONTROLES'].every((x) => t.includes(x)), 'título: itens no tema de fuga');
+  ok(t.includes('1 a 4 detentos · uma noite para cavar a saída') && !t.includes('unidades de teste'), 'título: subtítulo novo, sem "unidades de teste"');
+  const lobby = TN.cenaDeTeste('Lobby'), l = textos(lobby);
+  ok(['ESCOLHA SUA CELA', 'PRONTO PRA FUGIR!', 'na cela…', 'Celas vazias com bots'].every((x) => l.includes(x)), 'lobby: celas no tema');
+  ok(textos(TN.cenaDeTeste('TestList')).includes('ENSAIAR UMA ETAPA'), 'ensaiar uma etapa: título novo');
+  ok(textos(TN.cenaDeTeste('Controls')).includes('quem manda é o P1'), 'controles: avisa que só o P1 mexe no menu');
+  const j = textos(TN.cenaDeTeste('JoinList'));
+  ok(j.includes('ENTRAR NO PLANO (REDE LOCAL)') && j.includes('SALA ABCD'), 'rede: entrar no plano, com o código da sala');
+  ok(textos(TN.cenaDeTeste('NetMessage')).includes('A SALA FECHOU'), 'rede: mensagem desenhada');
+  const cenas = ['Title', 'Controls', 'TestList', 'Lobby', 'HostCreate', 'JoinList', 'NetMessage'].map((n) => TN.cenaDeTeste(n));
+  ok(semVisualAntigo(cenas), 'telas antes da partida e de rede: só giz (sem robô, painel ou CRT)');
+}
+
 secaoDono();
 secaoGiz();
 secaoCenas();
+secaoTelasSemSessao();
 // CHAMADAS EXTRAS (as tarefas seguintes acrescentam aqui)
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
