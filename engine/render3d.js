@@ -486,7 +486,8 @@
       // snapshots da rede (30/s), então quadro a quadro ela alterna entre parada e o dobro
       const agora = performance.now() / 1000, dtKey = st.t ? Math.min(0.1, agora - st.t) : 0;
       st.t = agora;
-      if (dtKey > 0) st.vel += (moved / dtKey - st.vel) * Math.min(1, dtKey * 5);
+      if (moved > 40) st.vel = 0;   // teleporte (início de rodada, renascer): não é corrida
+      else if (dtKey > 0) st.vel += (moved / dtKey - st.vel) * Math.min(1, dtKey * 5);
       st.andando = st.andando ? st.vel > 15 : st.vel > 30;   // histerese: não fica trocando walk/idle
 
       const alive = p.alive !== false;

@@ -121,6 +121,10 @@
     ok(raizes[1] === r0 && raizes[0] === r1, 'cada personagem fica com a mesma vaga do pool, mesmo mudando a ordem de desenho');
     dois([1]);
     ok(r1.visible && !r0.visible, 'vaga não usada no quadro fica escondida');
+    // teleporte (início de rodada, renascer) não vira corrida: o boneco continua parado
+    const pular = (x) => TN.R3.renderRound({ def: { draw3d: (g, r) => r.character({ id: 7, x, y: 280, dir: 0, color: '#c33', alive: true }) }, time: 1, _particles: [], _shake: 0 }, ctx);
+    pular(100); pular(100); pular(700);
+    ok(TN.R3._personagens().find((v) => v.chave === 7).gltf.atual === 'Idle_Loop', 'teleporte não vira corrida (o boneco continua parado)');
   } else {
     ok(pronto === false && TN.R3.estadoDetento() === 'desligado' && !TN.R3._personagens()[0].gltf, 'visual antigo: boneco de caixas, sem carregar o modelo');
   }

@@ -13,6 +13,7 @@
   const OSSOS_PELE = /^(Head|neck_01|hand_[lr])$|^(index|middle|pinky|ring|thumb)_/;
   const CORRIDA_1X = 170;                                // px/s em que a corrida anima em 1x
   const FADE = 0.15;
+  const DEITAR_RAPIDO = 3;                               // lie: a queda da morte em ~0,4 s (jogos de reflexo)
 
   function base64ParaBuffer(b64) {
     const s = atob(b64), u = new Uint8Array(s.length);
@@ -108,7 +109,8 @@
           if (this.acao) nova.crossFadeFrom(this.acao, FADE, false);
           this.acao = nova; this.atual = clipe;
         }
-        this.acao.timeScale = clipe === POSE_CLIPE.walk ? Math.min(1.8, Math.max(0.5, velocidade / CORRIDA_1X)) : 1;
+        this.acao.timeScale = clipe === POSE_CLIPE.walk ? Math.min(1.8, Math.max(0.5, velocidade / CORRIDA_1X))
+          : nome === 'lie' ? DEITAR_RAPIDO : 1;
       },
       avancar(dt) { mixer.update(dt); },
     };

@@ -88,6 +88,9 @@ async function secaoDetento() {
   ok(Math.abs(a.acao.time - m.clipes.get('Death01').duration) < 0.05, 'morte toca uma vez e fica no último quadro');
   a.pose('idle'); a.avancar(0.2);
   ok(a.atual === 'Idle_Loop' && a.acao.isRunning(), 'depois da morte, idle volta a animar');
+  // deitar (lie) usa a animação da morte mais rápida: num jogo de reflexo o boneco precisa estar no chão logo
+  a.pose('idle'); a.avancar(0.3); a.pose('lie'); a.avancar(0.5); a.root.updateMatrixWorld(true);
+  ok(W(a, 'Head').y < 12, `lie: deitado em 0,5 s (cabeça a ${W(a, 'Head').y.toFixed(1)})`);
   // corrida no lugar: o clipe não pode levar o boneco embora de p.x/p.y
   a.pose('walk', 170); a.avancar(0.3); a.root.updateMatrixWorld(true);
   const p0 = W(a, 'pelvis'); a.avancar(1); a.root.updateMatrixWorld(true); const p1 = W(a, 'pelvis');
