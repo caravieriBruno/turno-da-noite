@@ -2,7 +2,7 @@
 // Para cada cena confere: desenha sem exceção, não fica em branco e é determinística (mesmo r.time =
 // mesmos pixels, como host e clientes na rede). No fim mede o tempo médio de quadro de uma cena típica.
 // O resultado vai para <pre id="resultado">, entre as linhas RESULTADO-INICIO e RESULTADO-FIM.
-(function () {
+(async function () {
   const linhas = [];
   const ok = (cond, msg) => linhas.push((cond ? '✓ ' : '✗ ') + msg);
   const fim = () => {
@@ -17,6 +17,9 @@
   if (!TN.R3.init(c3)) { ok(false, 'WebGL indisponível'); fim(); return; }
   TN.R3.resize(TN.W, TN.H, 1);
   ok(true, 'visual ' + (TN.R3.RETRO ? 'novo (cadeia)' : 'antigo (liso)'));
+  const umBoneco = (o = {}) => TN.R3.renderRound({ def: { draw3d: (g, r) => r.character({ id: 0, x: 480, y: 280, dir: 0, color: '#c33', alive: true }, o) }, time: 1, _particles: [], _shake: 0 }, ctx);
+  umBoneco();
+  const antesDeCarregar = TN.R3._personagens()[0];
 
   const rodada = (draw3d, time) => ({ def: { draw3d }, time, _particles: [], _shake: 0 });
   const desenhar = (draw3d, time) => TN.R3.renderRound(rodada(draw3d, time), ctx);
@@ -97,11 +100,28 @@
     ok(TN.R3.stats().luzes.length === 3, 'sobrando vaga, as luzes do cenário acendem (1 do jogo + 2 do cenário)');
   } catch (e) { ok(false, 'prioridade de luz: exceção ' + e.message); }
 
-  // tempo médio de quadro: cela + piso em ladrilhos + 4 personagens (parecido com um minigame real)
+  // personagem glTF: carrega sozinho (assíncrono), refaz o pool, mapeia poses; no visual antigo nem carrega
+  const pronto = await TN.R3.detentoPronto;
+  if (TN.R3.RETRO) {
+    ok(pronto === true && TN.R3.estadoDetento() === 'pronto', 'modelo glTF carregou (estado: ' + TN.R3.estadoDetento() + ')');
+    ok(!antesDeCarregar.gltf, 'antes de carregar, o personagem é o boneco de caixas');
+    umBoneco();
+    const c = TN.R3._personagens()[0];
+    ok(!!c.gltf && TN.R3._personagens().length === 1, 'depois de carregar, o pool é refeito com o modelo glTF (sem sobra de caixas)');
+    c.root.updateMatrixWorld(true);
+    const bx = new THREE.Box3().setFromObject(c.root, true);
+    ok(Math.abs(bx.max.y - bx.min.y - 60) < 6, 'altura na cena ~60 (deu ' + (bx.max.y - bx.min.y).toFixed(1) + ')');
+    umBoneco({ pose: 'sit' }); ok(c.gltf.atual === 'Sitting_Idle_Loop', 'pose sit → Sitting_Idle_Loop');
+    umBoneco({ pose: 'dead' }); ok(c.gltf.atual === 'Death01', 'pose dead → Death01');
+  } else {
+    ok(pronto === false && TN.R3.estadoDetento() === 'desligado' && !TN.R3._personagens()[0].gltf, 'visual antigo: boneco de caixas, sem carregar o modelo');
+  }
+
+  // tempo médio de quadro: cela + piso em ladrilhos + 8 personagens andando (pior caso de um minigame real)
   const tipico = (g, r) => {
     r.room(40, 20, 920, 520);
     for (let x = 40; x < 920; x += 44) for (let z = 70; z < 480; z += 44) r.plane(x + 22, 0, z + 22, 42, 42, '#3a4048');
-    for (let i = 0; i < 4; i++) r.character({ id: i, x: 200 + i * 160, y: 280, dir: 0, color: TN.PLAYER_COLORS[i], alive: true });
+    for (let i = 0; i < 8; i++) r.character({ id: i, x: 120 + i * 100 + (g.time * 120) % 60, y: 200 + (i % 2) * 140, dir: 0, color: TN.PLAYER_COLORS[i % 4], alive: true });
   };
   for (let i = 0; i < 10; i++) desenhar(tipico, i / 60);
   hash();
@@ -109,5 +129,18 @@
   for (let i = 0; i < 60; i++) desenhar(tipico, i / 60);
   hash();   // força a GPU a terminar antes de parar o relógio
   linhas.push('TEMPO_QUADRO_MS=' + ((performance.now() - t0) / 60).toFixed(2));
+  // asset quebrado: avisa no console e volta ao boneco de caixas (sem exceção)
+  if (TN.R3.RETRO) {
+    const avisos = [], aviso = console.warn;
+    console.warn = (...a) => { avisos.push(a.join(' ')); };
+    const r1 = await TN.R3._recarregarDetento('!!!');
+    console.warn = aviso;
+    umBoneco();
+    ok(r1 === false && TN.R3.estadoDetento() === 'falhou' && !TN.R3._personagens()[0].gltf && avisos.some((a) => a.includes('boneco de caixas')), 'asset quebrado: avisa no console e volta ao boneco de caixas');
+  }
   fim();
-})();
+})().catch((e) => {
+  const pre = document.createElement('pre'); pre.id = 'resultado';
+  pre.textContent = 'RESULTADO-INICIO\n✗ exceção: ' + e.message + '\nRESULTADO-FIM';
+  document.body.append(pre);
+});

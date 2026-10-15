@@ -61,6 +61,7 @@
     used: false,
     RETRO,
     DEFAULT_CAMERA, DEFAULT_ENV,
+    detentoPronto: Promise.resolve(false),   // o init troca pela carga do detento glTF
     // usado pelo tools/simular.js: roda draw3d contra o validador
     validate(round) {
       const { api, errs } = makeValidator();
@@ -280,6 +281,26 @@
   // ---------------- personagem (detento de uniforme; no visual antigo, boneco de macacão com visor) ----------------
   const charPool = { list: [], n: 0 };
   const charState = new Map(); // key -> { x, z, phase, t }
+  // detento glTF (visual novo): carregado em segundo plano no init; até ficar pronto, ou se falhar, o pool
+  // usa o boneco de caixas. Quando fica pronto, o pool é refeito com o modelo.
+  let detento = null, detentoEstado = RETRO ? 'carregando' : 'desligado', detentoPronto = Promise.resolve(false);
+  function falhaDetento(e) {
+    detento = null; detentoEstado = 'falhou';
+    for (const c of charPool.list) if (c.gltf) scene.remove(c.root);
+    charPool.list = charPool.list.filter((c) => !c.gltf);
+    console.warn('detento: usando o boneco de caixas (' + (e && e.message) + ')');
+    return false;
+  }
+  function carregarDetento(b64) {
+    detentoEstado = 'carregando';
+    if (!TN.Detento || !THREE.GLTFLoader || !THREE.SkeletonUtils) return Promise.resolve(falhaDetento(new Error('engine/detento.js ou vendor/GLTFLoader.js não foram carregados')));
+    return TN.Detento.carregar(b64).then((m) => {
+      detento = m; detentoEstado = 'pronto';
+      for (const c of charPool.list) scene.remove(c.root);
+      charPool.list.length = 0;
+      return true;
+    }, falhaDetento);
+  }
   const SKIN_TONES = ['#c99e7c', '#8a5a3c', '#e2bc9a', '#5f3b26'];
   const PRISON_NUMBERS = ['171', '155', '157', '180'];   // artigos do código penal, com todo o carinho
   const skinMat = new THREE.MeshStandardMaterial({ color: '#d8d2c8', roughness: 0.6, envMapIntensity: 0.5 });
@@ -299,6 +320,7 @@
     return { pivot, seg, boot };
   }
   function makeCharacter() {
+    if (detento) return makeCharacterGltf();
     const root = new THREE.Group();
     const body = new THREE.Group(); root.add(body);
     const suit = new THREE.MeshStandardMaterial({ color: '#888', roughness: 0.8, envMapIntensity: 0.5 });
@@ -332,6 +354,22 @@
     c.handR = part(unitSphere, skin, 3, 3, 3, 0, -19, 0, c.armR.pivot);
     scene.add(root);
     return c;
+  }
+  // detento glTF: os mesmos campos do boneco de caixas (root, body, suit, skin, numCanvas, numTex,
+  // collarLight), mais c.gltf com as animações
+  function makeCharacterGltf() {
+    const suit = new THREE.MeshStandardMaterial({ color: '#888', roughness: 0.8, envMapIntensity: 0.5 });
+    texturize(suit, 'tecido', false);
+    const skin = new THREE.MeshStandardMaterial({ color: SKIN_TONES[0], roughness: 0.7, envMapIntensity: 0.3 });
+    const numCanvas = document.createElement('canvas'); numCanvas.width = 64; numCanvas.height = 32;
+    const numTex = new THREE.CanvasTexture(numCanvas);
+    numTex.magFilter = THREE.NearestFilter; numTex.minFilter = THREE.NearestFilter; numTex.generateMipmaps = false;
+    const inst = TN.Detento.criar(detento, {
+      suit, skin, placa: new THREE.MeshStandardMaterial({ map: numTex, roughness: 0.9 }),
+      coleira: collarMat, luz: new THREE.MeshBasicMaterial({ color: '#f33' }), olho: eyeMat,
+    });
+    scene.add(inst.root);
+    return { root: inst.root, body: inst.corpo, suit, skin, numCanvas, numTex, collarLight: inst.luz, gltf: inst, ultimoT: 0 };
   }
   function setPrisonNumber(c, num) {
     if (c.num === num) return;
@@ -459,34 +497,43 @@
       c.root.position.set(p.x, o.y || 0, p.y);
       c.root.rotation.set(0, -(o.dir ?? p.dir ?? 0), 0);
       c.root.scale.setScalar(scale);
-      // reset
-      c.body.position.set(0, 0, 0); c.body.rotation.set(0, 0, 0); c.body.scale.set(1, 1, 1);
-      for (const l of [c.legL, c.legR, c.armL, c.armR]) l.pivot.rotation.set(0, 0, 0);
-      const t = performance.now() / 1000;
-      const sw = Math.sin(st.phase);
-      if (pose === 'walk') {
-        c.legL.pivot.rotation.z = sw * 0.5; c.legR.pivot.rotation.z = -sw * 0.5;
-        c.armL.pivot.rotation.z = -sw * 0.45; c.armR.pivot.rotation.z = sw * 0.45;
-        c.body.position.y = Math.abs(Math.cos(st.phase)) * 1.6;
-      } else if (pose === 'idle') {
-        c.body.position.y = Math.sin(t * 2 + st.seed) * 0.5;
-        c.armL.pivot.rotation.x = 0.06; c.armR.pivot.rotation.x = -0.06;
-      } else if (pose === 'dead' || pose === 'lie') {
-        c.body.rotation.z = Math.PI / 2; c.body.position.set(28, 5, 0); // deitado, centrado na posição
-        c.armL.pivot.rotation.x = 0.9; c.armR.pivot.rotation.x = -0.4; c.legL.pivot.rotation.x = 0.15;
-      } else if (pose === 'sit') {
-        c.legL.pivot.rotation.z = Math.PI / 2; c.legR.pivot.rotation.z = Math.PI / 2;
-        c.body.position.y = -2; c.armL.pivot.rotation.z = 0.5; c.armR.pivot.rotation.z = 0.5;
-      } else if (pose === 'crouch') {
-        c.body.scale.y = 0.72; c.legL.pivot.rotation.z = 0.5; c.legR.pivot.rotation.z = -0.3;
-      } else if (pose === 'fall') {
-        c.armL.pivot.rotation.x = 2.6; c.armR.pivot.rotation.x = -2.6;
-        c.body.rotation.x = Math.sin(t * 9) * 0.4; c.legL.pivot.rotation.z = 0.6; c.legR.pivot.rotation.z = -0.5;
-      } else if (pose === 'arms' || pose === 'aim') {
-        c.armL.pivot.rotation.z = Math.PI / 2; c.armR.pivot.rotation.z = Math.PI / 2;
-        if (st.moving > 0.3) { c.legL.pivot.rotation.z = sw * 0.6; c.legR.pivot.rotation.z = -sw * 0.6; }
+      if (c.gltf) {
+        // detento glTF: a pose vira um clipe; dt local (animação é só visual, não vai para a rede)
+        const agora = performance.now() / 1000, dt = c.ultimoT ? Math.min(0.1, agora - c.ultimoT) : 0;
+        c.ultimoT = agora;
+        c.gltf.pose(pose, dt > 0 ? moved / dt : 0);
+        c.gltf.avancar(dt);
+        c.body.rotation.set(0, 0, o.lean || 0);
+      } else {
+        // reset
+        c.body.position.set(0, 0, 0); c.body.rotation.set(0, 0, 0); c.body.scale.set(1, 1, 1);
+        for (const l of [c.legL, c.legR, c.armL, c.armR]) l.pivot.rotation.set(0, 0, 0);
+        const t = performance.now() / 1000;
+        const sw = Math.sin(st.phase);
+        if (pose === 'walk') {
+          c.legL.pivot.rotation.z = sw * 0.5; c.legR.pivot.rotation.z = -sw * 0.5;
+          c.armL.pivot.rotation.z = -sw * 0.45; c.armR.pivot.rotation.z = sw * 0.45;
+          c.body.position.y = Math.abs(Math.cos(st.phase)) * 1.6;
+        } else if (pose === 'idle') {
+          c.body.position.y = Math.sin(t * 2 + st.seed) * 0.5;
+          c.armL.pivot.rotation.x = 0.06; c.armR.pivot.rotation.x = -0.06;
+        } else if (pose === 'dead' || pose === 'lie') {
+          c.body.rotation.z = Math.PI / 2; c.body.position.set(28, 5, 0); // deitado, centrado na posição
+          c.armL.pivot.rotation.x = 0.9; c.armR.pivot.rotation.x = -0.4; c.legL.pivot.rotation.x = 0.15;
+        } else if (pose === 'sit') {
+          c.legL.pivot.rotation.z = Math.PI / 2; c.legR.pivot.rotation.z = Math.PI / 2;
+          c.body.position.y = -2; c.armL.pivot.rotation.z = 0.5; c.armR.pivot.rotation.z = 0.5;
+        } else if (pose === 'crouch') {
+          c.body.scale.y = 0.72; c.legL.pivot.rotation.z = 0.5; c.legR.pivot.rotation.z = -0.3;
+        } else if (pose === 'fall') {
+          c.armL.pivot.rotation.x = 2.6; c.armR.pivot.rotation.x = -2.6;
+          c.body.rotation.x = Math.sin(t * 9) * 0.4; c.legL.pivot.rotation.z = 0.6; c.legR.pivot.rotation.z = -0.5;
+        } else if (pose === 'arms' || pose === 'aim') {
+          c.armL.pivot.rotation.z = Math.PI / 2; c.armR.pivot.rotation.z = Math.PI / 2;
+          if (st.moving > 0.3) { c.legL.pivot.rotation.z = sw * 0.6; c.legR.pivot.rotation.z = -sw * 0.6; }
+        }
+        if (o.lean) c.body.rotation.z += o.lean;   // inclina o corpo (positivo = para trás)
       }
-      if (o.lean) c.body.rotation.z += o.lean;   // inclina o corpo (positivo = para trás)
       if (o.label !== false && (o.label || p.label)) labels.push({ x: p.x, y: (o.y || 0) + 72 * scale, z: p.y, text: o.label || p.label, color: alive ? color : '#888', size: 12 });
       return c.root;
     },
@@ -601,6 +648,8 @@
         pmrem.dispose();
       } catch (e) { console.warn('sem envmap', e); }
       this.available = true;
+      if (RETRO) detentoPronto = carregarDetento(TN.ASSETS && TN.ASSETS.detento);
+      TN.R3.detentoPronto = detentoPronto;
       return true;
     },
     resize(w, h, dpr) {
@@ -644,6 +693,9 @@
       }
     },
     _textura: (nome) => texOf(nome),   // para testes (tools/teste_render.js)
+    estadoDetento: () => detentoEstado,
+    _personagens: () => charPool.list,   // para testes: o pool de personagens
+    _recarregarDetento: (b64) => carregarDetento(b64),   // para testes: força uma nova carga do modelo
     // para testes (tools/teste_render.js): o que o último quadro acendeu
     stats() { return { luzes: lightPool.list.slice(0, lightPool.n).map((l) => ({ x: l.position.x, y: l.position.y, z: l.position.z })) }; },
     project: (x, y, z) => project(x, y, z),
