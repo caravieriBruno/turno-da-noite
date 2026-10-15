@@ -14,6 +14,9 @@
   const CORRIDA_1X = 170;                                // px/s em que a corrida anima em 1x
   const FADE = 0.15;
   const DEITAR_RAPIDO = 3;                               // lie: a queda da morte em ~0,4 s (jogos de reflexo)
+  // a morte deita o corpo para trás (cabeça em -X); durante a queda (0,7 a 1,2 s do clipe) o corpo é
+  // empurrado para a frente até ficar centrado na posição, como o boneco de caixas deitado
+  const RECUO_MORTE = 23, QUEDA_INI = 0.7, QUEDA_FIM = 1.2;
 
   function base64ParaBuffer(b64) {
     const s = atob(b64), u = new Uint8Array(s.length);
@@ -50,6 +53,7 @@
     dividirPele(malha.geometry, malha.skeleton);
     const osso = (n) => { const b = cena.getObjectByName(n); if (!b) throw new Error(`osso "${n}" não encontrado`); return b.getWorldPosition(new THREE.Vector3()); };
     const frente = osso('ball_l').sub(osso('foot_l')).add(osso('ball_r').sub(osso('foot_r')));
+    for (const n of ['spine_03', 'neck_01', 'Head']) osso(n);   // os acessórios se prendem a estes (criar)
     const caixa = new THREE.Box3().setFromObject(cena, true);
     return {
       cena,
@@ -112,9 +116,13 @@
         this.acao.timeScale = clipe === POSE_CLIPE.walk ? Math.min(1.8, Math.max(0.5, velocidade / CORRIDA_1X))
           : nome === 'lie' ? DEITAR_RAPIDO : 1;
       },
-      avancar(dt) { mixer.update(dt); },
+      avancar(dt) {
+        mixer.update(dt);
+        const k = this.atual === POSE_CLIPE.dead ? Math.min(1, Math.max(0, (this.acao.time - QUEDA_INI) / (QUEDA_FIM - QUEDA_INI))) : 0;
+        corpo.position.x = RECUO_MORTE * k;
+      },
     };
   }
 
-  TN.Detento = { ALTURA: 60, POSE_CLIPE, carregar, criar };
+  TN.Detento = { ALTURA: 60, CORRIDA_1X, POSE_CLIPE, carregar, criar };
 })();

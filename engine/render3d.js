@@ -477,22 +477,24 @@
       charPool.n++;
       c.chave = key; c.quadro = charPool.quadro;
       c.root.visible = true;
-      const st = charState.get(key) || { x: p.x, z: p.y, phase: 0, moving: 0, seed: Math.random() * 6, vel: 0, t: 0, andando: false };
+      const st = charState.get(key) || { x: p.x, z: p.y, phase: 0, moving: 0, seed: Math.random() * 6, vel: 0, t: 0, ultimoMov: 0 };
       const moved = Math.hypot(p.x - st.x, p.y - st.z);
       st.phase += moved * 0.11;
       st.moving += ((moved > 0.4 ? 1 : 0) - st.moving) * 0.25;
       st.x = p.x; st.z = p.y; charState.set(key, st);
-      // velocidade (px/s) suavizada em ~0,2 s: a posição só muda nos passos da simulação (60/s) ou nos
-      // snapshots da rede (30/s), então quadro a quadro ela alterna entre parada e o dobro
+      // velocidade (px/s) suavizada em ~0,1 s, só para o ritmo da corrida: a posição só muda nos passos da
+      // simulação (60/s) ou nos snapshots da rede (30/s), então quadro a quadro ela alterna entre parada e o dobro
       const agora = performance.now() / 1000, dtKey = st.t ? Math.min(0.1, agora - st.t) : 0;
       st.t = agora;
       if (moved > 40) st.vel = 0;   // teleporte (início de rodada, renascer): não é corrida
-      else if (dtKey > 0) st.vel += (moved / dtKey - st.vel) * Math.min(1, dtKey * 5);
-      st.andando = st.andando ? st.vel > 15 : st.vel > 30;   // histerese: não fica trocando walk/idle
+      else if (dtKey > 0) st.vel += (moved / dtKey - st.vel) * Math.min(1, dtKey * 10);
+      // anda enquanto a posição mudou há pouco (cobre o intervalo entre snapshots); parou → idle em ~0,12 s
+      if (moved > 0.4 && moved <= 40) st.ultimoMov = agora;
+      const andando = agora - st.ultimoMov < 0.12;
 
       const alive = p.alive !== false;
       let pose = o.pose || 'auto';
-      if (pose === 'auto') pose = !alive ? 'dead' : (c.gltf ? st.andando : st.moving > 0.3) ? 'walk' : 'idle';
+      if (pose === 'auto') pose = !alive ? 'dead' : (c.gltf ? andando : st.moving > 0.3) ? 'walk' : 'idle';
       const scale = (o.scale || 1) * ((p.r || 16) / 16);
       const color = o.color || p.color || '#999';
       c.suit.color.set(color);
@@ -515,7 +517,8 @@
         // detento glTF: a pose vira um clipe; dt local (animação é só visual, não vai para a rede)
         const dt = c.ultimoT ? Math.min(0.1, agora - c.ultimoT) : 0;
         c.ultimoT = agora;
-        c.gltf.pose(pose, st.vel);
+        // corrida forçada (o.pose: 'walk') com o boneco parado anima em 1x, não em câmera lenta
+        c.gltf.pose(pose, o.pose === 'walk' ? Math.max(st.vel, TN.Detento.CORRIDA_1X) : st.vel);
         c.gltf.avancar(dt);
         c.body.rotation.set(0, 0, o.lean || 0);
       } else {

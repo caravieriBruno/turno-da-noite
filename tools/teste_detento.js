@@ -86,6 +86,9 @@ async function secaoDetento() {
   // a morte toca uma vez e para no último quadro; voltar para idle (mesma vaga do pool) reinicia o loop
   a.pose('dead'); a.avancar(5);
   ok(Math.abs(a.acao.time - m.clipes.get('Death01').duration) < 0.05, 'morte toca uma vez e fica no último quadro');
+  a.root.updateMatrixWorld(true);
+  const cMorto = new THREE.Box3().setFromObject(a.root, true).getCenter(new THREE.Vector3());
+  ok(Math.abs(cMorto.x) < 8, `morto deitado centrado na posição, como o boneco de caixas (centro x ${cMorto.x.toFixed(1)})`);
   a.pose('idle'); a.avancar(0.2);
   ok(a.atual === 'Idle_Loop' && a.acao.isRunning(), 'depois da morte, idle volta a animar');
   // deitar (lie) usa a animação da morte mais rápida: num jogo de reflexo o boneco precisa estar no chão logo

@@ -125,6 +125,24 @@
     const pular = (x) => TN.R3.renderRound({ def: { draw3d: (g, r) => r.character({ id: 7, x, y: 280, dir: 0, color: '#c33', alive: true }) }, time: 1, _particles: [], _shake: 0 }, ctx);
     pular(100); pular(100); pular(700);
     ok(TN.R3._personagens().find((v) => v.chave === 7).gltf.atual === 'Idle_Loop', 'teleporte não vira corrida (o boneco continua parado)');
+    // andando com a posição mudando só a 30/s (rede) corre sem piscar; ao parar, volta ao idle logo (caixas: ~0,1 s)
+    const espera = (ms) => { const t = performance.now(); while (performance.now() - t < ms); };
+    let px = 100;
+    const andar = () => TN.R3.renderRound({ def: { draw3d: (g, r) => r.character({ id: 8, x: px, y: 280, dir: 0, color: '#c33', alive: true }) }, time: 1, _particles: [], _shake: 0 }, ctx);
+    let trocas = 0, antes = null;
+    for (let i = 0; i < 40; i++) {
+      if (i % 2 === 0) px += 6;   // ~180 px/s a 60 quadros/s, posição nova a cada 2 quadros
+      andar(); espera(16);
+      const atual = TN.R3._personagens().find((v) => v.chave === 8).gltf.atual;
+      if (i > 10 && antes && atual !== antes) trocas++;
+      antes = atual;
+    }
+    const vaga = TN.R3._personagens().find((v) => v.chave === 8);
+    ok(vaga.gltf.atual === 'Jog_Fwd_Loop' && trocas === 0, 'andando a 30 posições/s, corre sem trocar de pose (trocas: ' + trocas + ')');
+    const tParou = performance.now();
+    while (vaga.gltf.atual !== 'Idle_Loop' && performance.now() - tParou < 2000) { andar(); espera(16); }
+    const parou = performance.now() - tParou;
+    ok(parou < 250, 'parou de andar → idle em menos de 0,25 s (levou ' + parou.toFixed(0) + ' ms)');
   } else {
     ok(pronto === false && TN.R3.estadoDetento() === 'desligado' && !TN.R3._personagens()[0].gltf, 'visual antigo: boneco de caixas, sem carregar o modelo');
   }
