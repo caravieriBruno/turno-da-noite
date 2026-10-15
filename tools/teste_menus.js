@@ -14,7 +14,7 @@ global.performance = global.performance || { now: () => Date.now() };
 const store = {};
 global.localStorage = { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); } };
 const load = (rel) => vm.runInThisContext(fs.readFileSync(path.join(ROOT, rel), 'utf8'), { filename: rel });
-const MOTOR = ['engine/util.js', 'engine/input.js', 'engine/audio.js', 'engine/draw.js', 'engine/render3d.js', 'engine/cenarios.js', 'engine/minigame.js', 'engine/session.js', 'engine/net.js', 'minigames/manifest.js'];
+const MOTOR = ['engine/util.js', 'engine/input.js', 'engine/audio.js', 'engine/draw.js', 'engine/giz.js', 'engine/render3d.js', 'engine/cenarios.js', 'engine/minigame.js', 'engine/session.js', 'engine/net.js', 'minigames/manifest.js'];
 MOTOR.forEach(load);
 for (const f of TN.MINIGAME_FILES) load('minigames/' + f);
 const S = TN.sceneClasses, I = TN._internal;
@@ -93,7 +93,59 @@ function secaoDono() {
 
 // SEÇÕES EXTRAS (as tarefas seguintes acrescentam funções aqui)
 
+// contexto 2D de mentira: registra cada chamada (números arredondados) em c.log
+function gravador() {
+  const log = [];
+  return new Proxy({}, {
+    get(t, k) {
+      if (k === 'log') return log;
+      if (k === 'measureText') return (s) => ({ width: String(s).length * 10 });
+      if (k === 'createRadialGradient' || k === 'createLinearGradient') return () => ({ addColorStop() {} });
+      if (k === 'createPattern') return () => ({});
+      if (k in t) return t[k];
+      return (...a) => { log.push([k, ...a.map((v) => (typeof v === 'number' ? Math.round(v * 100) / 100 : typeof v === 'string' ? v : '?'))]); };
+    },
+    set(t, k, v) { t[k] = v; log.push(['=' + String(k), typeof v === 'object' ? '?' : v]); return true; },
+  });
+}
+const desenho = (fn) => { const c = gravador(); fn(c); return JSON.stringify(c.log); };
+
+// --- 2. giz: determinístico (sem Math.random), não "ferve", seleção animada ---
+function secaoGiz() {
+  const G = TN.giz;
+  if (!G) { ok(false, 'TN.giz existe (engine/giz.js)'); return; }
+  const rnd = Math.random; let erro = '', a, b, d1, d2;
+  Math.random = () => { throw new Error('Math.random no giz'); };
+  try {
+    a = desenho((c) => G.texto(c, 'PLANEJAR A FUGA', 100, 100, { size: 24 }));
+    b = desenho((c) => G.texto(c, 'PLANEJAR A FUGA', 100, 100, { size: 24 }));
+    d1 = desenho((c) => G.detento(c, 50, 50, 20, '#ff4d5e', { comemorando: true }));
+    d2 = desenho((c) => G.detento(c, 50, 50, 20, '#ff4d5e', { comemorando: true }));
+    desenho((c) => { G.parede(c); G.linha(c, 0, 0, 10, 10); G.retangulo(c, 0, 0, 20, 20); G.circulo(c, 5, 5, 10, 6); G.selecao(c, 'X', 10, 10, 20, 0.1); G.bilhete(c, 0, 0, 50, 30); G.titulo(c, 'T', 10, 10, 30); G.linhas(c, 'a\nb', 0, 0); G.detento(c, 0, 0, 10, '#3fa9ff', { caido: true }); });
+  } catch (e) { erro = e.message; } finally { Math.random = rnd; }
+  ok(!erro, 'giz desenha sem Math.random (igual no host e nos clientes)' + (erro ? ` (${erro})` : ''));
+  ok(!!a && a === b, 'giz: o mesmo texto desenhado duas vezes sai igual (não ferve)');
+  ok(!!d1 && d1 === d2, 'giz: o mesmo detento desenhado duas vezes sai igual');
+  ok(a !== desenho((c) => G.texto(c, 'PLANEJAR A FUGB', 100, 100, { size: 24 })), 'giz: textos diferentes têm tremor diferente');
+  ok(desenho((c) => G.selecao(c, 'CONTINUAR', 100, 100, 24, 0.05)) !== desenho((c) => G.selecao(c, 'CONTINUAR', 100, 100, 24, 1)), 'giz: a seleção se desenha com o tempo');
+  const fino = gravador(); G.texto(fino, 'rodapé', 10, 10, { size: 12 });
+  ok(fino.log.filter((e) => e[0] === 'fillText').length === 1 && !fino.log.some((e) => e[0] === 'fillRect'), 'giz: texto pequeno sai com uma passada e sem grão (legível)');
+}
+
+// --- 3. atalho ?cena=: abre cada tela de menu com uma sessão de mentira ---
+function secaoCenas() {
+  if (!TN.cenaDeTeste) { ok(false, 'TN.cenaDeTeste existe'); return; }
+  for (const nome of TN.CENAS_DE_TESTE) {
+    let erro = '';
+    try { const cena = TN.cenaDeTeste(nome); if (!cena || TN.scene !== cena) throw new Error('não abriu'); cena.draw(gravador()); } catch (e) { erro = e.message; }
+    ok(!erro, `?cena=${nome} abre e desenha` + (erro ? ` (${erro})` : ''));
+  }
+  ok(TN.CENAS_DE_TESTE.length === 14, 'as 14 telas de menu da spec têm atalho');
+}
+
 secaoDono();
+secaoGiz();
+secaoCenas();
 // CHAMADAS EXTRAS (as tarefas seguintes acrescentam aqui)
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

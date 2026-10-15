@@ -519,7 +519,43 @@
   // index.html?game=<id>            → joga só esse minigame (P1 = teclado 1, resto bots)
   // index.html?game=<id>&humans=2   → P1 teclado 1, P2 teclado 2 (IJKL)
   // index.html?game=<id>&humans=0   → só bots (assistir)
+  // ?cena=<Nome>: abre uma tela de menu direto, com uma sessão de mentira (4 detentos, 6 etapas, placar
+  // inventado). Só para testes e screenshots (tools/menus.sh, tools/teste_menus.js); não muda o fluxo normal.
+  const CENAS_DE_TESTE = ['Title', 'Controls', 'TestList', 'Lobby', 'Setup', 'Picker', 'Brief', 'Pause', 'RoundOver', 'ScoreScreen', 'Final', 'HostCreate', 'JoinList', 'NetMessage'];
+  function cenaDeTeste(nome) {
+    const roster = buildRoster([{ device: 'kb1' }, null, null, null], true);
+    const ids = TN.minigameOrder.slice(0, 6);
+    newSession(roster, ids.map((id) => ({ id, rounds: 3 })));
+    const s = TN.session;
+    s.index = Math.min(2, ids.length - 1);
+    s.totals = { 0: 34, 1: 51, 2: 12, 3: 27 };
+    s.gameScores = { 0: 8, 1: 5, 2: 0, 3: 3 };
+    const N = TN.NetScenes;
+    const abrir = (cena) => { TN.go(cena); return cena; };
+    const semEnter = (cena) => { TN.scene = cena; cena.t = 0; return cena; };   // telas de rede: sem falar com o servidor
+    switch (nome) {
+      case 'Title': TN.session = null; return abrir(Title);
+      case 'Controls': TN.session = null; return abrir(Controls);
+      case 'TestList': TN.session = null; return abrir(new TestList());
+      case 'Lobby': { TN.session = null; const l = abrir(new Lobby({})); l.slots[0] = { device: 'kb1', ready: false }; l.slots[1] = { device: 'kb2', ready: true }; return l; }
+      case 'Setup': return abrir(new Setup(roster));
+      case 'Picker': return abrir(new Picker());
+      case 'Brief': return abrir(new Brief());
+      case 'Pause': { const b = abrir(new Brief()); return abrir(new Pause(b)); }
+      case 'RoundOver': return abrir(new RoundOver(new TN.Round(TN.minigames[ids[s.index]], roster, 1, 3)));
+      case 'ScoreScreen': return abrir(new ScoreScreen());
+      case 'Final': return abrir(new Final());
+      case 'HostCreate': { const h = semEnter(new N.HostCreate()); h.msg = 'ERRO'; return h; }
+      case 'JoinList': { TN.net.rooms = [{ room: 'ABCD', players: 2 }, { room: 'KXT9', players: 1 }]; TN.net.status = ''; return semEnter(new N.JoinList()); }
+      case 'NetMessage': return abrir(new N.NetMessage('A SALA FECHOU', 'O host saiu da partida.\nVolte e entre em outra sala.'));
+    }
+    return null;
+  }
+  TN.cenaDeTeste = cenaDeTeste;
+  TN.CENAS_DE_TESTE = CENAS_DE_TESTE;
   TN.bootScene = function () {
+    const cena = params.get('cena');
+    if (cena) { if (!cenaDeTeste(cena)) TN.go(Title); return; }
     const id = params.get('game');
     if (id && TN.minigames[id]) {
       const humans = Number(params.get('humans') ?? 1);

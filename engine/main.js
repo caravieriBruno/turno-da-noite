@@ -6,6 +6,7 @@
   const SPEED = Number(params.get('speed')) || 1;   // ?speed=3 acelera (útil para testar)
   const STEP = 1 / 60;
   TN.force2d = params.get('2d') === '1';             // ?2d=1 força os gráficos 2D antigos
+  const CONGELAR = params.has('cena');                // ?cena=<Nome>: só desenha (a tela fica parada para o screenshot)
   const canvas3d = document.getElementById('game3d');
   if (canvas3d && !TN.force2d) TN.R3.init(canvas3d);
 
@@ -42,7 +43,7 @@
     const now = performance.now();
     acc += Math.min(0.25, (now - last) / 1000) * SPEED; last = now;
     let steps = 0;
-    while (acc >= STEP && steps < 8 * SPEED) {
+    while (!CONGELAR && acc >= STEP && steps < 8 * SPEED) {
       TN.input.update();
       try { TN.scene.update(STEP); } catch (e) { console.error(e); TN.lastError = String(e && e.stack || e); }
       TN.scene.t = (TN.scene.t || 0) + STEP;
