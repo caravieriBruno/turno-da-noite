@@ -40,19 +40,6 @@
   }
   TN.donoDoMenu = donoDoMenu;
 
-  function background(c, t, tint = '#0b0f13') {
-    c.fillStyle = tint; c.fillRect(0, 0, TN.W, TN.H);
-    c.strokeStyle = 'rgba(60,255,120,0.05)'; c.lineWidth = 1;
-    for (let x = (t * 20) % 40; x < TN.W; x += 40) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, TN.H); c.stroke(); }
-    for (let y = 0; y < TN.H; y += 40) { c.beginPath(); c.moveTo(0, y); c.lineTo(TN.W, y); c.stroke(); }
-  }
-  function footer(c, text) { D.text(c, text, TN.W / 2, TN.H - 18, { size: 14, color: '#7a8', align: 'center' }); }
-  function menuList(c, items, sel, x, y, { size = 26, gap = 44, align = 'center' } = {}) {
-    items.forEach((it, i) => {
-      const on = i === sel;
-      D.text(c, (on ? '▶ ' : '  ') + it + (on ? ' ◀' : '  '), x, y + i * gap, { size, color: on ? '#3f6' : '#9aa', align });
-    });
-  }
   // ---- menus de giz ----
   // move a seleção com cima/baixo; selAt marca quando ela mudou (o círculo de giz se redesenha)
   function navegar(cena, m, n) {
@@ -231,8 +218,7 @@
     enabledIds() { return TN.minigameOrder.filter((id) => !TN.settings.disabled[id]); }
     update() {
       const ids = TN.minigameOrder, rows = 3 + ids.length, m = TN.input.menu(donoDoMenu(this.roster)), S = TN.settings;
-      if (m.up) { this.sel = (this.sel + rows - 1) % rows; TN.audio.play('blip'); }
-      if (m.down) { this.sel = (this.sel + 1) % rows; TN.audio.play('blip'); }
+      navegar(this, m, rows);
       const dx = (m.right ? 1 : 0) - (m.left ? 1 : 0);
       const total = this.enabledIds().length;
       if (this.sel === 1 && dx) { S.gameCount = U.clamp(S.gameCount + dx, 1, Math.max(1, total)); TN.audio.play('blip'); }
@@ -255,21 +241,28 @@
       this.scroll = U.clamp(this.sel - 3 - 5, 0, Math.max(0, ids.length - 10));
     }
     draw(c) {
-      background(c, this.t);
-      const S = TN.settings, ids = TN.minigameOrder;
-      D.text(c, 'CONFIGURAR PARTIDA', TN.W / 2, 40, { size: 32, color: '#3f6', align: 'center' });
-      const rows0 = ['▶▶ COMEÇAR', `JOGOS NA PARTIDA: ◀ ${S.gameCount} ▶  (de ${this.enabledIds().length} ativos)`, `RODADAS POR JOGO: ◀ ${ROUND_MODES[S.roundsMode]} ▶`];
-      rows0.forEach((r, i) => D.text(c, r, 80, 95 + i * 32, { size: 20, color: this.sel === i ? '#3f6' : '#9aa' }));
-      D.text(c, 'MINIGAMES (AÇÃO liga/desliga):', 80, 200, { size: 15, color: '#789' });
-      ids.slice(this.scroll, this.scroll + 10).forEach((id, k) => {
-        const i = k + this.scroll, on = this.sel === i + 3, def = TN.minigames[id];
-        D.text(c, `${S.disabled[id] ? '[ ]' : '[x]'} ${def.title}`, 100, 228 + k * 27, { size: 17, color: on ? '#3f6' : S.disabled[id] ? '#555' : '#cdd' });
-        D.text(c, `${def.rounds} rod.`, 470, 228 + k * 27, { size: 13, color: '#678' });
+      G.parede(c);
+      const S = TN.settings, ids = TN.minigameOrder, selT = this.t - (this.selAt || 0);
+      G.titulo(c, 'MONTAR O PLANO', TN.W / 2, 40, 32);
+      const rows0 = ['▶▶ COMEÇAR A FUGA', `ETAPAS DO PLANO: ◀ ${S.gameCount} ▶  (de ${this.enabledIds().length} ativas)`, `TENTATIVAS POR ETAPA: ◀ ${ROUND_MODES[S.roundsMode]} ▶`];
+      rows0.forEach((r, i) => {
+        G.texto(c, r, 80, 95 + i * 32, { size: 20, color: this.sel === i ? G.CORES.destaque : G.CORES.giz, maxWidth: 520 });
+        if (this.sel === i) G.selecao(c, r, 80, 95 + i * 32, 20, selT, 'left');
       });
-      D.text(c, 'Jogadores:', 640, 95, { size: 16, color: '#789' });
-      this.roster.forEach((p, i) => { D.robot(c, 660, 135 + i * 50, 14, p.color); D.text(c, `P${p.id + 1} ${p.isBot ? '(BOT)' : TN.input.deviceLabel(p.device).split(' · ')[0]}`, 690, 135 + i * 50, { size: 15, color: p.color }); });
-      footer(c, 'Os jogos sorteados são embaralhados · ESC volta ao lobby');
-      D.crt(c, this.t);
+      G.texto(c, 'ETAPAS POSSÍVEIS (AÇÃO liga/desliga):', 80, 200, { size: 15, color: G.CORES.apagadoForte });
+      ids.slice(this.scroll, this.scroll + 10).forEach((id, k) => {
+        const i = k + this.scroll, on = this.sel === i + 3, def = TN.minigames[id], y = 228 + k * 27;
+        const txt = `${S.disabled[id] ? '[ ]' : '[x]'} ${def.title}`;
+        G.texto(c, txt, 100, y, { size: 17, color: on ? G.CORES.destaque : S.disabled[id] ? G.CORES.apagadoForte : G.CORES.giz, maxWidth: 360 });
+        if (on) G.selecao(c, txt, 100, y, 17, selT, 'left');
+        G.texto(c, `${def.rounds} tent.`, 480, y, { size: 13, color: G.CORES.apagadoForte });
+      });
+      G.texto(c, 'Detentos:', 640, 95, { size: 16, color: G.CORES.apagadoForte });
+      this.roster.forEach((p, i) => {
+        G.detento(c, 660, 140 + i * 56, 13, p.color);
+        G.texto(c, `P${p.id + 1} ${p.isBot ? '(BOT)' : TN.input.deviceLabel(p.device).split(' · ')[0]}`, 690, 140 + i * 56, { size: 15, color: G.desbotar(p.color), maxWidth: 250 });
+      });
+      rodape(c, 'As etapas sorteadas são embaralhadas · só o P1 mexe no menu · ESC volta ao lobby');
     }
   }
 
@@ -297,20 +290,18 @@
       }
     }
     draw(c) {
-      background(c, this.t);
+      G.parede(c);
       const s = TN.session;
-      D.text(c, `PRÓXIMO TESTE  ·  ${s.index + 1}/${s.playlist.length}`, TN.W / 2, 50, { size: 28, color: '#3f6', align: 'center' });
-      const n = this.cards.length, cols = Math.min(4, n), rows = Math.ceil(n / cols);
-      const hi = this.cur % n;
+      G.titulo(c, `ETAPA ${s.index + 1} DE ${s.playlist.length}`, TN.W / 2, 50, 30);
+      const n = this.cards.length, cols = Math.min(4, n), rows = Math.ceil(n / cols), hi = this.cur % n;
       this.cards.forEach((id, i) => {
         const def = TN.minigames[id];
         const cx = TN.W / 2 + ((i % cols) - (cols - 1) / 2) * 215, cy = 160 + Math.floor(i / cols) * 170 + (rows === 1 ? 70 : 0);
-        const on = i === hi;
-        D.panel(c, cx - 100, cy - 70, 200, 140, { stroke: on ? '#fff' : def.color, lw: on ? 5 : 2, fill: on ? 'rgba(40,60,40,0.95)' : 'rgba(10,14,18,0.85)' });
-        D.text(c, def.icon || '■', cx, cy - 22, { size: 40, color: def.color, align: 'center', bold: false });
-        D.text(c, def.title, cx, cy + 35, { size: 15, color: '#fff', align: 'center', maxWidth: 185 });
+        G.bilhete(c, cx - 95, cy - 65, 190, 130, { rot: (((i * 7) % 5) - 2) * 0.012 });
+        G.texto(c, def.icon || '■', cx, cy - 22, { size: 40, color: def.color, align: 'center', papel: true });
+        G.texto(c, def.title, cx, cy + 35, { size: 15, color: G.CORES.lapis, align: 'center', maxWidth: 175, papel: true });
+        if (i === hi) G.circulo(c, cx, cy, 118, 82, { color: G.CORES.destaque, lw: 3 });
       });
-      D.crt(c, this.t);
     }
   }
 
@@ -334,33 +325,32 @@
       if (s.roster.every((p) => this.ready[p.id]) && this.t > 1.2 || this.t > 30) TN.go(new RoundIntro(1));
     }
     draw(c) {
-      const s = TN.session, def = this.def;
-      background(c, this.t, '#0a120d');
-      D.panel(c, 30, 24, 600, 492, { stroke: def.color });
-      D.text(c, def.title, 55, 65, { size: 38, color: def.color, maxWidth: 560 });
-      D.text(c, def.tagline || '', 55, 105, { size: 16, color: '#ffd', maxWidth: 560 });
-      D.lines(c, def.brief.map((b) => '> ' + b).join('\n'), 55, 155, { size: 18, color: '#dfe', lineHeight: 28 });
-      const ctl = def.controls;
-      const lines = [];
+      const s = TN.session, def = this.def, entry = s.playlist[s.index], L = G.CORES.lapis;
+      G.parede(c);
+      G.bilhete(c, 30, 24, 600, 492, { rot: -0.004 });
+      G.texto(c, def.title, 55, 62, { size: 34, color: L, maxWidth: 550, papel: true });
+      G.linha(c, 55, 86, 585, 86, { color: def.color, lw: 3 });
+      G.texto(c, def.tagline || '', 55, 110, { size: 16, color: L, maxWidth: 550, papel: true });
+      G.linhas(c, def.brief.map((b) => '> ' + b).join('\n'), 55, 155, { size: 18, color: L, lineHeight: 28, papel: true, maxWidth: 550 });
+      const ctl = def.controls, lines = [];
       if (ctl.move) lines.push('MOVER: ' + ctl.move);
       if (ctl.a) lines.push('AÇÃO:  ' + ctl.a);
       if (ctl.b) lines.push('EXTRA: ' + ctl.b);
-      D.text(c, 'CONTROLES', 55, 360, { size: 16, color: '#789' });
-      D.lines(c, lines.join('\n'), 55, 390, { size: 17, color: '#cdd', lineHeight: 26 });
-      D.text(c, `${def.rounds && s.playlist[s.index].rounds > 1 ? s.playlist[s.index].rounds + ' RODADAS' : '1 RODADA'}  ·  JOGO ${s.index + 1}/${s.playlist.length}`, 55, 490, { size: 14, color: '#789' });
-      // placar
-      D.panel(c, 650, 24, 280, 492, { stroke: '#355' });
-      D.text(c, 'PLACAR GERAL', 790, 55, { size: 18, color: '#9ab', align: 'center' });
+      G.texto(c, 'CONTROLES', 55, 360, { size: 16, color: L, papel: true });
+      G.linhas(c, lines.join('\n'), 55, 390, { size: 17, color: L, lineHeight: 26, papel: true, maxWidth: 550 });
+      G.texto(c, `${entry.rounds > 1 ? entry.rounds + ' TENTATIVAS' : '1 TENTATIVA'} · ETAPA ${s.index + 1}/${s.playlist.length}`, 55, 490, { size: 14, color: L, papel: true });
+      // quanto cada um já cavou
+      G.retangulo(c, 650, 24, 280, 492, { color: G.CORES.apagadoForte });
+      G.texto(c, 'TÚNEL CAVADO', 790, 55, { size: 18, align: 'center' });
       const sorted = s.roster.slice().sort((a, b) => s.totals[b.id] - s.totals[a.id]);
       sorted.forEach((p, i) => {
         const y = 110 + i * 85;
-        D.robot(c, 690, y, 18, p.color);
-        D.text(c, `P${p.id + 1}${p.isBot ? ' BOT' : ''}`, 720, y - 10, { size: 16, color: p.color });
-        D.text(c, `${s.totals[p.id]} pts`, 720, y + 14, { size: 18, color: '#fff' });
-        D.text(c, this.ready[p.id] ? '✔' : '…', 905, y, { size: 24, color: this.ready[p.id] ? '#3f6' : '#aa8', align: 'right' });
+        G.detento(c, 690, y, 16, p.color);
+        G.texto(c, `P${p.id + 1}${p.isBot ? ' BOT' : ''}`, 720, y - 10, { size: 16, color: G.desbotar(p.color) });
+        G.texto(c, `${s.totals[p.id]} m`, 720, y + 14, { size: 18 });
+        G.texto(c, this.ready[p.id] ? '✔' : '…', 905, y, { size: 24, color: this.ready[p.id] ? G.CORES.destaque : G.CORES.apagadoForte, align: 'right' });
       });
-      footer(c, 'Aperte AÇÃO quando estiver pronto');
-      D.crt(c, this.t);
+      rodape(c, 'Aperte AÇÃO quando estiver pronto');
     }
   }
 
@@ -387,10 +377,10 @@
       this.round.draw(c);
       c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(0, 0, TN.W, TN.H);
       if (this.phase === 'intro') {
-        D.text(c, this.total > 1 ? `RODADA ${this.roundNo} / ${this.total}` : this.def.title, TN.W / 2, TN.H / 2 - 30, { size: 48, color: '#fff', align: 'center' });
-        D.text(c, this.def.tagline || '', TN.W / 2, TN.H / 2 + 25, { size: 20, color: this.def.color, align: 'center' });
+        G.texto(c, this.total > 1 ? `TENTATIVA ${this.roundNo} / ${this.total}` : this.def.title, TN.W / 2, TN.H / 2 - 30, { size: 48, align: 'center' });
+        G.texto(c, this.def.tagline || '', TN.W / 2, TN.H / 2 + 25, { size: 20, color: this.def.color, align: 'center', maxWidth: TN.W - 80 });
       } else {
-        D.text(c, String(this.count), TN.W / 2, TN.H / 2, { size: 120, color: '#fff', align: 'center' });
+        G.texto(c, String(this.count), TN.W / 2, TN.H / 2, { size: 120, align: 'center' });
       }
       // lembrete de quem é quem
       const r3 = this.round.uses3d() && !this.def.screenSpace;
@@ -413,12 +403,11 @@
   // ======================= PAUSA =======================
   class Pause {
     constructor(under) { this.under = under; this.sel = 0; }
-    items() { return ['CONTINUAR', 'PULAR ESTE MINIGAME', 'SAIR PARA O MENU']; }
+    items() { return ['CONTINUAR', 'PULAR ESTA ETAPA', 'DESISTIR DA FUGA']; }
     update() {
       const m = TN.input.menu(donoDoMenu(TN.session && TN.session.roster));
       if (TN.input.keyPressed('Escape')) { TN.scene = this.under; return; }
-      if (m.up) this.sel = (this.sel + 2) % 3;
-      if (m.down) this.sel = (this.sel + 1) % 3;
+      navegar(this, m, 3);
       if (m.ok) {
         if (this.sel === 0) TN.scene = this.under;
         if (this.sel === 1) nextGame();
@@ -427,9 +416,11 @@
     }
     draw(c) {
       this.under.draw(c);
-      c.fillStyle = 'rgba(0,0,0,0.7)'; c.fillRect(0, 0, TN.W, TN.H);
-      D.text(c, 'PAUSA', TN.W / 2, 150, { size: 50, color: '#3f6', align: 'center' });
-      menuList(c, this.items(), this.sel, TN.W / 2, 250);
+      c.fillStyle = 'rgba(29,35,33,0.9)'; c.fillRect(0, 110, TN.W, 320);
+      G.linha(c, 0, 110, TN.W, 110, { color: G.CORES.apagadoForte }); G.linha(c, 0, 430, TN.W, 430, { color: G.CORES.apagadoForte });
+      G.titulo(c, 'SILÊNCIO, GUARDA NA RONDA', TN.W / 2, 165, 36);
+      menuGiz(c, this.items(), this.sel, TN.W / 2, 255, this.t - (this.selAt || 0), { size: 24, gap: 48 });
+      G.texto(c, 'só o P1 mexe no menu', TN.W / 2, 410, { size: 13, color: G.CORES.apagadoForte, align: 'center' });
     }
   }
 
@@ -453,14 +444,14 @@
     }
     draw(c) {
       this.round.draw(c);
-      c.fillStyle = 'rgba(0,0,0,0.6)'; c.fillRect(0, 0, TN.W, TN.H);
-      D.text(c, 'FIM DA RODADA', TN.W / 2, 110, { size: 44, color: '#fff', align: 'center' });
+      c.fillStyle = 'rgba(29,35,33,0.82)'; c.fillRect(0, 0, TN.W, TN.H);
+      G.titulo(c, 'FIM DA TENTATIVA', TN.W / 2, 110, 42);
       const ps = this.round.players.slice().sort((a, b) => this.pts[b.id] - this.pts[a.id]);
       ps.forEach((p, i) => {
         const y = 190 + i * 64;
-        D.robot(c, TN.W / 2 - 150, y, 20, p.color, { dead: !p.alive });
-        D.text(c, `P${p.id + 1}${p.isBot ? ' BOT' : ''}`, TN.W / 2 - 115, y, { size: 22, color: p.color });
-        D.text(c, `+${this.pts[p.id]}`, TN.W / 2 + 170, y, { size: 28, color: '#ff0', align: 'right' });
+        G.detento(c, TN.W / 2 - 150, y, 18, p.color, { caido: !p.alive });
+        G.texto(c, `P${p.id + 1}${p.isBot ? ' BOT' : ''}`, TN.W / 2 - 115, y, { size: 22, color: G.desbotar(p.color) });
+        G.texto(c, `+${this.pts[p.id]} m`, TN.W / 2 + 170, y, { size: 28, color: G.CORES.destaque, align: 'right' });
       });
     }
   }
@@ -480,19 +471,21 @@
     }
     draw(c) {
       const s = TN.session;
-      background(c, this.t);
-      D.text(c, 'PLACAR', TN.W / 2, 55, { size: 40, color: '#3f6', align: 'center' });
-      const k = U.clamp((this.t - 0.6) / 1.4, 0, 1);
+      G.parede(c);
+      G.titulo(c, 'QUANTO CADA UM CAVOU', TN.W / 2, 48, 36);
+      const k = U.clamp((this.t - 0.6) / 1.4, 0, 1), CHAO = 175, FUNDO = 440, n = s.roster.length;
+      G.linha(c, 60, CHAO, TN.W - 60, CHAO, { lw: 2.5 });   // chão da cela; os túneis descem dele
       s.roster.forEach((p, i) => {
-        const y = 130 + i * 90, val = this.before[p.id] + s.gameScores[p.id] * k;
-        D.robot(c, 90, y + 12, 22, p.color);
-        D.text(c, `P${p.id + 1}${p.isBot ? ' BOT' : ''}`, 125, y, { size: 18, color: p.color });
-        D.bar(c, 125, y + 16, 640 * (val / this.max) + 4, 22, 1, p.color);
-        D.text(c, `${Math.round(val)}`, 800, y + 27, { size: 24, color: '#fff' });
-        D.text(c, `+${s.gameScores[p.id]}`, 870, y + 27, { size: 18, color: '#ff0' });
+        const x = TN.W / 2 + (i - (n - 1) / 2) * 200, val = this.before[p.id] + s.gameScores[p.id] * k;
+        const L = Math.max(6, (FUNDO - CHAO - 30) * (val / this.max)), cor = G.desbotar(p.color);
+        G.texto(c, `P${p.id + 1}${p.isBot ? ' BOT' : ''}`, x, CHAO - 82, { size: 16, color: cor, align: 'center' });
+        G.detento(c, x, CHAO - 34, 18, p.color);
+        G.linha(c, x - 16, CHAO, x - 16, CHAO + L, { color: cor }); G.linha(c, x + 16, CHAO, x + 16, CHAO + L, { color: cor });
+        for (let yy = CHAO + 10; yy < CHAO + L - 4; yy += 14) G.linha(c, x - 14, yy, x + 14, yy + 8, { color: cor, lw: 1, alpha: 0.5 });
+        G.texto(c, `${Math.round(val)} m`, x, CHAO + L + 22, { size: 22, align: 'center' });
+        G.texto(c, `+${s.gameScores[p.id]}`, x, CHAO + L + 46, { size: 16, color: G.CORES.destaque, align: 'center' });
       });
-      footer(c, s.index + 1 < s.playlist.length ? `Próximo: jogo ${s.index + 2}/${s.playlist.length}` : 'Último jogo concluído!');
-      D.crt(c, this.t);
+      rodape(c, s.index + 1 < s.playlist.length ? `Próxima: etapa ${s.index + 2}/${s.playlist.length}` : 'Plano completo! Hora de sair.');
     }
   }
 
@@ -511,28 +504,36 @@
     update() {
       if (this.t < 1.5) return;
       const m = TN.input.menu(donoDoMenu(TN.session.roster));
-      if (m.up || m.down) this.sel = 1 - this.sel;
+      navegar(this, m, 2);
       if (m.ok) {
         if (this.sel === 0) TN.go(new Setup(TN.session.roster)); else TN.go(Title);
       }
     }
     draw(c) {
       const s = TN.session;
-      background(c, this.t, '#0d0b14');
-      const sorted = s.roster.slice().sort((a, b) => s.totals[b.id] - s.totals[a.id]);
-      const w = sorted[0];
-      D.text(c, 'TURNO ENCERRADO', TN.W / 2, 55, { size: 40, color: '#3f6', align: 'center' });
-      D.text(c, `P${w.id + 1} ${w.isBot ? '(BOT) ' : ''}FOI APROVADO.`, TN.W / 2, 100, { size: 24, color: w.color, align: 'center' });
-      const podium = [[1, 260, 150], [0, 480, 200], [2, 700, 110], [3, 860, 60]];
-      for (const [rank, x, h] of podium) {
-        const p = sorted[rank]; if (!p) continue;
-        c.fillStyle = '#1d2630'; c.fillRect(x - 70, 420 - h, 140, h);
-        D.text(c, `${rank + 1}º`, x, 440 - h + 20, { size: 26, color: '#fff', align: 'center' });
-        D.robot(c, x, 420 - h - 40 + Math.sin(this.t * 4 + rank) * (rank === 0 ? 8 : 0), 28, p.color, { dead: rank === 3 && s.roster.length === 4, dir: Math.PI / 2 });
-        D.text(c, `${s.totals[p.id]} pts`, x, 400, { size: 18, color: '#ff0', align: 'center' });
-      }
-      menuList(c, ['JOGAR DE NOVO', 'MENU PRINCIPAL'], this.sel, TN.W / 2, 470, { size: 20, gap: 30 });
-      D.crt(c, this.t);
+      G.parede(c);
+      const sorted = s.roster.slice().sort((a, b) => s.totals[b.id] - s.totals[a.id]), w = sorted[0];
+      G.titulo(c, 'O APITO TOCOU', TN.W / 2, 50, 40);
+      G.texto(c, `P${w.id + 1} ${w.isBot ? '(BOT) ' : ''}FUGIU!`, TN.W / 2, 100, { size: 26, color: G.desbotar(w.color), align: 'center' });
+      // o muro: o 1º desenhado do lado de fora, os outros dentro; o último vai para a solitária
+      const MX = 600, CHAO = 400;
+      G.linha(c, 40, CHAO, TN.W - 40, CHAO, { lw: 2.5 });
+      G.retangulo(c, MX - 18, 150, 36, CHAO - 150, { lw: 2.5 });
+      for (let y = 176; y < CHAO; y += 26) G.linha(c, MX - 18, y, MX + 18, y, { lw: 1, alpha: 0.6 });   // tijolos
+      for (let x = MX - 30; x < MX + 30; x += 10) G.linha(c, x, 146, x + 8, 136, { lw: 1 });             // arame farpado
+      G.texto(c, '1º', 780, CHAO - 110, { size: 26, color: G.CORES.destaque, align: 'center' });
+      G.detento(c, 780, CHAO - 40 + Math.sin(this.t * 4) * 6, 26, w.color, { comemorando: true });
+      G.texto(c, `${s.totals[w.id]} m · FUGIU`, 780, CHAO + 24, { size: 18, color: G.CORES.destaque, align: 'center' });
+      const dentro = sorted.slice(1);
+      dentro.forEach((p, i) => {
+        const x = 130 + i * 150, ultimo = i === dentro.length - 1;
+        G.texto(c, `${i + 2}º`, x, CHAO - 100, { size: 22, align: 'center' });
+        G.detento(c, x, CHAO - (ultimo ? 14 : 40), 22, p.color, { caido: ultimo });
+        if (ultimo) { G.linha(c, x - 24, CHAO - 66, x + 24, CHAO - 14, { color: G.CORES.perigo, lw: 3 }); G.linha(c, x + 24, CHAO - 66, x - 24, CHAO - 14, { color: G.CORES.perigo, lw: 3 }); }
+        G.texto(c, `${s.totals[p.id]} m · ${ultimo ? 'SOLITÁRIA' : 'RECAPTURADO'}`, x, CHAO + 24, { size: 15, color: ultimo ? G.CORES.perigo : G.CORES.giz, align: 'center' });
+      });
+      menuGiz(c, ['TENTAR DE NOVO', 'VOLTAR PRA CELA'], this.sel, TN.W / 2, 465, this.t - (this.selAt || 0), { size: 20, gap: 32 });
+      rodape(c, 'só o P1 mexe no menu');
     }
   }
 

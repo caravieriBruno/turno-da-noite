@@ -170,10 +170,37 @@ function secaoTelasSemSessao() {
   ok(semVisualAntigo(cenas), 'telas antes da partida e de rede: só giz (sem robô, painel ou CRT)');
 }
 
+// --- 5. telas da partida: giz e vocabulário do plano em etapas ---
+function secaoTelasDaPartida() {
+  const ts = textos(TN.cenaDeTeste('Setup'));
+  ok(['MONTAR O PLANO', 'COMEÇAR A FUGA', 'ETAPAS DO PLANO', 'TENTATIVAS POR ETAPA', 'ETAPAS POSSÍVEIS', 'só o P1 mexe no menu'].every((x) => ts.includes(x)), 'montar o plano: textos novos');
+  ok(textos(TN.cenaDeTeste('Picker')).includes('ETAPA 3 DE 6'), 'roleta: ETAPA 3 DE 6');
+  const tb = textos(TN.cenaDeTeste('Brief'));
+  ok(tb.includes('TÚNEL CAVADO') && tb.includes('51 m') && tb.includes('3 TENTATIVAS · ETAPA 3/6'), 'briefing: túnel cavado em metros');
+  const tp = textos(TN.cenaDeTeste('Pause'));
+  ok(['SILÊNCIO, GUARDA NA RONDA', 'CONTINUAR', 'PULAR ESTA ETAPA', 'DESISTIR DA FUGA', 'só o P1 mexe no menu'].every((x) => tp.includes(x)), 'pausa: textos novos e aviso de que só o P1 mexe');
+  const tr = textos(TN.cenaDeTeste('RoundOver'));
+  ok(tr.includes('FIM DA TENTATIVA') && /\+\d+ m/.test(tr), 'fim da tentativa: ganho em metros');
+  const ri = new S.RoundIntro(2); TN.go(ri);
+  ok(textos(ri).includes('TENTATIVA 2 / 3'), 'início da tentativa: TENTATIVA 2 / 3');
+  const sc = TN.cenaDeTeste('ScoreScreen'); sc.t = 3;
+  const tsc = textos(sc);
+  ok(tsc.includes('QUANTO CADA UM CAVOU') && tsc.includes('Próxima: etapa 4/6'), 'placar: quanto cada um cavou');
+  const tf = textos(TN.cenaDeTeste('Final'));
+  ok(['O APITO TOCOU', 'SOLITÁRIA', 'RECAPTURADO', 'TENTAR DE NOVO', 'VOLTAR PRA CELA', 'só o P1 mexe no menu'].every((x) => tf.includes(x)) && /P\d (\(BOT\) )?FUGIU!/.test(tf), 'pódio: fugiu, recapturado e solitária');
+  // com 2 detentos: só FUGIU e SOLITÁRIA
+  TN.cenaDeTeste('Final');
+  TN.session.roster = TN.session.roster.slice(0, 2);
+  const f2 = new S.Final(); TN.go(f2); const t2 = textos(f2);
+  ok(t2.includes('SOLITÁRIA') && !t2.includes('RECAPTURADO'), 'pódio com 2 detentos: só fugiu e solitária');
+  ok(semVisualAntigo(['Setup', 'Picker', 'Brief', 'ScoreScreen', 'Final'].map((n) => TN.cenaDeTeste(n))), 'telas da partida: só giz (sem robô, painel ou CRT)');
+}
+
 secaoDono();
 secaoGiz();
 secaoCenas();
 secaoTelasSemSessao();
+secaoTelasDaPartida();
 // CHAMADAS EXTRAS (as tarefas seguintes acrescentam aqui)
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
