@@ -2,6 +2,7 @@
 // Teste de ponta a ponta do modo em rede (precisa do servidor rodando: node tools/servidor.js 8765).
 // O HOST roda o motor de verdade aqui no Node; um CLIENTE conecta pelo WebSocket, entra na sala,
 // aperta AÇÃO no lobby para pegar uma vaga, joga e depois sai (deve virar BOT no host).
+// Nos menus só o host navega: o cliente não começa a partida; quem aperta COMEÇAR é o teclado do host.
 // Uso: node tools/teste_rede.js [porta]
 const fs = require('fs');
 const path = require('path');
@@ -31,8 +32,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   try { await TN.net.host(); } catch (e) { fail('host não conectou ao servidor em ' + PORT + ' (o servidor está rodando?)'); }
   ok(`host criou a sala ${TN.net.room}`);
   TN.go(new TN.LobbyScene({}));
+  let hostAperta = 0;   // quadros em que o teclado do host (kb1) aperta AÇÃO
   const hostLoop = setInterval(() => {
-    for (let i = 0; i < 2; i++) { TN.input.update(); TN.scene.update(1 / 60); TN.scene.t += 1 / 60; TN.net.tick(); }
+    for (let i = 0; i < 2; i++) {
+      TN.input.update();
+      if (hostAperta > 0) { hostAperta--; TN.input._inject('kb1', { ...TN.input.get('kb1'), a: true, aPressed: true }); }
+      TN.scene.update(1 / 60); TN.scene.t += 1 / 60; TN.net.tick();
+    }
   }, 1000 / 30);
 
   // ---------- CLIENTE ----------
@@ -70,7 +76,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(1500);
   if (TN.scene.constructor.name !== 'Setup') fail('lobby não avançou para a configuração (cena: ' + TN.scene.constructor.name + ')');
   ok('lobby → configuração da partida');
-  // COMEÇAR (configuração) e PRONTO (briefing)
+  // na configuração, o cliente não manda: só o host começa a fuga
+  for (let i = 0; i < 3; i++) await tap();
+  if (TN.scene.constructor.name !== 'Setup') fail('o cliente remoto mexeu no menu do host (cena: ' + TN.scene.constructor.name + ')');
+  ok('cliente remoto não mexe no menu do host');
+  hostAperta = 1; await sleep(300);
+  if (TN.scene.constructor.name === 'Setup') fail('o host apertou COMEÇAR e a configuração não avançou');
+  ok('host começou a fuga');
+  // PRONTO (briefing): cada jogador, inclusive o remoto, dá o seu
   for (let i = 0; i < 40 && TN.scene.constructor.name !== 'Play'; i++) { await tap(); await sleep(400); }
   if (TN.scene.constructor.name !== 'Play') fail('partida não começou (cena atual: ' + TN.scene.constructor.name + ')');
   const me = TN.scene.round.players.find((p) => p.device === `n${myId}:kb1`);

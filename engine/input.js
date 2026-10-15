@@ -115,10 +115,14 @@
     },
     keyPressed(code) { return !!(this._keysPressed && this._keysPressed.has(code)); },
     keyDown(code) { return down.has(code); },
-    // Navegação de menus: junta todos os dispositivos
-    menu() {
+    // Um jogador remoto aparece aqui como "n<cliente>:<dispositivo>"; os outros são deste computador.
+    ehLocal: (id) => !!id && !String(id).startsWith('n'),
+    // Navegação de menus: junta os dispositivos que `pode(id)` aceita (sem filtro: todos, como antes).
+    // Esc/Backspace são do teclado físico deste computador e valem sempre como "voltar".
+    menu(pode) {
       const m = { up: false, down: false, left: false, right: false, ok: false, back: false, okDevice: null };
       for (const id in state) {
+        if (pode && !pode(id)) continue;
         const s = state[id];
         m.up ||= s.upPressed; m.down ||= s.downPressed; m.left ||= s.leftPressed; m.right ||= s.rightPressed;
         if (s.aPressed || s.startPressed) { m.ok = true; m.okDevice ||= id; }

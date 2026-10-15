@@ -30,6 +30,15 @@
     for (const p of roster) TN.session.totals[p.id] = 0;
   }
 
+  // Quem navega nos menus (spec 2026-10-15-menus-fuga, seção 4). Sem `roster` (título, controles, telas de
+  // rede): qualquer dispositivo deste computador, nunca um jogador remoto. Com `roster`: só o P1, o humano
+  // local de menor id; sem P1 local conectado (o host só assiste, ou o controle caiu), de novo os locais.
+  function donoDoMenu(roster) {
+    const p1 = (roster || []).filter((p) => !p.isBot && TN.input.ehLocal(p.device)).sort((a, b) => a.id - b.id)[0];
+    return p1 && TN.input.devices().includes(p1.device) ? (id) => id === p1.device : TN.input.ehLocal;
+  }
+  TN.donoDoMenu = donoDoMenu;
+
   function background(c, t, tint = '#0b0f13') {
     c.fillStyle = tint; c.fillRect(0, 0, TN.W, TN.H);
     c.strokeStyle = 'rgba(60,255,120,0.05)'; c.lineWidth = 1;
@@ -56,7 +65,7 @@
     },
     enter() { this.bots = [0, 1, 2, 3].map((i) => ({ x: U.rand(100, 860), y: U.rand(440, 505), vx: U.rand(-60, 60), vy: U.rand(-20, 20), c: TN.PLAYER_COLORS[i] })); },
     update(dt) {
-      const m = TN.input.menu(), n = this.items().length;
+      const m = TN.input.menu(donoDoMenu()), n = this.items().length;
       if (m.up) { this.sel = (this.sel + n - 1) % n; TN.audio.play('blip'); }
       if (m.down) { this.sel = (this.sel + 1) % n; TN.audio.play('blip'); }
       if (m.ok) {
@@ -88,7 +97,7 @@
 
   // ======================= CONTROLES =======================
   const Controls = {
-    update() { const m = TN.input.menu(); if (m.ok || m.back) { TN.audio.play('back'); TN.go(Title); } },
+    update() { const m = TN.input.menu(donoDoMenu()); if (m.ok || m.back) { TN.audio.play('back'); TN.go(Title); } },
     draw(c) {
       background(c, this.t);
       D.text(c, 'CONTROLES', TN.W / 2, 60, { size: 40, color: '#3f6', align: 'center' });
@@ -107,7 +116,7 @@
   class TestList {
     constructor() { this.sel = 0; this.scroll = 0; }
     update() {
-      const ids = TN.minigameOrder, m = TN.input.menu();
+      const ids = TN.minigameOrder, m = TN.input.menu(donoDoMenu());
       if (m.up) { this.sel = (this.sel + ids.length - 1) % ids.length; TN.audio.play('blip'); }
       if (m.down) { this.sel = (this.sel + 1) % ids.length; TN.audio.play('blip'); }
       if (m.back) { TN.audio.play('back'); TN.go(Title); }
@@ -200,7 +209,7 @@
     constructor(roster) { this.roster = roster; this.sel = 0; this.scroll = 0; }
     enabledIds() { return TN.minigameOrder.filter((id) => !TN.settings.disabled[id]); }
     update() {
-      const ids = TN.minigameOrder, rows = 3 + ids.length, m = TN.input.menu(), S = TN.settings;
+      const ids = TN.minigameOrder, rows = 3 + ids.length, m = TN.input.menu(donoDoMenu(this.roster)), S = TN.settings;
       if (m.up) { this.sel = (this.sel + rows - 1) % rows; TN.audio.play('blip'); }
       if (m.down) { this.sel = (this.sel + 1) % rows; TN.audio.play('blip'); }
       const dx = (m.right ? 1 : 0) - (m.left ? 1 : 0);
@@ -385,7 +394,7 @@
     constructor(under) { this.under = under; this.sel = 0; }
     items() { return ['CONTINUAR', 'PULAR ESTE MINIGAME', 'SAIR PARA O MENU']; }
     update() {
-      const m = TN.input.menu();
+      const m = TN.input.menu(donoDoMenu(TN.session && TN.session.roster));
       if (TN.input.keyPressed('Escape')) { TN.scene = this.under; return; }
       if (m.up) this.sel = (this.sel + 2) % 3;
       if (m.down) this.sel = (this.sel + 1) % 3;
@@ -414,7 +423,7 @@
     }
     update(dt) {
       this.round.update(0); // mantém partículas paradas
-      const skip = TN.session.roster.some((p) => !p.isBot && TN.input.get(p.device).aPressed);
+      const skip = TN.input.menu(donoDoMenu(TN.session.roster)).ok;   // só o P1 pula
       if (this.t > 3.5 || (skip && this.t > 1)) {
         const s = TN.session;
         if (this.round.round < this.round.totalRounds) TN.go(new RoundIntro(this.round.round + 1));
@@ -445,7 +454,7 @@
       TN.audio.play('coin');
     }
     update() {
-      const skip = TN.session.roster.some((p) => !p.isBot && TN.input.get(p.device).aPressed);
+      const skip = TN.input.menu(donoDoMenu(TN.session.roster)).ok;   // só o P1 pula
       if (this.t > 5 || (skip && this.t > 1.5)) nextGame();
     }
     draw(c) {
@@ -480,7 +489,7 @@
     enter() { TN.audio.play('win'); }
     update() {
       if (this.t < 1.5) return;
-      const m = TN.input.menu();
+      const m = TN.input.menu(donoDoMenu(TN.session.roster));
       if (m.up || m.down) this.sel = 1 - this.sel;
       if (m.ok) {
         if (this.sel === 0) TN.go(new Setup(TN.session.roster)); else TN.go(Title);

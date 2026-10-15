@@ -200,7 +200,7 @@
 
   class NetMessage {
     constructor(title, sub) { this.title = title; this.sub = sub; }
-    update() { const m = TN.input.menu(); if ((m.ok || m.back) && this.t > 0.5) TN.go(TN.TitleScene); }
+    update() { const m = TN.input.menu(TN.donoDoMenu()); if ((m.ok || m.back) && this.t > 0.5) TN.go(TN.TitleScene); }
     draw(c) {
       bg(c);
       D.text(c, this.title, TN.W / 2, 220, { size: 30, color: '#f55', align: 'center' });
@@ -217,7 +217,7 @@
       net.host().then(() => TN.go(new TN.LobbyScene({})))
         .catch(() => { this.msg = 'ERRO'; });
     }
-    update() { if (this.msg === 'ERRO' && TN.input.menu().back || TN.input.keyPressed('Escape')) { net.close(); TN.go(TN.TitleScene); } if (this.msg === 'ERRO' && TN.input.menu().ok) TN.go(TN.TitleScene); }
+    update() { if (this.msg === 'ERRO' && TN.input.menu(TN.donoDoMenu()).back || TN.input.keyPressed('Escape')) { net.close(); TN.go(TN.TitleScene); } if (this.msg === 'ERRO' && TN.input.menu(TN.donoDoMenu()).ok) TN.go(TN.TitleScene); }
     draw(c) {
       bg(c);
       if (this.msg !== 'ERRO') { D.text(c, this.msg, TN.W / 2, 250, { size: 26, color: '#3f6', align: 'center' }); return; }
@@ -233,7 +233,7 @@
     constructor({ auto = null } = {}) { this.sel = 0; this.err = false; this.refresh = 0; this.auto = auto; }
     enter() { net.rooms = null; net.status = ''; net.list().catch(() => { this.err = true; }); }
     update(dt) {
-      const m = TN.input.menu();
+      const m = TN.input.menu(TN.donoDoMenu());
       if (m.back || TN.input.keyPressed('Escape')) { net.close(); TN.go(TN.TitleScene); return; }
       if (this.err) { if (m.ok) TN.go(TN.TitleScene); return; }
       this.refresh -= dt;
