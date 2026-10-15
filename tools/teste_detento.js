@@ -32,9 +32,36 @@ function secaoAsset() {
 }
 
 // SEÇÕES EXTRAS (as tarefas seguintes acrescentam funções aqui)
+// --- 2. loaders do three r158 convertidos para script clássico ---
+function carregarThree() {
+  if (global.THREE && THREE.GLTFLoader) return true;
+  const aviso = console.warn; console.warn = () => {};   // o three.min.js avisa que está obsoleto
+  global.THREE = require(path.join(ROOT, 'vendor/three.min.js'));
+  console.warn = aviso;
+  for (const f of ['vendor/GLTFLoader.js', 'vendor/SkeletonUtils.js']) {
+    if (!existe(f)) { ok(false, f + ' existe'); return false; }
+    vm.runInThisContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), { filename: f });
+  }
+  return true;
+}
+const abrirGlb = (buf) => new Promise((res, rej) => new THREE.GLTFLoader().parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length), '', res, rej));
+async function secaoLoaders() {
+  for (const f of ['vendor/GLTFLoader.js', 'vendor/SkeletonUtils.js']) {
+    const src = existe(f) ? fs.readFileSync(path.join(ROOT, f), 'utf8') : '';
+    ok(src !== '' && !/^\s*(import|export)\b/m.test(src), f + ': script clássico (sem import/export, abre via file://)');
+  }
+  if (!carregarThree()) return;
+  ok(typeof THREE.GLTFLoader === 'function' && typeof THREE.SkeletonUtils.clone === 'function', 'THREE.GLTFLoader e THREE.SkeletonUtils.clone existem');
+  const gltf = await abrirGlb(fs.readFileSync(path.join(ROOT, 'assets/detento.glb'))).catch((e) => ({ erro: e }));
+  ok(!gltf.erro && gltf.animations.length === 8, 'GLTFLoader abre o asset no Node com os 8 clipes' + (gltf.erro ? ` (${gltf.erro.message})` : ''));
+  let malha = null;
+  if (!gltf.erro) gltf.scene.traverse((o) => { if (o.isSkinnedMesh) malha = o; });
+  ok(!!malha && malha.skeleton.bones.length === 65, 'malha com esqueleto de 65 ossos');
+}
 
 (async () => {
   secaoAsset();
+  await secaoLoaders();
   // CHAMADAS EXTRAS (as tarefas seguintes acrescentam aqui)
   console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
   process.exit(falhas ? 1 : 0);
