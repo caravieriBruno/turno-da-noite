@@ -95,8 +95,8 @@ function secaoEmpilhadeira() {
   // gira parada
   const dir0 = p.dir; pd.pedal = 0; pd.speed = 0; aperta(0, { x: 1 }); passo(g, 1 / 60, 10); solta();
   ok(Math.abs(p.dir - dir0) > 0.05, `empilhadeira: gira parada (${(p.dir - dir0).toFixed(2)} rad)`);
-  // pegar automático: caixa livre a 20 px da ponta do garfo, fora da própria zona
-  p.x = 480; p.y = 270; p.dir = 0; pd.crate = null; pd.pegaCd = 0;
+  // pegar automático: caixa livre a 20 px da ponta do garfo, fora da própria zona (longe da pilha do meio)
+  p.x = 300; p.y = 270; p.dir = 0; pd.crate = null; pd.pegaCd = 0;
   const f = def.forkPoint(p), cr = d.crates.find((c) => !c.carrier); cr.x = f.x + 20; cr.y = f.y; cr.fade = 0;
   passo(g);
   ok(pd.crate === cr && cr.carrier === p, 'empilhadeira: encostar o garfo numa caixa livre pega sozinho');
@@ -129,4 +129,48 @@ function secaoEmpilhadeira() {
   ok(def.piores(m).length === 0, 'empilhadeira: piores() vazio no empate geral');
 }
 
-fim([secaoPularCorda, secaoBonsModos, secaoEmpilhadeira]);
+// --- corte exato: todos ao mesmo tempo, morre o pior ---
+function secaoCorteExato() {
+  const def = TN.minigames.corte_exato;
+  ok(def.scoring === 'survival' && def.CUT_TIME === 8 && def.PREVIEW === 2 && def.SHOW === 2.2 && def.K === 0.6, 'corte: survival, 8 s de corte, prévia 2 s, escala 0,6');
+  const g = rodada('corte_exato'), d = g.data, P = g.players;
+  ok(def.SHAPES.includes(d.shape) && d.round === 1 && d.phase === 'preview' && P.every((p) => p.data.cursor && Array.isArray(p.data.strokes)), 'corte: figura única, rodada 1, prévia, estado por jogador');
+  const qs = P.map((p) => def.quadrante(g, p));
+  ok(new Set(qs.map((q) => q.x + ',' + q.y)).size === 4 && qs.every((q) => q.w >= 400 && q.h >= 200), 'corte: 4 quadrantes distintos');
+  segundos(g, def.PREVIEW + 0.05);
+  ok(d.phase === 'cut', 'corte: depois da prévia vem o corte');
+  const c0 = { ...P[0].data.cursor }, c1 = { ...P[1].data.cursor }, c2 = { ...P[2].data.cursor };
+  aperta(0, { x: 1 }); aperta(1, { y: 1 }); passo(g, 1 / 60, 10); solta();
+  ok(P[0].data.cursor.x > c0.x && P[1].data.cursor.y > c1.y && P[2].data.cursor.x === c2.x && P[2].data.cursor.y === c2.y, 'corte: dois jogadores cortam ao mesmo tempo, cada um no seu cursor');
+  // notas e eliminação: P0 perfeito (contorno amostrado a cada 2 px: perto do centro, 4 px pulariam setores de 5°), P1 nada, P2 e P3 metade
+  const densa = (poly) => { const out = []; for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length], n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 2)); for (let k = 0; k < n; k++) out.push({ x: a.x + (b.x - a.x) * k / n, y: a.y + (b.y - a.y) * k / n }); } return out; };
+  const perfeito = densa(d.poly), metade = perfeito.slice(0, Math.floor(perfeito.length / 2));
+  P[0].data.strokes = [perfeito]; P[1].data.strokes = []; P[2].data.strokes = [metade]; P[3].data.strokes = [metade];
+  const figura = d.shape;
+  for (const p of P) p.data.done = true;
+  passo(g);   // todos entregaram: resultado
+  const nota0 = P[0].data.result && P[0].data.result.score;
+  ok(d.phase === 'show' && nota0 >= 95, `corte: contorno perfeito dá ~100 (${nota0}, ${d.phase})`);
+  segundos(g, def.SHOW + 0.2);   // fim do resultado (2,2 s): elimina e começa a rodada seguinte
+  ok(P[0].alive && !P[1].alive && P[2].alive && P[3].alive, `corte: morre só o pior (vivos ${P.map((p) => +p.alive).join('')})`);
+  ok(d.round === 2 && d.shape !== figura && d.phase === 'preview', `corte: rodada 2 com figura diferente (${figura} → ${d.shape}, ${d.phase})`);
+  // empate geral não elimina
+  segundos(g, d.phaseT + 0.05);
+  for (const p of g.alive()) { p.data.strokes = []; p.data.done = true; }
+  segundos(g, def.SHOW + 0.2);
+  ok(g.alive().length === 3 && d.round === 3, `corte: empate geral (todos 0) não elimina ninguém (vivos ${g.alive().length}, rodada ${d.round})`);
+  // Review Focus 4: com 2 jogadores acaba na 1ª rodada; nunca fica sem figura
+  const h = rodada('corte_exato', { humanos: 0 }); h.players[2].alive = false; h.players[3].alive = false;
+  segundos(h, 60);
+  ok(h.finished && h.data.round <= 2, `corte: com 2 vivos termina em uma rodada (rodada ${h.data.round})`);
+  const k = rodada('corte_exato', { humanos: 0 }); for (let r = 0; r < 7; r++) def.novaRodada(k);
+  ok(def.SHAPES.includes(k.data.shape), 'corte: depois de usar as 5 figuras continua sorteando');
+  // bots jogam e a rodada termina sozinha
+  const z = rodada('corte_exato', { humanos: 0 }); segundos(z, 70);
+  ok(z.finished && z.players.some((p) => !p.alive), `corte: com bots a rodada termina (vivos ${z.alive().length})`);
+  // desenho: 2D e overlay 3D desenham os quadrantes com a figura
+  const t2 = textos((c) => def.draw(z, c)); const t3 = com3d(z, () => textos((c) => def.drawOverlay(z, c)));
+  ok(/ÚLTIMO LUGAR SAI/.test(t2) && /ÚLTIMO LUGAR SAI/.test(t3), 'corte: HUD 2D e 3D têm o cabeçalho da rodada');
+}
+
+fim([secaoPularCorda, secaoBonsModos, secaoEmpilhadeira, secaoCorteExato]);
