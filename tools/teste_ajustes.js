@@ -69,8 +69,19 @@ function secaoContramao() {
   ok(def.brief.some((b) => /cair/i.test(b) && /0/.test(b)), 'contramão: brief avisa que cair é 0');
 }
 
+// --- serviço interno: portador mais rápido, planta aberta, arena maior ---
+function secaoServicoInterno() {
+  const def = TN.minigames.servico_interno, g = rodada('servico_interno');
+  ok(def.HOLDER_MULT === 1.3 && def.HUNTER_MULT === 1.15, 'serviço interno: portador 1,3× e infectado 1,15×');
+  ok(def.INFECT_RANGE === 56 && def.LIGHT_R === 95 && def.FREEZE === 3, 'serviço interno: alcance 56, lanterna 95, congelamento 3 s');
+  ok(def.LAYOUT.length >= 16 && def.LAYOUT.length <= 18, `serviço interno: ${def.LAYOUT.length} móveis (16 a 18)`);
+  ok(g.arena.w >= 920 && g.arena.h >= 480, `serviço interno: arena ${g.arena.w}×${g.arena.h}`);
+  const dentro = (x, y) => x >= g.arena.x && x <= g.arena.x + g.arena.w && y >= g.arena.y && y <= g.arena.y + g.arena.h;
+  ok(def.SPAWNS.every(([x, y]) => dentro(x, y)) && g.players.every((p) => dentro(p.x, p.y)), 'serviço interno: nascimentos dentro da arena nova');
+}
+
 // SEÇÕES (uma por jogo; cada tarefa define a sua função acima deste bloco e acrescenta o nome no array)
-const secoes = [secaoContramao];
+const secoes = [secaoContramao, secaoServicoInterno];
 for (const s of secoes) { try { s(); } catch (e) { ok(false, `${s.name}: exceção ${e.message}`); } }
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

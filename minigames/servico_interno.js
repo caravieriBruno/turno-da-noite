@@ -16,29 +16,29 @@ TN.registerMinigame({
   endWhenOneLeft: false,
 
   // ---- constantes (originais: busca 1,0 s, recarga 0,5 s, congelado 5 s, caçador 1,25×, contagem 30 s) ----
-  SPEED: 175, HOLDER_MULT: 1.0, HUNTER_MULT: 1.25,
+  SPEED: 175, HOLDER_MULT: 1.3, HUNTER_MULT: 1.15,   // o portador da seringa é sempre o mais rápido
   SEARCH_TIME: 1.0, REACH: 14,            // distância (px) da borda do móvel para conseguir revistar
-  INFECT_RANGE: 44, INFECT_CD: 0.5, FREEZE: 5,
+  INFECT_RANGE: 56, INFECT_CD: 0.5, FREEZE: 3,
   GRACE: 3, HUNT_TIME: 30, FORCE_AT: 45,  // FORCE_AT: se ninguém achou até aqui, a próxima busca acha
-  LIGHT_R: 72, LIGHT_R_INF: 122,
+  LIGHT_R: 95, LIGHT_R_INF: 122,
+  ARENA: { x: 20, y: 44, w: 920, h: 480 },   // sala maior que a arena padrão do motor
 
   // Móveis: [tipo, x, y, w, h]. Todos são sólidos e podem ser revistados uma vez.
   LAYOUT: [
     // parede de cima
-    ['armario', 60, 74, 50, 30], ['armario', 120, 74, 50, 30], ['estante', 300, 74, 90, 28], ['impressora', 470, 74, 60, 34],
-    ['estante', 620, 74, 90, 28], ['armario', 800, 74, 50, 30], ['armario', 860, 74, 50, 30],
+    ['armario', 60, 52, 50, 30], ['armario', 120, 52, 50, 30], ['estante', 300, 52, 90, 28], ['impressora', 470, 52, 60, 34],
+    ['estante', 620, 52, 90, 28], ['armario', 800, 52, 50, 30], ['armario', 860, 52, 50, 30],
     // parede de baixo
-    ['sofa', 70, 444, 110, 34], ['bebedouro', 282, 444, 34, 34], ['estante', 420, 450, 90, 28], ['armario', 640, 448, 50, 30], ['sofa', 760, 444, 120, 34],
-    // mesas de trabalho (com cadeira)
-    ['mesa', 148, 167, 84, 46], ['mesa', 328, 167, 84, 46], ['mesa', 548, 167, 84, 46], ['mesa', 728, 167, 84, 46],
-    ['mesa', 148, 317, 84, 46], ['mesa', 328, 317, 84, 46], ['mesa', 548, 317, 84, 46], ['mesa', 728, 317, 84, 46],
-    // vasos de planta
-    ['vaso', 467, 252, 26, 26], ['vaso', 44, 252, 26, 26], ['vaso', 890, 252, 26, 26],
+    ['sofa', 70, 484, 110, 34], ['bebedouro', 282, 484, 34, 34], ['estante', 420, 490, 90, 28], ['armario', 640, 488, 50, 30], ['sofa', 760, 484, 120, 34],
+    // mesas de trabalho (com cadeira): duas fileiras, com o meio da sala aberto
+    ['mesa', 148, 170, 84, 46], ['mesa', 328, 170, 84, 46], ['mesa', 548, 170, 84, 46], ['mesa', 728, 170, 84, 46],
+    ['mesa', 148, 340, 84, 46], ['mesa', 728, 340, 84, 46],
   ],
-  SPAWNS: [[100, 265], [290, 265], [670, 265], [850, 265]],
+  SPAWNS: [[100, 280], [290, 280], [670, 280], [850, 280]],
 
   init(g) {
     const U = TN.util, d = g.data;
+    g.arena = { ...this.ARENA };
     d.furniture = this.LAYOUT.map(([kind, x, y, w, h], i) => ({ kind, x, y, w, h, i, searched: false, papers: null }));
     // seringa: N-ésima busca (escala do original: 26 móveis para 4 jogadores)
     const F = d.furniture.length;
@@ -268,7 +268,7 @@ TN.registerMinigame({
   // Escritório em corte: parede do fundo com janelas noturnas e luminárias, paredes laterais, mureta na frente.
   // Móveis revistáveis em 3D (mesas com monitor aceso, arquivos, estantes, sofás...). Quando as luzes apagam,
   // o ambiente vai ao breu e cada jogador leva uma lanterna (r.light) — verde e maior para os infectados.
-  camera: { pos: [480, 640, 790], target: [480, 0, 282], fov: 41 },
+  camera: { pos: [480, 720, 880], target: [480, 0, 290], fov: 41 },
   env: { bg: '#0a0c10', ambient: 0.65, sun: 1.7, sunDir: [-0.3, 1, 0.5], sunColor: '#fff1dc' },
 
   furniture3d(r, f, hi, dark) {
