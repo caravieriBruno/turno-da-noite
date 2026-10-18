@@ -39,16 +39,18 @@ function secaoPisaLeve() {
   const g = rodada('pisa_leve'), d = g.data, P = g.players;
   ok(def.camera.pos[0] < d.startX && def.camera.target[0] > def.camera.pos[0] && def.camera.pos[1] < 300, 'pisa leve: câmera atrás da largada, baixa, olhando para a van');
   ok(d.caes && !d.caes.on && d.harv === undefined, 'pisa leve: a matilha começa presa; não há mais colheitadeira');
-  const sons = {}; g.sfx = (n) => { sons[n] = (sons[n] || 0) + 1; };
+  const sons = {}, ganhos = []; g.sfx = (n, v) => { sons[n] = (sons[n] || 0) + 1; if (n === 'latido') ganhos.push(v === undefined ? 1 : v); };
   for (const m of d.mines) m.dead = true;   // sem minas: os jogadores do teste ficam parados onde são postos
   segundos(g, def.CAES_DELAY + 0.1);
   ok(d.caes.on && g._message && /CÃES/.test(g._message.text), `pisa leve: aos 5 s soltam os cães (${g._message && g._message.text})`);
   // latidos: mais frequentes quando a matilha está perto
   for (const p of P) { p.x = d.caes.x + 400; p.y = 275; }
-  sons.latido = 0; segundos(g, 3); const longe = sons.latido;
+  sons.latido = 0; ganhos.length = 0; segundos(g, 3); const longe = sons.latido, gLonge = Math.max(...ganhos);
   for (const p of P) { p.x = d.caes.x + 130; p.y = 275; }   // perto, mas fora do alcance da matilha nos 3 s (anda até 56 px/s)
-  sons.latido = 0; segundos(g, 3); const perto = sons.latido;
+  sons.latido = 0; ganhos.length = 0; segundos(g, 3); const perto = sons.latido, gPerto = Math.max(...ganhos);
   ok(longe >= 1 && perto > longe, `pisa leve: latidos aumentam ao se aproximar (longe ${longe}, perto ${perto} em 3 s)`);
+  ok(gLonge < 1 && gPerto > gLonge, `pisa leve: latidos ficam mais altos ao se aproximar (ganho ${gLonge.toFixed(2)} → ${gPerto.toFixed(2)})`);
+  ok(typeof TN.audio.play === 'function' && TN.audio.play.length >= 2, 'motor: TN.audio.play aceita o ganho (volume) como 2º argumento');
   // a vinheta vermelha pulsa só com um cão a menos de 80 px de alguém
   for (const p of P) p.x = d.caes.x + 200;
   const semVinheta = com3d(g, () => estilos((c) => def.drawOverlay(g, c))).some((s) => /rgba\(255,\s*(0|2\d|3\d|4\d),/.test(String(s)));
@@ -103,6 +105,9 @@ function secaoTrem() {
   segundos(h, 1.6);
   ok(!e.saida, 'trem: o comboio visual some depois de passar da câmera');
   ok(TN.R3.trace((r) => def.draw3d(h, r)).errs.length === 0, 'trem: draw3d passa no validador');
+  const nicho = TN.R3.trace((r) => def.drawNook3d(h, r, aberto)).calls;
+  ok(nicho.some(([k, a]) => k === 'box' && a[4] >= 80 && a[7] && a[7].glow), 'trem: o estado do nicho aparece num marcador alto e brilhante na boca (visível de frente)');
+  ok(def.camera.pos[2] <= 820, `trem: câmera perto o bastante para ler os nichos (z ${def.camera.pos[2]})`);
   const t3 = com3d(h, () => textos((c) => def.drawOverlay(h, c)));
   ok(/NICHOS ABERTOS|PRÓXIMO TREM/.test(t3), `trem: overlay mostra o estado (${t3.slice(0, 40)})`);
 }
@@ -116,7 +121,7 @@ function secaoTemporada() {
   ok(G === g.players[0] && F.length === 3 && F.every((p) => p.y === def.START_Y && !p.data.out), 'temporada: rodada 1 → P1 é o guarda; fugitivos na largada');
   const vp = def.viewports(g);
   ok(vp.length === 2 && vp[0].rect[1] === 34 && vp[0].rect[3] === 228 && vp[1].rect[1] === 262 && vp[1].rect[1] + vp[1].rect[3] === 540 && TN.R3.validate(g).length === 0, 'temporada: duas vistas empilhadas (45 % / 55 %) válidas');
-  ok(vp[0].camera.fov === 30 && (d.zoom = true, def.viewports(g)[0].camera.fov === 14) && (d.zoom = false, true), 'temporada: zoom fecha a luneta (fov 30 → 14)');
+  ok(vp[0].camera.fov === 36 && vp[0].camera.target[2] >= 560 && (d.zoom = true, def.viewports(g)[0].camera.fov === 14) && (d.zoom = false, true), 'temporada: vista do guarda enquadra da largada ao muro (fov 36, alvo z ≥ 560); zoom fecha a luneta (fov 14)');
   // mira travada nos 2 s iniciais
   const m0 = { ...d.mira }; aperta(0, { x: 1 }); passo(g, 1 / 60, 10); solta();
   ok(d.mira.x === m0.x, 'temporada: mira travada na largada');

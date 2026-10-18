@@ -4,6 +4,7 @@
   let ctx = null, master = null;
   const enabled = typeof window.AudioContext !== 'undefined' || typeof window.webkitAudioContext !== 'undefined';
   let lastPlay = {};
+  let ganhoAtual = 1;   // multiplicador de volume do som que está sendo montado (play(nome, { ganho }))
 
   function tone({ type = 'square', f = 440, f2 = null, dur = 0.1, vol = 0.2, delay = 0, attack = 0.005 }) {
     const t = ctx.currentTime + delay;
@@ -11,7 +12,7 @@
     o.type = type; o.frequency.setValueAtTime(f, t);
     if (f2) o.frequency.exponentialRampToValueAtTime(Math.max(1, f2), t + dur);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vol, t + attack);
+    g.gain.exponentialRampToValueAtTime(vol * ganhoAtual, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
   }
@@ -24,7 +25,7 @@
     const src = ctx.createBufferSource(); src.buffer = buf;
     const flt = ctx.createBiquadFilter(); flt.type = 'lowpass'; flt.frequency.setValueAtTime(filter, t);
     if (f2) flt.frequency.exponentialRampToValueAtTime(f2, t + dur);
-    const g = ctx.createGain(); g.gain.setValueAtTime(vol, t);
+    const g = ctx.createGain(); g.gain.setValueAtTime(vol * ganhoAtual, t);
     src.connect(flt).connect(g).connect(master); src.start(t);
   }
 
@@ -59,12 +60,14 @@
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       master = ctx.createGain(); master.gain.value = 0.6; master.connect(ctx.destination);
     },
-    play(name, { throttle = 0.04 } = {}) {
+    // toca um som; `ganho` multiplica o volume (0..1, padrão 1: ex. latidos mais altos conforme se aproximam)
+    play(name, { throttle = 0.04, ganho = 1 } = {}) {
       if (!ctx || this.muted || !SOUNDS[name]) return;
       const now = ctx.currentTime;
       if (lastPlay[name] && now - lastPlay[name] < throttle) return;  // evita estourar com muitos sons iguais
       lastPlay[name] = now;
-      try { SOUNDS[name](); } catch (e) { /* ignora */ }
+      ganhoAtual = Math.max(0.02, Math.min(1.5, ganho));
+      try { SOUNDS[name](); } catch (e) { /* ignora */ } finally { ganhoAtual = 1; }
     },
     // som livre: TN.audio.beep(freq, duração, tipo)
     beep(f = 440, dur = 0.1, type = 'square', vol = 0.12) { if (ctx && !this.muted) tone({ f, dur, type, vol }); },

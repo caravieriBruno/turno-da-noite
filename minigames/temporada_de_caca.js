@@ -216,7 +216,8 @@ TN.registerMinigame({
   viewports(g) {
     const d = g.data;
     return [
-      { rect: [0, 34, 960, 228], camera: { pos: [480, 260, 980], target: d.zoom ? [d.mira.x, 0, d.mira.y] : [480, 0, 380], fov: d.zoom ? 14 : 30 } },
+      // sem zoom o enquadramento vai da largada (y 720, onde a mira ainda alcança 760) ao muro (y 80)
+      { rect: [0, 34, 960, 228], camera: { pos: [480, 260, 980], target: d.zoom ? [d.mira.x, 0, d.mira.y] : [480, 0, 590], fov: d.zoom ? 14 : 36 } },
       { rect: [0, 262, 960, 278], camera: { pos: [480, 110, 950], target: [480, 20, 250], fov: 44 } },
     ];
   },

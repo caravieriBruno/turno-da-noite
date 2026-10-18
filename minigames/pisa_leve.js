@@ -108,12 +108,13 @@ TN.registerMinigame({
         m.dead = true; d.scorch.push({ x: m.x, y: m.y, r: 14 });
         g.particles(m.x, m.y, '#777', 10, 120, 0.8, 4); g.sfx('hit');
       }
-      // latidos: intervalo encurta conforme a matilha se aproxima de quem está mais atrás
+      // latidos: mais altos e mais frequentes conforme a matilha se aproxima de quem está mais atrás
       h.latidoT -= dt;
       if (h.latidoT <= 0) {
         const ativos = this.active(g), menor = ativos.length ? Math.min(...ativos.map((p) => this.gapCaes(g, p))) : 400;
-        g.sfx('latido');
-        h.latidoT = U.lerp(this.LATIDO_PERTO, this.LATIDO_LONGE, U.clamp(menor / 400, 0, 1));
+        const k = U.clamp(menor / 400, 0, 1);
+        g.sfx('latido', U.lerp(1, 0.35, k));
+        h.latidoT = U.lerp(this.LATIDO_PERTO, this.LATIDO_LONGE, k);
       }
     }
     // ---- jogadores ----
@@ -155,7 +156,7 @@ TN.registerMinigame({
       if (h.on && p.x - p.r * 0.6 < h.x) {
         b.active = false; b.mordido = true;
         g.eliminate(p, { sound: 'hurt', msg: 'MORDIDO!' });
-        g.particles(p.x, p.y, '#a00', 30, 260); g.sfx('latido');
+        g.particles(p.x, p.y, '#a00', 30, 260); g.sfx('latido', 1);
       }
     }
     U.separate(this.active(g));

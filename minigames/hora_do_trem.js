@@ -262,7 +262,7 @@ TN.registerMinigame({
   // Túnel de frente: a câmera no fim do túnel, baixa; paredes laterais de tijolo com os nichos, dois
   // trilhos em perspectiva, boca escura ao fundo de onde o trem sai (os faróis iluminam o túnel antes)
   // e o trem crescendo até passar por baixo da câmera.
-  camera: { pos: [480, 150, 1000], target: [480, 50, 100], fov: 45 },
+  camera: { pos: [480, 160, 800], target: [480, 40, 80], fov: 50 },
   env: { bg: '#07080a', fog: [1300, 2600], ambient: 0.65, sun: 1.2, sunDir: [-0.2, 1, 0.6], sunColor: '#ffdcb0', hemiSky: '#8a8f99', hemiGround: '#2a2420' },
   WALL_H: 160,
 
@@ -349,8 +349,9 @@ TN.registerMinigame({
     r.plane(mid, 0.3, n.cy, this.NOOK_D, n.w, '#121416');
     r.plane(mid, 0.5, n.cy, this.NOOK_D - 4, n.w - 4, col, { glow: true, opacity: n.state === 'closed' ? 0.14 : 0.22 });
     r.plane(wall, 0.7, n.cy, 3, n.w, col, { glow: true });
-    // lâmpada do batente
+    // lâmpada do batente e dois marcadores altos na boca, na cor do estado (visíveis de frente, de longe)
     r.box(wall - n.side * 1.5, 86, n.cy, 3, 10, 24, '#1a1a1a'); r.box(wall - n.side * 3.2, 88, n.cy, 1, 6, 20, col, { glow: true });
+    for (const sz of [-1, 1]) r.box(wall - n.side * 2.5, 0, n.cy + sz * (n.w / 2 + 4), 4, 90, 6, col, { glow: true, opacity: n.state === 'closed' ? 0.6 : 1 });
     // prensa dentada (nicho fechado): parede de dentes no fundo; avança quando esmaga
     if (n.state === 'closed') {
       const slam = n.crush > 0 ? n.crush / 0.4 : 0;

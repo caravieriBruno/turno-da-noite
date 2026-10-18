@@ -75,7 +75,7 @@
     // Encerra a rodada (após `delay` segundos). Pode ser chamado várias vezes; vale o primeiro.
     finish(delay = 1.2) { if (this._finishAt === null) this._finishAt = this.time + delay; }
     after(sec, fn) { this._timers.push({ at: this.time + sec, fn }); }
-    sfx(name) { TN.audio.play(name); }
+    sfx(name, ganho) { TN.audio.play(name, ganho === undefined ? undefined : { ganho }); }   // ganho 0..1 = volume
     shake(a = 6) { this._shake = Math.max(this._shake, a); }
     flash(color = '#fff', dur = 0.15) { this._flash = { color, t: dur, dur }; }
     message(text, dur = 1.5, color = '#fff') { this._message = { text, t: dur, color }; }

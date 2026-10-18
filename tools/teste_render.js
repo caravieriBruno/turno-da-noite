@@ -147,7 +147,7 @@
     ok(pronto === false && TN.R3.estadoDetento() === 'desligado' && !TN.R3._personagens()[0].gltf, 'visual antigo: boneco de caixas, sem carregar o modelo');
   }
 
-  // viewports: a mesma cena em duas vistas lado a lado; cada metade mostra outra coisa, é determinística e não custa mais que 2×
+  // viewports: a mesma cena em duas vistas lado a lado; cada metade mostra outra coisa, é determinística e não custa mais que 1,5×
   try {
     const metade = (x0) => {   // FNV-1a só da faixa horizontal [x0, x0 + metade)
       const t = document.createElement('canvas'); t.width = c3.width; t.height = c3.height;
@@ -173,13 +173,31 @@
     ok(s0.x >= 0 && s0.x < 480, `viewports: project(..., 0) cai na vista 0 (x ${s0.x.toFixed(0)})`);
     const u = TN.R3.unproject(s.x, s.y, 0, 1);
     ok(Math.abs(u.x - 760) < 2 && Math.abs(u.z - 300) < 2, 'viewports: unproject desfaz o project na vista 1');
+    // o conteúdo de cada vista é o certo: a caixa vermelha está no ponto projetado pela vista 0 e a azul no da vista 1
+    // (com a vista 1 desenhada em tela cheia, como acontecia no rt retrô, a amostra da esquerda sai azul/escura)
+    const pixel = (sx, sy) => {
+      const t = document.createElement('canvas'); t.width = c3.width; t.height = c3.height;
+      const x = t.getContext('2d'); x.drawImage(c3, 0, 0);
+      const d = x.getImageData(Math.round(sx * c3.width / TN.W), Math.round(sy * c3.height / TN.H), 1, 1).data;
+      return { r: d[0], g: d[1], b: d[2] };
+    };
+    TN.R3.renderRound(rodadaV(1), ctx);
+    const pv = pixel(s0.x, TN.R3.project(200, 30, 300, 0).y), pa = pixel(s.x, TN.R3.project(760, 30, 300, 1).y);
+    ok(pv.r > pv.b + 60, `viewports: a vista 0 mostra a caixa vermelha no ponto projetado (rgb ${pv.r},${pv.g},${pv.b})`);
+    ok(pa.b > pa.r + 60, `viewports: a vista 1 mostra a caixa azul no ponto projetado (rgb ${pa.r},${pa.g},${pa.b})`);
+    // as faixas fora de qualquer vista são limpas a cada quadro (nada do quadro anterior sobra)
+    const faixa = () => [
+      { rect: [0, 100, 960, 440], camera: { pos: [480, 300, 700], target: [480, 0, 300], fov: 40 } },
+    ];
+    TN.R3.renderRound({ def: { draw3d: cena, viewports: faixa }, time: 1, _particles: [], _shake: 0 }, ctx);
+    const pf = pixel(480, 50);
+    ok(pf.r < 40 && pf.g < 40 && pf.b < 40, `viewports: fora das vistas fica limpo (rgb ${pf.r},${pf.g},${pf.b})`);
     const rodada1 = (time) => ({ def: { draw3d: cena, camera: duas()[0].camera }, time, _particles: [], _shake: 0 });
     for (let i = 0; i < 5; i++) { TN.R3.renderRound(rodada1(i / 60), ctx); TN.R3.renderRound(rodadaV(i / 60), ctx); }
     hash();
     let t0 = performance.now(); for (let i = 0; i < 30; i++) TN.R3.renderRound(rodada1(i / 60), ctx); hash(); const t1v = (performance.now() - t0) / 30;
     t0 = performance.now(); for (let i = 0; i < 30; i++) TN.R3.renderRound(rodadaV(i / 60), ctx); hash(); const t2v = (performance.now() - t0) / 30;
-    // duas vistas = a cena desenhada duas vezes (o pós-processo retrô uma): o teto honesto é 2×
-    ok(t2v <= t1v * 2 + 2, `viewports: duas vistas custam ${t2v.toFixed(1)} ms contra ${t1v.toFixed(1)} ms de uma (teto 2× + 2 ms)`);
+    ok(t2v <= t1v * 1.5 + 2, `viewports: duas vistas custam ${t2v.toFixed(1)} ms contra ${t1v.toFixed(1)} ms de uma (teto 1,5× + 2 ms)`);
     TN.R3.renderRound(rodada1(1), ctx);   // volta ao modo de uma vista para os blocos seguintes
   } catch (e) { ok(false, 'viewports: exceção ' + e.message); }
 

@@ -168,7 +168,7 @@
           TN.session = st.session; TN.settings = st.settings || TN.settings;
           this.view = st.scene; this.remoteToast = st.toast;
           this.lastStateAt = performance.now();
-          for (const s of m.s || []) Array.isArray(s) ? playRaw.beep(...s) : playRaw.play(s);
+          for (const s of m.s || []) Array.isArray(s) ? playRaw.beep(...s) : typeof s === 'object' ? playRaw.play(s.n, { ganho: s.g }) : playRaw.play(s);
         } catch (e) { console.error('estado inválido', e); }
       }
     },
@@ -199,7 +199,14 @@
 
   // sons tocados no host também vão para os clientes
   const playRaw = { play: TN.audio.play.bind(TN.audio), beep: TN.audio.beep.bind(TN.audio) };
-  TN.audio.play = function (name, opts) { if (net.mode === 'host' && !net.sfx.includes(name)) net.sfx.push(name); return playRaw.play(name, opts); };
+  TN.audio.play = function (name, opts) {
+    if (net.mode === 'host') {
+      const g = opts && opts.ganho;
+      if (g !== undefined && g !== 1) { if (net.sfx.length < 20) net.sfx.push({ n: name, g: Math.round(g * 100) / 100 }); }   // som com volume: { n, g }
+      else if (!net.sfx.includes(name)) net.sfx.push(name);
+    }
+    return playRaw.play(name, opts);
+  };
   TN.audio.beep = function (...a) { if (net.mode === 'host' && net.sfx.length < 20) net.sfx.push(a); return playRaw.beep(...a); };
 
   // ===================== Telas =====================

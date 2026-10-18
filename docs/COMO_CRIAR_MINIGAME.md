@@ -77,7 +77,7 @@ Dentro dos métodos, `this` é a própria definição. Isso permite guardar cons
 - `g.after(seg, fn)`: executa `fn` depois de `seg` segundos de jogo.
 
 **Efeitos:**
-- `g.sfx(nome)`. Sons disponíveis: blip, select, confirm, back, tick, go, hit, boom, pickup, coin, jump, shoot, laser, hurt, win, lose, whoosh, buzz, cough, step.
+- `g.sfx(nome, ganho?)`. Sons disponíveis: blip, select, confirm, back, tick, go, hit, boom, pickup, coin, jump, shoot, laser, hurt, win, lose, whoosh, buzz, cough, step, latido. `ganho` (0..1, padrão 1) multiplica o volume (ex.: latidos mais altos conforme os cães se aproximam) e vai junto para os clientes de rede.
 - `g.particles(x, y, cor, n, vel)`.
 - `g.shake(força)`.
 - `g.flash(cor)`.

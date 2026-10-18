@@ -741,17 +741,24 @@
       if (vistasAtuais) {
         const tam = rt ? { width: RW, height: RH } : renderer.getDrawingBufferSize(new THREE.Vector2());
         const sx = tam.width / TN.W, sy = tam.height / TN.H;
-        renderer.setRenderTarget(rt || null);
-        renderer.setScissorTest(true);
+        // o recorte de cada vista: no canvas é setViewport/setScissor; num render target o three copia
+        // rt.viewport/rt.scissor/rt.scissorTest a cada setRenderTarget (inclusive o que o shadow map faz
+        // no fim de cada render), então ali o recorte precisa estar no próprio rt
+        const recorte = (x, y, w, h, on) => {
+          if (rt) { rt.viewport.set(x, y, w, h); rt.scissor.set(x, y, w, h); rt.scissorTest = on; renderer.setRenderTarget(rt); }
+          else { renderer.setRenderTarget(null); renderer.setViewport(x, y, w, h); renderer.setScissor(x, y, w, h); renderer.setScissorTest(on); }
+        };
+        // as faixas fora de qualquer vista ficam limpas (o buffer é preservado entre quadros)
+        recorte(0, 0, tam.width, tam.height, false);
+        renderer.clear();
         vistasAtuais.forEach((v, i) => {
           const cam = camParaVista(i, v);
           if (round._shake > 0) cam.position.add(tremor());
           const px = Math.round(v.rect[0] * sx), py = Math.round(tam.height - (v.rect[1] + v.rect[3]) * sy), pw = Math.round(v.rect[2] * sx), ph = Math.round(v.rect[3] * sy);
-          renderer.setViewport(px, py, pw, ph); renderer.setScissor(px, py, pw, ph);
+          recorte(px, py, pw, ph, true);
           renderer.render(scene, cam);
         });
-        renderer.setScissorTest(false);
-        renderer.setViewport(0, 0, tam.width, tam.height);
+        recorte(0, 0, tam.width, tam.height, false);
         if (rt) { renderer.setRenderTarget(null); renderer.render(postScene, postCam); }
       } else {
         if (round._shake > 0) camera.position.add(tremor());
