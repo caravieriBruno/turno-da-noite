@@ -16,7 +16,8 @@ TN.registerMinigame({
 
   // ---- constantes (original: espera 3 s, nichos abrem 1 s após o aviso, 2 s de pausa,
   //      abertos = max(vivos+2-ciclos, 1), empurrão 0,1 s de preparo, impulso 15 decaindo) ----
-  SPEED: 180, SHOVE: 600, SHOVE_WIND: 0.1, SHOVE_LOCK: 0.5, SHOVE_RANGE: 60,
+  SPEED: 180, SHOVE: 600, SHOVE_WIND: 0.1, SHOVE_LOCK: 0.35, SHOVE_RANGE: 72,
+  FORA_DO_NICHO: 0.3,   // quem é empurrado para fora de um nicho fica este tempo sem contar como escondido
   WALL: 58, NOOK_W: 54, NOOK_D: 50,
   WAIT: 3, OPEN_AFTER: 1, TRAIN_ENTER: 3.4, TRAIN_V: 470, TRAIN_LEN: 560, CLOSE_TIME: 1.2,
 
@@ -32,7 +33,7 @@ TN.registerMinigame({
     d.phase = 'wait'; d.phaseT = 0; d.cycles = 0;
     d.train = null;        // { front } quando o trem está no túnel
     g.placeInCircle(a.x + a.w / 2, (d.floorTop + d.floorBot) / 2, 100);
-    for (const p of g.players) Object.assign(p.data, { lock: 0, wind: 0, shoveT: 0, noise: 0, noiseT: 0 });
+    for (const p of g.players) Object.assign(p.data, { lock: 0, wind: 0, shoveT: 0, noise: 0, noiseT: 0, foraT: 0 });
   },
 
   setPhase(g, ph) { g.data.phase = ph; g.data.phaseT = 0; },
@@ -50,6 +51,11 @@ TN.registerMinigame({
   isSafeIn(g, p, n) {
     const d = g.data;
     return n.side < 0 ? p.y + p.r <= d.floorTop + 6 : p.y - p.r >= d.floorBot - 6;
+  },
+  // escondido do trem: num nicho aberto, fundo o bastante, e sem ter acabado de ser expulso dele
+  seguro(g, p) {
+    const n = this.nookOf(g, p);
+    return !!n && n.state !== 'closed' && this.isSafeIn(g, p, n) && !(p.data.foraT > 0);
   },
 
   update(g, dt) {
@@ -88,7 +94,7 @@ TN.registerMinigame({
     const bounds = { x: a.x, y: d.floorTop - this.NOOK_D, w: a.w, h: d.floorBot - d.floorTop + this.NOOK_D * 2 };
     for (const p of g.alive()) {
       const b = p.data;
-      b.lock -= dt;
+      b.lock -= dt; b.foraT = Math.max(0, b.foraT - dt);
       const stunned = Math.hypot(p.vx, p.vy) > 40;
       if (stunned) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt, bounds); p.input = save; }
       else g.movePlayer(p, this.SPEED, dt, bounds);
@@ -115,8 +121,7 @@ TN.registerMinigame({
       // o trem pega quem está no chão (ou mal escondido)
       const t = d.train;
       if (t && p.x + p.r > t.front - this.TRAIN_LEN && p.x - p.r < t.front) {
-        const safe = n && n.state !== 'closed' && this.isSafeIn(g, p, n);
-        if (!safe) {
+        if (!this.seguro(g, p)) {
           g.eliminate(p, { sound: 'boom', msg: 'ATROPELADO!' });
           for (let i = 0; i < 3; i++) g.particles(p.x + 20, p.y, i ? '#a00' : p.color, 14, 380);
         }
@@ -132,8 +137,11 @@ TN.registerMinigame({
       if (o === p) continue;
       const dx = o.x - p.x, dy = o.y - p.y, dist = Math.hypot(dx, dy);
       if (dist < this.SHOVE_RANGE && (dx * fx + dy * fy) / (dist || 1) > 0.2) {
-        // empurrões não acumulam: a velocidade é substituída
-        o.vx = (dx / dist) * this.SHOVE; o.vy = (dy / dist) * this.SHOVE;
+        // empurrões não acumulam: a velocidade é substituída. Quem está num nicho sai reto para o trilho
+        // (a parede do nicho segurava o impulso lateral) e fica um instante sem poder se reesconder.
+        const n = this.nookOf(g, o);
+        if (n) { o.vx = 0; o.vy = -n.side * this.SHOVE; o.data.foraT = this.FORA_DO_NICHO; }
+        else { o.vx = (dx / dist) * this.SHOVE; o.vy = (dy / dist) * this.SHOVE; }
         g.sfx('hit'); g.particles((o.x + p.x) / 2, (o.y + p.y) / 2, '#fff', 6, 140);
       }
     }

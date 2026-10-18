@@ -230,8 +230,27 @@ function secaoCabo() {
   ok(/PEGADA/.test(t), 'cabo: HUD tem o rótulo PEGADA');
 }
 
+// --- hora do trem: empurrão tira do nicho de verdade ---
+function secaoTrem() {
+  const def = TN.minigames.hora_do_trem;
+  ok(def.SHOVE_RANGE === 72 && def.SHOVE_LOCK === 0.35 && def.FORA_DO_NICHO === 0.3, 'trem: alcance 72, recarga 0,35, 0,3 s sem reentrar');
+  for (const lado of [-1, 1]) {   // Review Focus 5: parede de cima e de baixo
+    const g = rodada('hora_do_trem'), d = g.data, n = d.nooks.find((k) => k.side === lado);
+    n.state = 'open';
+    const a = g.players[0], v = g.players[1];
+    v.x = n.cx; v.y = lado < 0 ? d.floorTop - 20 : d.floorBot + 20;   // fundo do nicho
+    a.x = n.cx + 30; a.y = lado < 0 ? d.floorTop + 10 : d.floorBot - 10; a.dir = Math.atan2(v.y - a.y, v.x - a.x);
+    ok(def.nookOf(g, v) === n, `trem (lado ${lado}): vítima está no nicho`);
+    def.shove(g, a);
+    ok(Math.abs(v.vx) < 1 && Math.sign(v.vy) === -lado && Math.abs(v.vy) > 300, `trem (lado ${lado}): empurrão sai reto do nicho (vx ${v.vx.toFixed(0)}, vy ${v.vy.toFixed(0)})`);
+    ok(v.data.foraT === 0.3, `trem (lado ${lado}): vítima fica 0,3 s sem reentrar (${v.data.foraT})`);
+    v.vx = 0; v.vy = 0; passo(g);   // ainda no nicho, mas com foraT > 0: não conta como segura
+    ok(v.data.foraT > 0 && !def.seguro(g, v), `trem (lado ${lado}): enquanto foraT > 0 não conta como segura`);
+  }
+}
+
 // SEÇÕES (uma por jogo; cada tarefa define a sua função acima deste bloco e acrescenta o nome no array)
-const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato, secaoMemoria, secaoPisoFalso, secaoTragada, secaoBatata, secaoCabo];
+const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato, secaoMemoria, secaoPisoFalso, secaoTragada, secaoBatata, secaoCabo, secaoTrem];
 for (const s of secoes) { try { s(); } catch (e) { ok(false, `${s.name}: exceção ${e.message}`); } }
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
