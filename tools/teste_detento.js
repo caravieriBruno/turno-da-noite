@@ -14,7 +14,7 @@ const DEDO = /^(index|middle|pinky|ring|thumb)_|_leaf_/;
 // --- 1. asset preparado e embutido ---
 function secaoAsset() {
   if (!existe('assets/detento.glb') || !existe('assets/detento.glb.js')) { ok(false, 'assets/detento.glb e assets/detento.glb.js existem'); return; }
-  const { preparar, lerGlb, CLIPES } = require(path.join(ROOT, 'tools/preparar_detento.js'));
+  const { preparar, lerGlb, CLIPES, ESTATICOS } = require(path.join(ROOT, 'tools/preparar_detento.js'));
   const { embutir, LIMITE } = require(path.join(ROOT, 'tools/embutir_asset.js'));
   const glb = fs.readFileSync(path.join(ROOT, 'assets/detento.glb')), j = lerGlb(glb).json;
   const prims = j.meshes.flatMap((m) => m.primitives);
@@ -23,6 +23,14 @@ function secaoAsset() {
   ok(tris <= 6000, `asset: ${tris} triângulos (orçamento 6000)`);
   ok(JSON.stringify(j.animations.map((a) => a.name)) === JSON.stringify(CLIPES), 'asset: só os clipes usados, nesta ordem: ' + CLIPES.join(', '));
   ok(!j.animations.some((a) => a.channels.some((c) => DEDO.test(j.nodes[c.target.node].name || ''))), 'asset: sem trilhas dos dedos');
+  // posturas novas: o asset carrega os clipes de segurar, trabalhar, estátua, dança, golpe, mira/tiro, dirigir, agachado andando, pulo, pancada e andar/sprint
+  for (const n of ['Idle_Torch_Loop', 'Interact', 'A_TPose', 'Dance_Loop', 'Sword_Attack', 'Pistol_Aim_Neutral', 'Pistol_Shoot', 'Driving_Loop', 'Crouch_Fwd_Loop', 'Jump_Start', 'Jump_Land', 'Hit_Chest', 'Walk_Loop', 'Sprint_Loop']) ok(CLIPES.includes(n), `asset: tem o clipe ${n}`);
+  // para caber no orçamento, os clipes ficam com metade dos quadros-chave (15 por segundo) e as poses estáticas com 2
+  const reduzido = (a) => { const i = j.accessors[a.samplers[0].input]; return i.count <= Math.ceil((i.max[0] - i.min[0]) * 15) + 2; };   // 15/s mais o último quadro
+  ok(j.asset.extras && j.asset.extras.turnoDaNoite && j.asset.extras.turnoDaNoite.passo === 2, 'asset: marcado como reduzido (asset.extras.turnoDaNoite.passo = 2)');
+  ok(j.animations.filter((a) => !ESTATICOS.includes(a.name)).every(reduzido), 'asset: clipes a ~15 quadros-chave por segundo');
+  ok(j.bufferViews.every((v, i) => !j.bufferViews[i + 1] || v.byteOffset + v.byteLength <= j.bufferViews[i + 1].byteOffset), 'asset: bufferViews não se sobrepõem');
+  ok(j.animations.filter((a) => ESTATICOS.includes(a.name)).every((a) => a.samplers.every((sm) => j.accessors[sm.input].count === 2)), 'asset: poses estáticas (T-pose, mira) com 2 quadros');
   ok(Buffer.compare(preparar(glb), glb) === 0, 'preparar_detento é idempotente (rodar no asset pronto dá o mesmo arquivo)');
   const js = fs.readFileSync(path.join(ROOT, 'assets/detento.glb.js'), 'utf8');
   ok(js.length <= LIMITE + 400, `asset embutido: ${(js.length / 1048576).toFixed(2)} MB (limite 1,5 MB)`);
@@ -53,7 +61,8 @@ async function secaoLoaders() {
   if (!carregarThree()) return;
   ok(typeof THREE.GLTFLoader === 'function' && typeof THREE.SkeletonUtils.clone === 'function', 'THREE.GLTFLoader e THREE.SkeletonUtils.clone existem');
   const gltf = await abrirGlb(fs.readFileSync(path.join(ROOT, 'assets/detento.glb'))).catch((e) => ({ erro: e }));
-  ok(!gltf.erro && gltf.animations.length === 8, 'GLTFLoader abre o asset no Node com os 8 clipes' + (gltf.erro ? ` (${gltf.erro.message})` : ''));
+  const { CLIPES } = require(path.join(ROOT, 'tools/preparar_detento.js'));
+  ok(!gltf.erro && gltf.animations.length === CLIPES.length, `GLTFLoader abre o asset no Node com os ${CLIPES.length} clipes` + (gltf.erro ? ` (${gltf.erro.message})` : ''));
   let malha = null;
   if (!gltf.erro) gltf.scene.traverse((o) => { if (o.isSkinnedMesh) malha = o; });
   ok(!!malha && malha.skeleton.bones.length === 65, 'malha com esqueleto de 65 ossos');

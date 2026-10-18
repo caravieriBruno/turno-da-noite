@@ -1,13 +1,19 @@
 #!/usr/bin/env node
 // Gera assets/detento.glb a partir do UAL1_Standard.glb da Quaternius (CC0; origem em assets/LICENCAS.md).
 // Fica só o que o motor usa: a malha do corpo (sem as bolinhas das juntas e sem UV, porque a textura é
-// triplanar), os clipes de CLIPES e nenhuma trilha dos dedos. O buffer é reconstruído só com o que sobrou.
+// triplanar), os clipes de CLIPES e nenhuma trilha dos dedos. Para caber no orçamento do asset embutido
+// (1,5 MB), os clipes ficam com metade dos quadros-chave (15/s; o original tem 30) e as poses estáticas
+// (ESTATICOS) só com o primeiro e o último. O buffer é reconstruído só com o que sobrou.
 // Uso: node tools/preparar_detento.js <caminho/UAL1_Standard.glb> [saida=assets/detento.glb]
 const fs = require('fs');
 const path = require('path');
 
 // pose do motor → clipe: ver POSE_CLIPE em engine/detento.js
-const CLIPES = ['Idle_Loop', 'Jog_Fwd_Loop', 'Death01', 'Sitting_Idle_Loop', 'Crouch_Idle_Loop', 'Jump_Loop', 'Push_Loop', 'Pistol_Idle_Loop'];
+const CLIPES = ['Idle_Loop', 'Walk_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop', 'Death01', 'Sitting_Idle_Loop', 'Crouch_Idle_Loop', 'Crouch_Fwd_Loop',
+  'Jump_Start', 'Jump_Loop', 'Jump_Land', 'Push_Loop', 'Pistol_Idle_Loop', 'Pistol_Aim_Neutral', 'Pistol_Shoot',
+  'Idle_Torch_Loop', 'Interact', 'A_TPose', 'Dance_Loop', 'Sword_Attack', 'Driving_Loop', 'Hit_Chest'];
+const ESTATICOS = ['A_TPose', 'Pistol_Aim_Neutral'];   // ficam só com o primeiro e o último quadro
+const PASSO = 2;                                         // 1 quadro-chave a cada PASSO (30 → 15 por segundo)
 const DEDO = /^(index|middle|pinky|ring|thumb)_|_leaf_/;
 const GLTF = 0x46546c67, JSON_ = 0x4e4f534a, BIN = 0x004e4942;
 
@@ -50,29 +56,47 @@ function preparar(buf) {
   // buffer novo só com os accessors usados (no GLB da Quaternius cada accessor tem o seu bufferView)
   const novoIndice = new Map(), accessors = [], bufferViews = [], partes = [];
   let deslocamento = 0;
-  const copiar = (i) => {
-    if (novoIndice.has(i)) return novoIndice.get(i);
+  // já reduzido (rodar no asset pronto): não reduz de novo
+  const jaReduzido = !!(j.asset.extras && j.asset.extras.turnoDaNoite && j.asset.extras.turnoDaNoite.passo);
+  const COMP = { SCALAR: 1, VEC3: 3, VEC4: 4 };
+  // quadros-chave que ficam num clipe de n quadros: 1 a cada PASSO mais o último; estático = primeiro e último
+  const quadros = (n, estatico) => { if (n <= 2) return [...Array(n).keys()]; if (estatico) return [0, n - 1]; const k = []; for (let i = 0; i < n; i += PASSO) k.push(i); if (k[k.length - 1] !== n - 1) k.push(n - 1); return k; };
+  const copiar = (i, manter = null) => {
+    const chave = manter ? i + ':' + manter.join(',') : i;
+    if (novoIndice.has(chave)) return novoIndice.get(chave);
     const a = { ...j.accessors[i] }, v = j.bufferViews[a.bufferView], ini = v.byteOffset || 0;
-    const dados = bin.slice(ini, ini + v.byteLength), sobra = (4 - (dados.length % 4)) % 4;
-    bufferViews.push({ buffer: 0, byteOffset: deslocamento, byteLength: v.byteLength, ...(v.target ? { target: v.target } : {}) });
+    let dados = bin.slice(ini, ini + v.byteLength);
+    if (manter && a.componentType === 5126) {   // trilha de animação (float): fica só com os quadros escolhidos
+      const nc = COMP[a.type], f = new Float32Array(dados.buffer.slice(dados.byteOffset, dados.byteOffset + dados.byteLength));
+      const out = new Float32Array(manter.length * nc);
+      manter.forEach((q, k) => { for (let c = 0; c < nc; c++) out[k * nc + c] = f[q * nc + c]; });
+      dados = Buffer.from(out.buffer); a.count = manter.length;
+      if (a.min && a.max && nc === 1) { a.min = [out[0]]; a.max = [out[out.length - 1]]; }
+    }
+    const sobra = (4 - (dados.length % 4)) % 4;
+    bufferViews.push({ buffer: 0, byteOffset: deslocamento, byteLength: dados.length, ...(v.target ? { target: v.target } : {}) });
     partes.push(dados, Buffer.alloc(sobra));
     deslocamento += dados.length + sobra;
     a.bufferView = bufferViews.length - 1;
     accessors.push(a);
-    novoIndice.set(i, accessors.length - 1);
+    novoIndice.set(chave, accessors.length - 1);
     return accessors.length - 1;
   };
   for (const k of Object.keys(prim.attributes)) prim.attributes[k] = copiar(prim.attributes[k]);
   prim.indices = copiar(prim.indices);
   for (const s of j.skins) s.inverseBindMatrices = copiar(s.inverseBindMatrices);
-  for (const a of j.animations) for (const s of a.samplers) { s.input = copiar(s.input); s.output = copiar(s.output); }
+  for (const a of j.animations) for (const s of a.samplers) {
+    const manter = jaReduzido ? null : quadros(j.accessors[s.input].count, ESTATICOS.includes(a.name));
+    s.input = copiar(s.input, manter); s.output = copiar(s.output, manter);
+  }
   j.accessors = accessors;
   j.bufferViews = bufferViews;
   j.buffers = [{ byteLength: deslocamento }];
+  j.asset.extras = { ...(j.asset.extras || {}), turnoDaNoite: { passo: PASSO } };
   return escreverGlb(j, Buffer.concat(partes));
 }
 
-module.exports = { preparar, lerGlb, CLIPES };
+module.exports = { preparar, lerGlb, CLIPES, ESTATICOS };
 
 if (require.main === module) {
   const [entrada, saida = path.join(__dirname, '..', 'assets', 'detento.glb')] = process.argv.slice(2);
