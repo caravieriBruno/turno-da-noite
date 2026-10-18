@@ -86,4 +86,47 @@ function secaoBonsModos() {
   ok(!/ELE ESTÁ OLHANDO/.test(t) && /O GUARDA VIROU/.test(t) && /guarda/i.test(def.brief.join(' ')), 'bons modos: textos falam do guarda');
 }
 
-fim([secaoPularCorda, secaoBonsModos]);
+// --- empilhadeira: controle assistido e eliminação do pior ---
+function secaoEmpilhadeira() {
+  const def = TN.minigames.empilhadeira;
+  ok(def.GIRO_MIN === 0.35 && def.PEDAL_RATE === 8 && def.STEER_RATE === 8 && def.GRAB === 34 && def.PEGA_CD === 0.6 && /soltar/i.test(def.controls.a), 'empilhadeira: constantes e AÇÃO = soltar');
+  const g = rodada('empilhadeira'), d = g.data, p = g.players[0], pd = p.data, zona = d.zones.find((z) => z.owner === p);
+  segundos(g, 0.5);
+  // gira parada
+  const dir0 = p.dir; pd.pedal = 0; pd.speed = 0; aperta(0, { x: 1 }); passo(g, 1 / 60, 10); solta();
+  ok(Math.abs(p.dir - dir0) > 0.05, `empilhadeira: gira parada (${(p.dir - dir0).toFixed(2)} rad)`);
+  // pegar automático: caixa livre a 20 px da ponta do garfo, fora da própria zona
+  p.x = 480; p.y = 270; p.dir = 0; pd.crate = null; pd.pegaCd = 0;
+  const f = def.forkPoint(p), cr = d.crates.find((c) => !c.carrier); cr.x = f.x + 20; cr.y = f.y; cr.fade = 0;
+  passo(g);
+  ok(pd.crate === cr && cr.carrier === p, 'empilhadeira: encostar o garfo numa caixa livre pega sozinho');
+  // soltar automático no centro da própria zona, e 0,6 s sem pegar de novo
+  p.x = zona.x + zona.w / 2 - def.FORK; p.y = zona.y + zona.h / 2; p.dir = 0; passo(g);
+  ok(!pd.crate && !cr.carrier && def.zoneOf(g, cr) === zona && pd.pegaCd > 0.5, 'empilhadeira: entrar na própria zona solta a caixa e dá 0,6 s sem pegar');
+  passo(g, 1 / 60, 10);
+  ok(!pd.crate, 'empilhadeira: a caixa recém-solta não volta para o garfo');
+  segundos(g, 0.7); passo(g);
+  ok(!pd.crate, 'empilhadeira: caixa já na própria zona não é pega');
+  // Review Focus 3: roubar da zona rival continua, e quem largou não pega de volta na hora
+  const q = g.players[1], qd = q.data;
+  q.x = zona.x + zona.w / 2 - def.FORK; q.y = zona.y + zona.h / 2; q.dir = 0; qd.crate = null; qd.pegaCd = 0; passo(g);
+  ok(qd.crate === cr, 'empilhadeira: o rival rouba a caixa da minha zona só encostando');
+  // eliminação só do pior (o turno seguinte começa 3,7 s depois do apito: 1,2 + 0,9 + 1,6)
+  const h = rodada('empilhadeira'), e = h.data; segundos(h, 0.5);
+  const porZona = [3, 1, 1, 0], caixas = e.crates.filter((c) => !c.removed);
+  let k = 0; e.zones.forEach((z, i) => { for (let n = 0; n < porZona[i]; n++) { const c = caixas[k++]; c.carrier = null; c.x = z.x + 20 + n * 10; c.y = z.y + 20; } });
+  for (const c of caixas.slice(k)) { c.x = 480; c.y = 270; }
+  for (const pl of h.players) pl.data.crate = null;
+  def.endSub(h); segundos(h, 2.3);
+  ok(h.players.map((pl) => +pl.alive).join('') === '1110', `empilhadeira: só quem tem menos caixas sai (vivos ${h.players.map((pl) => +pl.alive).join('')})`);
+  segundos(h, 1.5);
+  ok(e.phase === 'play' && e.sub === 2, `empilhadeira: vem outro turno (${e.phase}, turno ${e.sub})`);
+  const m = rodada('empilhadeira'), me = m.data; segundos(m, 0.5);
+  for (const c of me.crates) { c.x = 480; c.y = 270; c.carrier = null; }
+  for (const pl of m.players) pl.data.crate = null;
+  def.endSub(m); segundos(m, 3.8);
+  ok(m.alive().length === 4 && me.phase === 'play', 'empilhadeira: empate geral (todos com 0) não elimina ninguém');
+  ok(def.piores(m).length === 0, 'empilhadeira: piores() vazio no empate geral');
+}
+
+fim([secaoPularCorda, secaoBonsModos, secaoEmpilhadeira]);

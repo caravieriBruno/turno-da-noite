@@ -1,22 +1,25 @@
 // EMPILHADEIRA — inspirado em "FORKLIFT CERTIFIED" (forklift_certified) de Machine Party.
 // Galpão visto de cima: cada um tem uma zona de entrega no canto. Leve caixas para a sua zona
-// (do meio ou dos rivais). Quando o turno acaba, quem tem 0 caixas ou menos que o líder é eliminado.
+// (do meio ou dos rivais): encostar o garfo pega, entrar na própria zona solta. Quando o turno
+// acaba, só quem tem MENOS caixas é eliminado (empate geral: ninguém).
 // Tudo acontece dentro da MESMA rodada: vários turnos, cada um 1 s mais curto, até sobrar um.
 TN.registerMinigame({
   id: 'empilhadeira',
   title: 'EMPILHADEIRA',
   inspiredBy: 'Forklift Certified (forklift_certified)',
   tagline: 'AS CHANCES ESTÃO EMPILHADAS.',
-  brief: ['Leve caixas para a sua zona: do meio ou dos outros.', 'Caixa no garfo não conta.', 'No fim do turno, quem tiver menos que o líder sai.'],
-  controls: { move: '↑↓ pedal / ←→ volante', a: 'subir/baixar o garfo' },
+  brief: ['Encoste o garfo numa caixa para pegar; entre na sua zona para soltar.', 'Caixa no garfo não conta.', 'No fim do turno, quem tiver menos caixas sai.'],
+  controls: { move: '↑↓ pedal / ←→ volante', a: 'soltar a caixa aqui' },
   icon: '▤',
   color: '#ffb02e',
   rounds: 3,
   scoring: 'survival',
 
-  // ---- constantes (originais: pedal 5/s, volante 5/s e volta 2/s, vel. máx 5; 30 s no 1º turno, −1 s, mín. 10) ----
-  MAX_SPEED: 215, REVERSE: 0.6, PEDAL_RATE: 5, STEER_RATE: 5, STEER_BACK: 3, TURN: 3.4,
-  FORK: 34, CRATE_R: 14, GRAB: 24, FIRST_TIME: 30, MIN_TIME: 10, MAX_SUBS: 9,
+  // ---- constantes (originais: pedal 5/s, volante 5/s e volta 2/s, vel. máx 5; 30 s no 1º turno, −1 s, mín. 10).
+  //      Aqui pedal e volante respondem mais rápido (8/s), a empilhadeira gira parada (GIRO_MIN da
+  //      curva máxima) e o garfo pega num raio maior (GRAB). ----
+  MAX_SPEED: 215, REVERSE: 0.6, PEDAL_RATE: 8, STEER_RATE: 8, STEER_BACK: 3, TURN: 3.4, GIRO_MIN: 0.35,
+  FORK: 34, CRATE_R: 14, GRAB: 34, PEGA_CD: 0.6, FIRST_TIME: 30, MIN_TIME: 10, MAX_SUBS: 9,
   HIT_MIN: 40, HIT_STRONG: 150, ZONE_W: 170, ZONE_H: 130,
 
   init(g) {
@@ -44,7 +47,7 @@ TN.registerMinigame({
       const z = d.zones.find((zz) => zz.owner === p);
       p.x = z.x + z.w / 2; p.y = z.y + z.h / 2; p.r = 18;
       p.dir = U.angle(p.x, p.y, a.x + a.w / 2, a.y + a.h / 2);
-      Object.assign(p.data, { pedal: 0, steer: 0, speed: 0, crate: null, lock: 0, hitCool: 0 });
+      Object.assign(p.data, { pedal: 0, steer: 0, speed: 0, crate: null, lock: 0, hitCool: 0, pegaCd: 0 });
     }
     d.sub = 1;                 // turno atual
     d.subTime = this.FIRST_TIME;
@@ -68,8 +71,40 @@ TN.registerMinigame({
   dropCrate(p, vx = 0, vy = 0) {
     const cr = p.data.crate;
     if (!cr) return;
+    const f = this.forkPoint(p);   // cai de onde o garfo está agora (a caixa só acompanha o garfo no fim do quadro)
+    cr.x = f.x; cr.y = f.y;
     cr.carrier = null; cr.vx = vx; cr.vy = vy;
     p.data.crate = null;
+  },
+  // o garfo pega sozinho a caixa livre mais perto da ponta (a menos de GRAB), menos as que já estão na própria zona
+  pegarAuto(g, p) {
+    const U = TN.util, pd = p.data;
+    if (pd.crate || pd.pegaCd > 0) return;
+    const f = this.forkPoint(p), own = g.data.zones.find((z) => z.owner === p);
+    let best = null, bd = this.GRAB;
+    for (const cr of g.data.crates) {
+      if (cr.carrier || cr.fade > 0) continue;
+      if (this.zoneOf(g, cr) === own) continue;
+      const dd = U.dist(f.x, f.y, cr.x, cr.y);
+      if (dd < bd) { bd = dd; best = cr; }
+    }
+    if (best) { best.carrier = p; pd.crate = best; g.sfx('pickup'); }
+  },
+  // com a ponta do garfo dentro da própria zona (margem 16), a caixa cai sozinha; PEGA_CD sem pegar de novo
+  soltarAuto(g, p) {
+    const U = TN.util, pd = p.data;
+    if (!pd.crate) return;
+    const z = g.data.zones.find((zz) => zz.owner === p), f = this.forkPoint(p);
+    if (!U.inRect(f.x, f.y, { x: z.x + 16, y: z.y + 16, w: z.w - 32, h: z.h - 32 })) return;
+    this.dropCrate(p); pd.pegaCd = this.PEGA_CD; g.sfx('step');
+  },
+  // os vivos com a menor contagem de caixas; vazio quando todos empatam
+  piores(g) {
+    this.countZones(g);
+    const al = g.alive(), conta = (p) => g.data.zones.find((z) => z.owner === p).count;
+    const min = Math.min(...al.map(conta)), max = Math.max(...al.map(conta));
+    if (min === max) return [];
+    return al.filter((p) => conta(p) === min);
   },
   eliminateBatch(g, list, msg) {
     if (!list.length) return;
@@ -94,36 +129,26 @@ TN.registerMinigame({
     // ---- empilhadeiras ----
     for (const p of g.alive()) {
       const pd = p.data;
-      pd.lock -= dt; pd.hitCool -= dt;
+      pd.lock -= dt; pd.hitCool -= dt; pd.pegaCd -= dt;
       const inp = playing ? p.input : { x: 0, y: 0 };
       // pedal: integra até o alvo e volta a 0 sozinho
       const want = -inp.y;
       pd.pedal = U.approach(pd.pedal, want, this.PEDAL_RATE * dt);
       pd.steer = U.approach(pd.steer, inp.x, (Math.abs(inp.x) > 0.1 ? this.STEER_RATE : this.STEER_BACK) * dt);
       pd.speed = pd.pedal * this.MAX_SPEED * (pd.pedal < 0 ? this.REVERSE : 1);
-      // giro proporcional à velocidade (na ré o volante inverte naturalmente)
-      p.dir += pd.steer * this.TURN * (pd.speed / this.MAX_SPEED) * dt;
+      // giro proporcional à velocidade, mas nunca abaixo de GIRO_MIN: parada ela ainda gira (na ré o volante inverte)
+      const k = Math.max(this.GIRO_MIN, Math.abs(pd.speed) / this.MAX_SPEED) * (pd.speed < 0 ? -1 : 1);
+      p.dir += pd.steer * this.TURN * k * dt;
       p.x += (Math.cos(p.dir) * pd.speed + p.vx) * dt;
       p.y += (Math.sin(p.dir) * pd.speed + p.vy) * dt;
       g.decayPush(p, dt, 4);
       // paredes
       const cx = U.clamp(p.x, a.x + p.r, a.x + a.w - p.r), cy = U.clamp(p.y, a.y + p.r, a.y + a.h - p.r);
       if (cx !== p.x || cy !== p.y) { pd.pedal *= 0.85; p.x = cx; p.y = cy; }
-      // garfo: pega ou solta
-      if (playing && p.input.aPressed && pd.lock <= 0) {
-        pd.lock = 0.25;
-        if (pd.crate) { this.dropCrate(p); g.sfx('step'); }
-        else {
-          const f = this.forkPoint(p);
-          let best = null, bd = this.GRAB;
-          for (const cr of d.crates) {
-            if (cr.carrier || cr.fade > 0) continue;
-            const dd = U.dist(f.x, f.y, cr.x, cr.y);
-            if (dd < bd) { bd = dd; best = cr; }
-          }
-          if (best) { best.carrier = p; pd.crate = best; g.sfx('pickup'); }
-          else g.sfx('blip');
-        }
+      // garfo: pega e solta sozinho; AÇÃO só larga a caixa onde estiver
+      if (playing) {
+        if (p.input.aPressed && pd.crate && pd.lock <= 0) { pd.lock = 0.25; this.dropCrate(p); pd.pegaCd = this.PEGA_CD; g.sfx('step'); }
+        else { this.soltarAuto(g, p); this.pegarAuto(g, p); }
       }
     }
 
@@ -192,18 +217,11 @@ TN.registerMinigame({
     for (const p of g.alive()) this.dropCrate(p);
     d.banner = { text: 'FIM DO TURNO!', color: '#ffb02e' };
     g.after(1.2, () => {
-      this.countZones(g);
-      const zoneOf = (p) => d.zones.find((z) => z.owner === p);
-      const zeros = g.alive().filter((p) => zoneOf(p).count === 0);
-      this.eliminateBatch(g, zeros, 'SEM CAIXAS!');
+      // só quem tem MENOS caixas sai (zeros inclusos); empate geral não elimina ninguém
+      const piores = this.piores(g);
+      this.eliminateBatch(g, piores, 'FICOU PRA TRÁS!');
+      if (!piores.length) d.banner = { text: 'EMPATE: TODOS SEGUEM', color: '#9f9' };
       g.after(0.9, () => {
-        const al = g.alive();
-        if (al.length > 1) {
-          const max = Math.max(...al.map((p) => zoneOf(p).count));
-          const low = al.filter((p) => zoneOf(p).count < max);
-          this.eliminateBatch(g, low, 'INEFICIENTE!');
-          if (!low.length && !zeros.length) d.banner = { text: 'EMPATE NO TOPO: TODOS SEGUEM', color: '#9f9' };
-        }
         if (g.alive().length <= 1) { d.banner = null; return; } // o motor encerra a rodada
         // limite de segurança: depois de muitos turnos os empatados no topo sobrevivem juntos
         if (d.sub >= this.MAX_SUBS) { d.banner = { text: 'EXPEDIENTE ENCERRADO', color: '#9f9' }; g.finish(1.5); return; }
@@ -235,14 +253,17 @@ TN.registerMinigame({
     }
   },
 
-  // ---------- bot: busca a caixa mais próxima fora da sua zona, leva para casa e solta ----------
+  // ---------- bot: busca a caixa mais próxima fora da sua zona e leva para casa (o garfo pega e solta sozinho) ----------
   bot(g, p, dt) {
     const U = TN.util, d = g.data, b = p.data;
     if (d.phase !== 'play') return { x: 0, y: 0 };
-    b.bt = b.bt || { reverse: 0, stuck: 0, lastX: p.x, lastY: p.y, ram: null, ramT: 0, think: 0 };
+    b.bt = b.bt || { reverse: 0, stuck: 0, lastX: p.x, lastY: p.y, ram: null, ramT: 0, think: 0, hadCrate: false };
     const s = b.bt;
     const zone = d.zones.find((z) => z.owner === p);
-    let a = false;
+    const inner = { x: zone.x + 16, y: zone.y + 16, w: zone.w - 32, h: zone.h - 32 };
+    // a caixa caiu sozinha na zona: dá ré para sair de cima dela
+    if (s.hadCrate && !b.crate && s.reverse <= 0) { const f = this.forkPoint(p); if (U.inRect(f.x, f.y, inner)) { s.reverse = 0.6; s.revSteer = U.pick([-1, 0, 1]); } }
+    s.hadCrate = !!b.crate;
     // dá ré por um tempo (depois de soltar a caixa ou quando ficou preso)
     if (s.reverse > 0) { s.reverse -= dt; return { x: s.revSteer, y: 1 }; }
     // detecção de "preso"
@@ -255,9 +276,6 @@ TN.registerMinigame({
     if (b.crate) {
       // leva para o fundo da zona (perto do canto, para não roubarem fácil)
       tx = zone.x + zone.w / 2; ty = zone.y + zone.h / 2;
-      const f = this.forkPoint(p);
-      const inner = { x: zone.x + 16, y: zone.y + 16, w: zone.w - 32, h: zone.h - 32 };
-      if (U.inRect(f.x, f.y, inner) && b.lock <= 0) { a = true; s.reverse = 0.6; s.revSteer = U.pick([-1, 0, 1]); }
     } else {
       // às vezes persegue quem está carregando para derrubar a caixa
       s.think -= dt;
@@ -279,11 +297,7 @@ TN.registerMinigame({
           if (dd < bd) { bd = dd; best = cr; }
         }
         if (!best) { tx = zone.x + zone.w / 2; ty = zone.y + zone.h / 2; careful = true; }
-        else {
-          tx = best.x; ty = best.y;
-          const f = this.forkPoint(p);
-          if (U.dist(f.x, f.y, best.x, best.y) < this.GRAB - 4 && b.lock <= 0) a = true;
-        }
+        else { tx = best.x; ty = best.y; }
       }
     }
     const dist = U.dist(p.x, p.y, tx, ty);
@@ -291,12 +305,12 @@ TN.registerMinigame({
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     // alvo atrás e perto: manobra de ré (volante invertido)
-    if (Math.abs(diff) > 2.1 && dist < 110) return { x: -Math.sign(diff), y: 1, a };
+    if (Math.abs(diff) > 2.1 && dist < 110) return { x: -Math.sign(diff), y: 1 };
     const steer = U.clamp(diff * 2.5, -1, 1);
     let pedal = Math.abs(diff) > 1.2 ? 0.55 : 1;
     if (!s.ram && dist < 70) pedal = Math.min(pedal, 0.5);
     if (careful && dist < 30) pedal = 0;
-    return { x: steer, y: -pedal, a };
+    return { x: steer, y: -pedal };
   },
 
   // ---------- 3D (câmera fixa) ----------
