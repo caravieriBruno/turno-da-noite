@@ -9,10 +9,11 @@ TN.registerMinigame({
   brief: [
     'Um laser gira em volta do eixo central.',
     'Pule (AÇÃO) quando ele passar por você.',
-    'Ele acelera, ganha outro braço e muda de sentido.',
-    'Laser em cima de você no chão = fim.',
+    'Ele acelera e muda de sentido.',
+    'O laser alto passa por cima: agache (EXTRA). Não dá para pular dele.',
+    'Laser em cima de você = fim.',
   ],
-  controls: { move: 'andar', a: 'pular' },
+  controls: { move: 'andar', a: 'pular', b: 'agachar' },
   icon: '⟳',
   color: '#ff3b6b',
   rounds: 2,
@@ -23,7 +24,9 @@ TN.registerMinigame({
   SPEED: 150, AIR_SPEED: 95,
   AIR: 0.5, JUMP_CD: 0.22, JUMP_H: 22,
   OMEGA0: 1.5, OMEGA_ACC: 0.05, OMEGA_MAX1: 3.6, OMEGA_MAX2: 3.0, WARMUP: 1.6,
-  ARM2_AT: 20, REV_FIRST: 27, REV_WARN: 0.8,
+  ALTO_AT: 12, ALTO_Y: 34, ALTO_FATOR: 0.8,   // laser alto: entra aos 12 s, a 34 de altura, a 0,8× da velocidade e no sentido oposto
+  CROUCH: 0.45, CROUCH_SPEED: 70, CROUCH_CD: 0.25,   // agachar (EXTRA): só escapa do laser alto
+  REV_FIRST: 27, REV_WARN: 0.8,
   SAFETY: 75,        // segurança: depois disso a rodada acaba e quem estiver vivo ganha
 
   init(g) {
@@ -31,32 +34,40 @@ TN.registerMinigame({
     d.theta = Math.PI / 4;     // ângulo do braço principal (começa entre os jogadores)
     d.sign = 1;                // 1 = horário na tela, -1 = anti-horário
     d.omega = 0;               // velocidade angular atual (com sinal)
-    d.arms = [0];              // deslocamentos dos braços
-    d.arm2Warn = false;
+    d.arms = [0];              // deslocamentos dos braços baixos (fica só um: o segundo virou o laser alto)
+    d.alto = null;             // { theta, on } quando o laser alto está ligado
+    d.altoWarn = false;
     d.nextRev = this.REV_FIRST + TN.util.rand(0, 4);
     d.revWarn = 0;             // > 0 durante o aviso de inversão
     d.over = false;
     g.placeInCircle(this.CX, this.CY, 130);
-    for (const p of g.players) { p.data.air = 0; p.data.cd = 0; p.data.jumps = 0; }
+    for (const p of g.players) { p.data.air = 0; p.data.cd = 0; p.data.jumps = 0; p.data.crouch = 0; p.data.crouchCd = 0; }
   },
 
   speedAt(g) {
-    const d = g.data, max = d.arms.length > 1 ? this.OMEGA_MAX2 : this.OMEGA_MAX1;
+    const d = g.data, max = d.alto ? this.OMEGA_MAX2 : this.OMEGA_MAX1;
     const warm = TN.util.clamp(g.time / this.WARMUP, 0, 1);
     return Math.min(max, this.OMEGA0 + this.OMEGA_ACC * g.time) * warm;
   },
 
   armAngles(g) { return g.data.arms.map((o) => g.data.theta + o); },
+  // todos os braços: os baixos (deslocamentos de theta) e o alto, com ângulo e sentido próprios
+  bracos(g) {
+    const d = g.data, lista = d.arms.map((o) => ({ ang: d.theta + o, alto: false, sign: d.sign }));
+    if (d.alto && d.alto.on) lista.push({ ang: d.alto.theta, alto: true, sign: -d.sign });
+    return lista;
+  },
+  ativarAlto(g) { const d = g.data; d.alto = { theta: d.theta + Math.PI, on: true }; },
 
   update(g, dt) {
     const U = TN.util, d = g.data;
     if (g.time >= this.SAFETY && !d.over) { d.over = true; g.message('FIM DO RECREIO.', 1.5, '#ff3b6b'); g.finish(1.2); }
 
-    // segundo braço (com aviso de 1,2 s)
-    if (d.arms.length === 1 && !d.arm2Warn && g.time >= this.ARM2_AT - 1.2) {
-      d.arm2Warn = true; g.sfx('buzz'); g.message('CORDA DUPLA.', 1.2, '#ff3b6b');
+    // laser alto (com aviso de 1,2 s): entra no lugar da antiga segunda corda baixa
+    if (!d.alto && !d.altoWarn && g.time >= this.ALTO_AT - 1.2) {
+      d.altoWarn = true; g.sfx('buzz'); g.message('LASER ALTO.', 1.2, '#3fd6ff');
     }
-    if (d.arms.length === 1 && g.time >= this.ARM2_AT) { d.arms.push(Math.PI); g.sfx('laser'); g.flash('#ff3b6b', 0.15); }
+    if (!d.alto && g.time >= this.ALTO_AT) { this.ativarAlto(g); g.sfx('laser'); g.flash('#3fd6ff', 0.15); }
     // inversões de sentido, sempre com aviso
     if (g.time >= d.nextRev - this.REV_WARN && d.revWarn <= 0 && g.time < d.nextRev) { d.revWarn = this.REV_WARN; g.sfx('buzz'); }
     if (d.revWarn > 0) d.revWarn -= dt;
@@ -68,17 +79,21 @@ TN.registerMinigame({
     }
     d.omega = this.speedAt(g) * d.sign;
     d.theta += d.omega * dt;
+    if (d.alto) d.alto.theta -= d.omega * this.ALTO_FATOR * dt;   // sentido oposto, um pouco mais devagar
 
     // jogadores
     for (const p of g.alive()) {
       const pd = p.data;
-      g.movePlayer(p, pd.air > 0 ? this.AIR_SPEED : this.SPEED, dt, null);
+      g.movePlayer(p, pd.air > 0 ? this.AIR_SPEED : pd.crouch > 0 ? this.CROUCH_SPEED : this.SPEED, dt, null);
+      pd.crouchCd -= dt;
+      if (pd.crouch > 0) { pd.crouch -= dt; if (pd.crouch <= 0) { pd.crouch = 0; pd.crouchCd = this.CROUCH_CD; } }
       if (pd.air > 0) {
         pd.air -= dt;
         if (pd.air <= 0) { pd.air = 0; pd.cd = this.JUMP_CD; g.sfx('step'); }
       } else {
         pd.cd -= dt;
-        if (p.input.aPressed && pd.cd <= 0) { pd.air = this.AIR; pd.jumps++; g.sfx('jump'); }
+        if (p.input.aPressed && pd.cd <= 0 && pd.crouch <= 0) { pd.air = this.AIR; pd.jumps++; g.sfx('jump'); }
+        else if (p.input.bPressed && pd.crouch <= 0 && pd.crouchCd <= 0) { pd.crouch = this.CROUCH; g.sfx('step'); }
       }
     }
     U.separate(g.alive());
@@ -89,16 +104,16 @@ TN.registerMinigame({
       p.x = this.CX + (dx / r) * rr; p.y = this.CY + (dy / r) * rr;
     }
 
-    // laser x jogadores no chão
+    // laser x jogadores: o baixo pega quem está no chão (agachado também); o alto pega quem não agachou (em pé ou no ar)
     if (g.time < this.WARMUP * 0.5) return;
-    for (const ang of this.armAngles(g)) {
+    for (const { ang, alto } of this.bracos(g)) {
       const x1 = this.CX + Math.cos(ang) * this.HUB, y1 = this.CY + Math.sin(ang) * this.HUB;
       const x2 = this.CX + Math.cos(ang) * (this.R + 8), y2 = this.CY + Math.sin(ang) * (this.R + 8);
       for (const p of g.alive()) {
-        if (p.data.air > 0) continue;
+        if (alto ? p.data.crouch > 0 : p.data.air > 0) continue;
         if (U.segCircle(x1, y1, x2, y2, p.x, p.y, p.r - 4 + this.BEAM_W / 2)) {
           p.data.cutAt = g.time;   // só para a animação 3D do corte
-          g.eliminate(p, { sound: 'laser', particles: false, msg: U.pick(['TROPEÇOU.', 'CORTADO.', 'FORA DO RITMO.', 'NÃO PULOU.']) });
+          g.eliminate(p, { sound: 'laser', particles: false, msg: U.pick(alto ? ['ABAIXA!', 'ALTO DEMAIS.', 'NÃO AGACHOU.'] : ['TROPEÇOU.', 'CORTADO.', 'FORA DO RITMO.', 'NÃO PULOU.']) });
           g.sfx('boom'); g.shake(12); g.flash('#ff3b6b', 0.18);
           g.particles(p.x, p.y, '#ff3b6b', 26, 320);
           g.particles(p.x, p.y, p.color, 20, 220);
@@ -124,27 +139,31 @@ TN.registerMinigame({
       const ox = p.x - o.x, oy = p.y - o.y, od = Math.hypot(ox, oy) || 1;
       if (od < 70) { mx += (ox / od) * 0.8; my += (oy / od) * 0.8; }
     }
-    // pulo
-    let jump = false;
-    const w = Math.abs(d.omega);
-    if (w > 0.05 && pd.air <= 0 && pd.cd <= 0) {
+    // pulo ou agachamento: olha o braço que chega primeiro; o baixo pede pulo, o alto pede agachar
+    let jump = false, crouch = false;
+    const w0 = Math.abs(d.omega);
+    if (w0 > 0.05 && pd.air <= 0 && pd.crouch <= 0) {
       const hw = Math.asin(Math.min(1, (p.r - 4 + this.BEAM_W) / r));   // meia largura angular do robô
-      let tEnter = Infinity;
-      for (const ang of this.armAngles(g)) {
-        let delta = d.sign > 0 ? phi - ang : ang - phi;
+      let melhor = null;
+      for (const br of this.bracos(g)) {
+        const w = w0 * (br.alto ? this.ALTO_FATOR : 1);
+        let delta = br.sign > 0 ? phi - br.ang : br.ang - phi;
         delta = ((delta % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-        tEnter = Math.min(tEnter, (delta - hw) / w);
+        const tEnter = (delta - hw) / w;
+        if (!melhor || tEnter < melhor.tEnter) melhor = { tEnter, w, alto: br.alto };
       }
-      const overlap = (2 * hw) / w;
-      const ideal = Math.max(0.03, (this.AIR - overlap) / 2);
-      if (tEnter <= ideal + b.noise) {
-        jump = true;
-        // erro de tempo do próximo pulo: cresce com a velocidade do laser
-        const k = b.skill * (0.6 + w / 3);
-        b.noise = (Math.random() + Math.random() + Math.random() - 1.5) * k * 1.6;
+      if (melhor) {
+        const overlap = (2 * hw) / melhor.w, dur = melhor.alto ? this.CROUCH : this.AIR;
+        const ideal = Math.max(0.03, (dur - overlap) / 2);
+        if (melhor.tEnter <= ideal + b.noise && (melhor.alto ? pd.crouchCd <= 0 : pd.cd <= 0)) {
+          if (melhor.alto) crouch = true; else jump = true;
+          // erro de tempo do próximo: cresce com a velocidade do laser
+          const k = b.skill * (0.6 + melhor.w / 3);
+          b.noise = (Math.random() + Math.random() + Math.random() - 1.5) * k * 1.6;
+        }
       }
     }
-    return { x: U.clamp(mx, -1, 1), y: U.clamp(my, -1, 1), a: jump };
+    return { x: U.clamp(mx, -1, 1), y: U.clamp(my, -1, 1), a: jump, b: crouch };
   },
 
   // ---------- desenho 3D (câmera fixa) ----------
@@ -153,19 +172,20 @@ TN.registerMinigame({
   LASER_Y: 8,
 
   // um braço de laser: núcleo branco, halo colorido, rastro e o carrinho emissor na borda
-  drawLaser3d(r, d, ang, color, ghost) {
-    const cx = this.CX, cy = this.CY, y = this.LASER_Y, c = Math.cos(ang), s = Math.sin(ang);
+  drawLaser3d(r, d, ang, color, ghost, y = this.LASER_Y, sign = d.sign) {
+    const cx = this.CX, cy = this.CY, c = Math.cos(ang), s = Math.sin(ang), alto = y > this.LASER_Y + 1;
     const x1 = cx + c * this.HUB, z1 = cy + s * this.HUB, x2 = cx + c * (this.R + 8), z2 = cy + s * (this.R + 8);
     if (ghost) { r.beam(x1, y, z1, x2, y, z2, 5, color, { glow: true, opacity: 0.35 }); return; }
     r.beam(x1, y, z1, x2, y, z2, 2.4, '#ffffff', { glow: true });
     r.beam(x1, y, z1, x2, y, z2, 8, color, { glow: true, opacity: 0.5 });
     r.beam(x1, y, z1, x2, y, z2, 18, color, { glow: true, opacity: 0.14 });
     for (let k = 1; k <= 5; k++) {
-      const a = ang - d.sign * k * 0.06, ca = Math.cos(a), sa = Math.sin(a);
+      const a = ang - sign * k * 0.06, ca = Math.cos(a), sa = Math.sin(a);
       r.beam(cx + ca * this.HUB, 1, cy + sa * this.HUB, cx + ca * this.R, 1, cy + sa * this.R, 10, color, { glow: true, opacity: 0.13 * (1 - k / 6), shadow: false });
     }
-    // carrinho emissor que corre no trilho da borda
-    r.box(x2 + c * 6, 0, z2 + s * 6, 18, 16, 18, '#2a2e35', { rotY: -ang, metal: 0.7, rough: 0.35 });
+    // carrinho emissor que corre no trilho da borda (o alto tem um poste até a altura do feixe e sombra no chão)
+    r.box(x2 + c * 6, 0, z2 + s * 6, 18, alto ? y + 4 : 16, 18, '#2a2e35', { rotY: -ang, metal: 0.7, rough: 0.35 });
+    if (alto) r.beam(x1, 0.8, z1, x2, 0.8, z2, 6, '#000000', { opacity: 0.35, shadow: false });
     r.sphere(x2, y, z2, 4, color, { glow: true });
     r.light(cx + c * this.R * 0.55, 26, cy + s * this.R * 0.55, color, 1.3, 280);
   },
@@ -236,13 +256,13 @@ TN.registerMinigame({
         r.disc(p.x, 0.9, p.y, p.r * (1 - k * 0.4), '#000', { opacity: 0.45 });
         r.character(p, { pose: 'fall', y: k * 34 });
       } else {
-        r.character(p, { pose: pd.cd > 0.12 ? 'crouch' : 'auto' });
+        r.character(p, { pose: pd.crouch > 0 || pd.cd > 0.12 ? 'crouch' : 'auto' });
         if (pd.cd > 0) r.ring(p.x, 1, p.y, p.r + 4, p.r + 7, '#ffffff', { glow: true, opacity: 0.4, arc: pd.cd / this.JUMP_CD });
       }
     }
-    // lasers e aviso do segundo braço
-    if (d.arm2Warn && d.arms.length === 1 && Math.floor(t * 8) % 2 === 0) this.drawLaser3d(r, d, d.theta + Math.PI, '#ff3b6b', true);
-    for (const ang of this.armAngles(g)) this.drawLaser3d(r, d, ang, col, false);
+    // lasers: os baixos, o alto (ciano, a 34 de altura) e o fantasma do alto antes de ele entrar
+    if (d.altoWarn && !d.alto && Math.floor(t * 8) % 2 === 0) this.drawLaser3d(r, d, d.theta + Math.PI, '#3fd6ff', true, this.ALTO_Y, -d.sign);
+    for (const br of this.bracos(g)) this.drawLaser3d(r, d, br.ang, br.alto ? '#3fd6ff' : col, false, br.alto ? this.ALTO_Y : this.LASER_Y, br.sign);
     // eixo central com engrenagem girando e setas do sentido
     const H = this.HUB;
     r.cyl(cx, 0, cy, H, 24, '#3a4048', { metal: 0.6, rough: 0.4, sides: 16 });
@@ -296,7 +316,7 @@ TN.registerMinigame({
     c.strokeStyle = '#f5c400'; c.setLineDash([12, 12]); c.lineDashOffset = -d.theta * 20;
     c.beginPath(); c.arc(cx, cy, R + 5, 0, Math.PI * 2); c.stroke(); c.setLineDash([]);
     // aviso do segundo braço: fantasma piscando
-    if (d.arm2Warn && d.arms.length === 1 && Math.floor(g.time * 8) % 2 === 0) this.drawBeam(c, d.theta + Math.PI, 'rgba(255,59,107,0.35)', true);
+    if (d.altoWarn && !d.alto && Math.floor(g.time * 8) % 2 === 0) this.drawBeam(c, d.theta + Math.PI, 'rgba(63,214,255,0.35)', true);
 
     // corpos, sombras, robôs no chão e depois os que estão no ar
     for (const p of g.players) if (!p.alive) g.drawPlayer(c, p);
@@ -307,6 +327,7 @@ TN.registerMinigame({
       if (p.data.cd > 0) { c.strokeStyle = '#fff6'; c.lineWidth = 2; c.beginPath(); c.arc(p.x, p.y, p.r + 5, 0, (p.data.cd / this.JUMP_CD) * Math.PI * 2); c.stroke(); }
     }
     for (const ang of this.armAngles(g)) this.drawBeam(c, ang, warn ? '#ffd23f' : '#ff3b6b');
+    if (d.alto) this.drawBeam(c, d.alto.theta, '#3fd6ff', false);   // o laser alto, em ciano
     this.drawHub(g, c, warn);
     for (const p of airborne) {
       const k = Math.sin(Math.PI * (1 - p.data.air / this.AIR));   // 0 → 1 → 0
