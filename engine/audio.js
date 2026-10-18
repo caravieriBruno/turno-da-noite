@@ -1,5 +1,5 @@
 // Áudio sintetizado com WebAudio (sem arquivos). Use TN.audio.play('nome').
-// Sons: blip, select, confirm, back, tick, go, hit, boom, pickup, coin, jump, shoot, laser, hurt, win, lose, whoosh, buzz, cough, step
+// Sons: blip, select, confirm, back, tick, go, hit, boom, pickup, coin, jump, shoot, laser, hurt, win, lose, whoosh, buzz, cough, step, latido
 (function () {
   let ctx = null, master = null;
   const enabled = typeof window.AudioContext !== 'undefined' || typeof window.webkitAudioContext !== 'undefined';
@@ -49,6 +49,7 @@
     buzz: () => tone({ type: 'sawtooth', f: 110, dur: 0.3, vol: 0.15 }),
     cough: () => { noise({ dur: 0.12, vol: 0.4, filter: 700 }); noise({ dur: 0.15, vol: 0.35, filter: 600, delay: 0.16 }); },
     step: () => noise({ dur: 0.04, vol: 0.08, filter: 600 }),
+    latido: () => { tone({ type: 'sawtooth', f: 420, f2: 180, dur: 0.09, vol: 0.28 }); noise({ dur: 0.08, vol: 0.18, filter: 900, delay: 0.02 }); },
   };
 
   TN.audio = {

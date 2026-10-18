@@ -31,4 +31,42 @@ function secaoMotor() {
   ok(tr.errs.length === 0, 'motor: r.project/r.unproject aceitam o índice da vista');
 }
 
-fim([secaoMotor]);
+// --- pisa leve: câmera pelas costas e cães de guarda ---
+function secaoPisaLeve() {
+  const def = TN.minigames.pisa_leve;
+  ok(def.REVEAL === 1.4 && def.CAES_DELAY === 5 && def.CAES_V0 === 16 && def.CAES_V1 === 56 && def.CAES_PERTO === 80 && !def.drawHarvester3d, 'pisa leve: REVEAL 1,4 s, cães com a curva da colheitadeira, sem colheitadeira');
+  ok(/cães/i.test(def.brief.join(' ')) && !/colheitadeira/i.test(def.brief.join(' ')), 'pisa leve: o briefing fala dos cães');
+  const g = rodada('pisa_leve'), d = g.data, P = g.players;
+  ok(def.camera.pos[0] < d.startX && def.camera.target[0] > def.camera.pos[0] && def.camera.pos[1] < 300, 'pisa leve: câmera atrás da largada, baixa, olhando para a van');
+  ok(d.caes && !d.caes.on && d.harv === undefined, 'pisa leve: a matilha começa presa; não há mais colheitadeira');
+  const sons = {}; g.sfx = (n) => { sons[n] = (sons[n] || 0) + 1; };
+  segundos(g, def.CAES_DELAY + 0.1);
+  ok(d.caes.on && g._message && /CÃES/.test(g._message.text), `pisa leve: aos 5 s soltam os cães (${g._message && g._message.text})`);
+  // latidos: mais frequentes quando a matilha está perto
+  for (const p of P) { p.x = d.caes.x + 400; p.y = 275; }
+  sons.latido = 0; segundos(g, 3); const longe = sons.latido;
+  for (const p of P) { p.x = d.caes.x + 90; p.y = 275; }
+  sons.latido = 0; segundos(g, 3); const perto = sons.latido;
+  ok(longe >= 1 && perto > longe, `pisa leve: latidos aumentam ao se aproximar (longe ${longe}, perto ${perto} em 3 s)`);
+  // a vinheta vermelha pulsa só com um cão a menos de 80 px de alguém
+  for (const p of P) p.x = d.caes.x + 200;
+  const semVinheta = com3d(g, () => estilos((c) => def.drawOverlay(g, c))).some((s) => /rgba\(255,\s*(0|2\d|3\d|4\d),/.test(String(s)));
+  P[0].x = d.caes.x + 60;
+  const comVinheta = com3d(g, () => estilos((c) => def.drawOverlay(g, c))).some((s) => /rgba\(255,\s*(0|2\d|3\d|4\d),/.test(String(s)));
+  ok(!semVinheta && comVinheta, 'pisa leve: vinheta vermelha só com cão a menos de 80 px');
+  // mordida: mata no contato e marca `mordido`; a matilha estoura as minas por onde passa
+  const m = d.mines.find((k) => !k.dead); m.x = d.caes.x - 10; m.y = 275;
+  P[1].x = d.caes.x - 2; P[1].y = 275;
+  passo(g);
+  ok(!P[1].alive && P[1].data.mordido === true && m.dead, `pisa leve: cão pega quem fica para trás e estoura as minas atrás (vivo ${P[1].alive}, mina ${m.dead})`);
+  // 3D: a matilha não é desenhada; os cães aparecem só sobre quem foi mordido
+  const antes = TN.R3.trace((r) => def.drawCaes3d(g, r)).counts.box || 0;
+  P[1].data.mordido = false;
+  const depois = TN.R3.trace((r) => def.drawCaes3d(g, r)).counts.box || 0;
+  ok(antes >= 2 && depois === 0, `pisa leve: cães só em cima do mordido (${antes} caixas com mordido, ${depois} sem)`);
+  ok(TN.R3.trace((r) => def.draw3d(g, r)).errs.length === 0, 'pisa leve: draw3d passa no validador');
+  const t2 = textos((c) => def.draw(g, c));
+  ok(!/COLHEITADEIRA/i.test(t2), 'pisa leve: 2D sem colheitadeira');
+}
+
+fim([secaoMotor, secaoPisaLeve]);
