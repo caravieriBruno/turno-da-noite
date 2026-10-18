@@ -19,6 +19,9 @@ TN.registerMinigame({
   COLS: 14, ROWS: 8, TILE: 50,
   SPEED: 175, SHOVE: 560, SHOVE_WIND: 0.1, SHOVE_LOCK: 0.4, SHOVE_RANGE: 58,
   SHUFFLES: 3, SHUFFLE_T: 1, DROP_T: 2.5, WAIT_T: 3, REMOVE: 6,
+  TOLERANCIA: 0.15,          // segundos sem chão antes de cair (dá para cortar a quina entre dois pisos)
+  JITTER: 0.3,               // variação da espera e da fase final, para a cadência não ser metronômica
+  PADROES: ['blocos', 'faixas', 'aneis', 'tabuleiro', 'ruido'],
   SYMS: ['X', '■', '●'], SYM_COLORS: ['#ff4d6d', '#4dc3ff', '#ffd23f'],
 
   init(g) {
@@ -29,7 +32,7 @@ TN.registerMinigame({
     d.phase = 'idle'; d.phaseT = 0; d.phaseDur = 1.0; d.shuffleN = 0; d.cycle = 0;
     d.display = -1; d.safe = -1; d.decoy = false;
     g.placeInCircle(g.W / 2, d.gy + (this.ROWS * this.TILE) / 2, 110);
-    for (const p of g.players) Object.assign(p.data, { lock: 0, wind: 0, shoveT: 0, react: 0, fallT: -1, target: null, misread: false, wander: null, wanderT: 0 });
+    for (const p of g.players) Object.assign(p.data, { lock: 0, wind: 0, shoveT: 0, react: 0, fallT: -1, semChaoT: 0, target: null, misread: false, wander: null, wanderT: 0 });
   },
 
   tileAt(g, x, y) {
@@ -45,6 +48,41 @@ TN.registerMinigame({
   randomize(g) {
     for (const t of g.data.tiles) if (t.state !== 'gone') t.sym = TN.util.randInt(0, 2);
   },
+  // sem chão = nenhum dos 5 pontos (centro e ±10 px) está sobre piso; antes só o centro contava e a quina
+  // entre dois pisos derrubava o jogador
+  semChao(g, p) { return [[0, 0], [10, 0], [-10, 0], [0, 10], [0, -10]].every(([ox, oy]) => !this.solid(this.tileAt(g, p.x + ox, p.y + oy))); },
+  // layout final com um padrão sorteado (antes cada ladrilho era sorteado sozinho e os seguros ficavam esparsos)
+  gerarLayout(g) {
+    const U = TN.util, d = g.data, up = d.tiles.filter((t) => t.state === 'up');
+    const alvo = 0.45 - 0.05 * Math.min(3, d.cycle);   // proporção segura: ~45% no 1º ciclo, ~30% no 4º
+    const safe = U.randInt(0, 2), C = this.COLS, R = this.ROWS;
+    const marca = (fn) => { for (const t of up) t.seg = !!fn(t); };
+    for (let tent = 0; tent < 6; tent++) {
+      d.padrao = tent < 5 ? U.pick(this.PADROES) : 'ruido';
+      if (d.padrao === 'blocos') { const bl = {}; marca((t) => { const k = (t.c >> 1) + ',' + (t.r >> 1); if (bl[k] === undefined) bl[k] = U.chance(alvo); return bl[k]; }); }
+      else if (d.padrao === 'faixas') { const porLinha = U.chance(0.5), li = {}; marca((t) => { const k = porLinha ? t.r : t.c; if (li[k] === undefined) li[k] = U.chance(alvo); return li[k]; }); }
+      else if (d.padrao === 'aneis') { const an = {}; marca((t) => { const k = Math.max(Math.abs(t.c - (C - 1) / 2), Math.abs(t.r - (R - 1) / 2)) | 0; if (an[k] === undefined) an[k] = U.chance(alvo); return an[k]; }); }
+      else if (d.padrao === 'tabuleiro') { const par = U.randInt(0, 1); marca((t) => ((t.c >> 1) + (t.r >> 1)) % 2 === par && U.chance(alvo / 0.5)); }
+      else marca(() => U.chance(alvo));
+      const frac = up.filter((t) => t.seg).length / Math.max(1, up.length);
+      if (frac >= 0.25 && frac <= 0.6) break;
+    }
+    for (const t of up) { t.sym = t.seg ? safe : (safe + U.randInt(1, 2)) % 3; delete t.seg; }
+    d.safe = safe; d.display = safe; d.decoy = false;
+    this.garantir(g);
+  },
+  // cada vivo precisa de um piso seguro a até SPEED × final × 0,8; se não houver, o piso 'up' mais perto (fora o
+  // que está sob ele) vira seguro. Ladrilhos 'gone' nunca voltam.
+  garantir(g) {
+    const d = g.data, alc = this.SPEED * d.phaseDur * 0.8, up = d.tiles.filter((t) => t.state === 'up');
+    for (const p of g.alive()) {
+      const dist = (t) => { const c = this.center(g, t); return Math.hypot(c.x - p.x, c.y - p.y); };
+      if (up.some((t) => t.sym === d.safe && dist(t) <= alc)) continue;
+      // nunca o piso sob o jogador: quem fica parado tem que andar, senão a rodada não acaba
+      const perto = up.filter((t) => dist(t) > this.TILE * 0.75).sort((a, b) => dist(a) - dist(b))[0];
+      if (perto) perto.sym = d.safe;
+    }
+  },
 
   setPhase(g, ph, dur) { g.data.phase = ph; g.data.phaseT = 0; g.data.phaseDur = dur; },
 
@@ -59,13 +97,9 @@ TN.registerMinigame({
         this.randomize(g); d.display = U.randInt(0, 2); d.decoy = true;
         this.setPhase(g, 'shuffle', this.SHUFFLE_T); g.sfx('tick');
       } else if (d.phase === 'shuffle') {
-        // layout final: o símbolo seguro precisa existir em alguns ladrilhos
-        this.randomize(g);
-        const live = d.tiles.filter((t) => t.state === 'up');
-        const counts = [0, 1, 2].map((s) => live.filter((t) => t.sym === s).length);
-        const options = [0, 1, 2].filter((s) => counts[s] >= Math.min(3, Math.max(...counts)));
-        d.safe = U.pick(options); d.display = d.safe; d.decoy = false;
-        this.setPhase(g, 'final', Math.max(1.0, 3 - d.cycle * 0.45)); g.sfx('select');
+        // layout final: padrão sorteado, com um piso seguro garantido ao alcance de cada um
+        this.setPhase(g, 'final', Math.max(1.0, 3 - d.cycle * 0.45 + U.rand(-this.JITTER, this.JITTER)));
+        this.gerarLayout(g); g.sfx('select');
         for (const p of g.players) { p.data.react = U.rand(0.25, 1.1); p.data.misread = U.chance(0.2); }
       } else if (d.phase === 'final') {
         for (const t of d.tiles) if (t.state === 'up' && t.sym !== d.safe) t.state = 'down';
@@ -78,7 +112,7 @@ TN.registerMinigame({
         down.forEach((t, i) => { t.state = i < n ? 'gone' : 'up'; });
         for (const t of d.tiles) t.sym = -1;
         d.display = -1; d.safe = -1; d.cycle++;
-        this.setPhase(g, 'idle', this.WAIT_T); g.sfx('step');
+        this.setPhase(g, 'idle', this.WAIT_T + U.rand(-this.JITTER, this.JITTER)); g.sfx('step');
       }
     }
     for (const t of d.tiles) t.fall = U.approach(t.fall, t.state === 'up' ? 0 : 1, dt * 2.5);
@@ -98,7 +132,8 @@ TN.registerMinigame({
     U.separate(g.alive());
     // quem estiver sobre buraco cai
     for (const p of g.alive()) {
-      if (!this.solid(this.tileAt(g, p.x, p.y))) {
+      p.data.semChaoT = this.semChao(g, p) ? p.data.semChaoT + dt : 0;
+      if (p.data.semChaoT > this.TOLERANCIA) {
         p.data.fallT = 0;
         g.eliminate(p, { sound: 'whoosh', particles: false, msg: 'CAIU!' });
       }

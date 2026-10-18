@@ -136,8 +136,49 @@ function secaoMemoria() {
   ok(/✓/.test(t) && /✗/.test(t), 'memória: a prévia desenha ✓ e ✗');
 }
 
+// --- piso falso: queda por área com tolerância, padrões variados e piso seguro garantido ---
+function secaoPisoFalso() {
+  const def = TN.minigames.piso_falso, g = rodada('piso_falso'), d = g.data, p = g.players[0];
+  def.setPhase(g, 'drop', 2.5);
+  const t0 = def.tileAt(g, p.x, p.y);
+  for (const t of d.tiles) t.state = 'up';
+  t0.state = 'down'; p.x = d.gx + (t0.c + 1) * def.TILE - 4;   // quina: centro no buraco, 10 px à direita já é piso
+  ok(!def.semChao(g, p), 'piso falso: na quina de um piso o jogador não cai');
+  for (const t of d.tiles) t.state = 'down';
+  passo(g, 1 / 60, 6);
+  ok(p.alive, 'piso falso: 0,1 s sem chão ainda não elimina');
+  passo(g, 1 / 60, 6);
+  ok(!p.alive, 'piso falso: 0,2 s sem chão elimina');
+  const h = rodada('piso_falso'), e = h.data;
+  const padroes = new Set();
+  let props = true, alcance = true;
+  for (let k = 0; k < 8; k++) {
+    e.cycle = k % 4; def.setPhase(h, 'final', 2); def.gerarLayout(h); padroes.add(e.padrao);
+    const up = e.tiles.filter((t) => t.state === 'up'), seg = up.filter((t) => t.sym === e.safe).length / up.length;
+    if (seg < 0.25 || seg > 0.6) { props = false; console.log(`   (padrão ${e.padrao}: ${(seg * 100).toFixed(0)}% seguros)`); }
+    def.garantir(h);
+    const alc = def.SPEED * e.phaseDur * 0.8;
+    if (!h.alive().every((q) => e.tiles.some((t) => t.state === 'up' && t.sym === e.safe && Math.hypot(def.center(h, t).x - q.x, def.center(h, t).y - q.y) <= alc))) alcance = false;
+  }
+  ok(props, 'piso falso: a proporção de pisos seguros fica entre 25% e 60%');
+  ok(alcance, 'piso falso: todo mundo tem um piso seguro ao alcance');
+  ok(padroes.size >= 2, `piso falso: os padrões variam (${[...padroes].join(', ')})`);
+  // Review Focus 3: gone fica gone
+  const gone = e.tiles[0]; gone.state = 'gone'; for (const q of h.players) { q.x = def.center(h, gone).x; q.y = def.center(h, gone).y; }
+  for (const t of e.tiles) if (t !== gone) t.state = 'down';
+  def.garantir(h);
+  ok(gone.state === 'gone', 'piso falso: a garantia não ressuscita ladrilho removido');
+  // quem fica parado precisa se mexer: o piso garantido nunca é o que está sob o jogador
+  for (const t of e.tiles) t.state = 'up';
+  const q0 = h.players[0]; const meu = e.tiles[40]; const cm = def.center(h, meu); q0.x = cm.x; q0.y = cm.y;
+  e.safe = 0; for (const t of e.tiles) t.sym = 1;
+  for (const q of h.players.slice(1)) { q.x = cm.x; q.y = cm.y; }
+  def.garantir(h);
+  ok(meu.sym !== e.safe && e.tiles.some((t) => t.sym === e.safe), 'piso falso: a garantia não torna seguro o piso sob o jogador (parado tem que andar)');
+}
+
 // SEÇÕES (uma por jogo; cada tarefa define a sua função acima deste bloco e acrescenta o nome no array)
-const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato, secaoMemoria];
+const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato, secaoMemoria, secaoPisoFalso];
 for (const s of secoes) { try { s(); } catch (e) { ok(false, `${s.name}: exceção ${e.message}`); } }
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
