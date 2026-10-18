@@ -1,6 +1,7 @@
 // PULAR CORDA — a corda virou um laser industrial preso num eixo no meio da sala.
 // O laser gira como um ponteiro de relógio; pule (AÇÃO) quando ele passar por você.
-// Acelera com o tempo, ganha um segundo braço e às vezes inverte o sentido (com aviso).
+// Acelera com o tempo, aos 12 s ganha um laser alto (agache com EXTRA) meia volta atrás do baixo,
+// e às vezes inverte o sentido (com aviso).
 TN.registerMinigame({
   id: 'pular_corda',
   title: 'PULAR CORDA',
@@ -24,7 +25,8 @@ TN.registerMinigame({
   SPEED: 150, AIR_SPEED: 95,
   AIR: 0.5, JUMP_CD: 0.22, JUMP_H: 22,
   OMEGA0: 1.5, OMEGA_ACC: 0.05, OMEGA_MAX1: 3.6, OMEGA_MAX2: 3.0, WARMUP: 1.6,
-  ALTO_AT: 12, ALTO_Y: 34, ALTO_FATOR: 0.8,   // laser alto: entra aos 12 s, a 34 de altura, a 0,8× da velocidade e no sentido oposto
+  ALTO_AT: 12, ALTO_Y: 34,   // laser alto: entra aos 12 s, a 34 de altura, no mesmo sentido e meia volta atrás do baixo
+  // (em sentido oposto os dois se cruzariam a cada ~1 s e passariam quase juntos: impossível pular e agachar a tempo)
   CROUCH: 0.45, CROUCH_SPEED: 70, CROUCH_CD: 0.25,   // agachar (EXTRA): só escapa do laser alto
   REV_FIRST: 27, REV_WARN: 0.8,
   SAFETY: 75,        // segurança: depois disso a rodada acaba e quem estiver vivo ganha
@@ -54,7 +56,7 @@ TN.registerMinigame({
   // todos os braços: os baixos (deslocamentos de theta) e o alto, com ângulo e sentido próprios
   bracos(g) {
     const d = g.data, lista = d.arms.map((o) => ({ ang: d.theta + o, alto: false, sign: d.sign }));
-    if (d.alto && d.alto.on) lista.push({ ang: d.alto.theta, alto: true, sign: -d.sign });
+    if (d.alto && d.alto.on) lista.push({ ang: d.alto.theta, alto: true, sign: d.sign });
     return lista;
   },
   ativarAlto(g) { const d = g.data; d.alto = { theta: d.theta + Math.PI, on: true }; },
@@ -79,7 +81,7 @@ TN.registerMinigame({
     }
     d.omega = this.speedAt(g) * d.sign;
     d.theta += d.omega * dt;
-    if (d.alto) d.alto.theta -= d.omega * this.ALTO_FATOR * dt;   // sentido oposto, um pouco mais devagar
+    if (d.alto) d.alto.theta += d.omega * dt;   // acompanha o baixo: as passagens alternam baixo/alto a cada meia volta (~1 s)
 
     // jogadores
     for (const p of g.alive()) {
@@ -146,7 +148,7 @@ TN.registerMinigame({
       const hw = Math.asin(Math.min(1, (p.r - 4 + this.BEAM_W) / r));   // meia largura angular do robô
       let melhor = null;
       for (const br of this.bracos(g)) {
-        const w = w0 * (br.alto ? this.ALTO_FATOR : 1);
+        const w = w0;
         let delta = br.sign > 0 ? phi - br.ang : br.ang - phi;
         delta = ((delta % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
         const tEnter = (delta - hw) / w;
@@ -261,7 +263,7 @@ TN.registerMinigame({
       }
     }
     // lasers: os baixos, o alto (ciano, a 34 de altura) e o fantasma do alto antes de ele entrar
-    if (d.altoWarn && !d.alto && Math.floor(t * 8) % 2 === 0) this.drawLaser3d(r, d, d.theta + Math.PI, '#3fd6ff', true, this.ALTO_Y, -d.sign);
+    if (d.altoWarn && !d.alto && Math.floor(t * 8) % 2 === 0) this.drawLaser3d(r, d, d.theta + Math.PI, '#3fd6ff', true, this.ALTO_Y, d.sign);
     for (const br of this.bracos(g)) this.drawLaser3d(r, d, br.ang, br.alto ? '#3fd6ff' : col, false, br.alto ? this.ALTO_Y : this.LASER_Y, br.sign);
     // eixo central com engrenagem girando e setas do sentido
     const H = this.HUB;

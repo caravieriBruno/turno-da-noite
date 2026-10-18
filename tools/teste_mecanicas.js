@@ -37,18 +37,24 @@ function secaoPularCorda() {
   const k = rodada('pular_corda', { humanos: 0 }); segundos(k, 12.2);
   ok(k.data.alto && k.data.alto.on && k.data.arms.length === 1, 'corda: aos 12 s entra o laser alto e não há 2ª corda baixa');
   const b = def.bracos(k), baixo = b.find((x) => !x.alto), alto = b.find((x) => x.alto);
-  ok(baixo && alto && baixo.sign === -alto.sign, 'corda: o alto gira no sentido oposto ao baixo');
+  const dif = Math.abs(((alto.ang - baixo.ang) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI);
+  ok(baixo && alto && baixo.sign === alto.sign && dif < 0.01, `corda: o alto gira no mesmo sentido, defasado de meia volta (${dif.toFixed(3)} rad)`);
+  segundos(k, 1);
+  const b2 = def.bracos(k), dif2 = Math.abs(((b2[1].ang - b2[0].ang) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI);
+  ok(dif2 < 0.01, 'corda: a meia volta entre os braços se mantém (passagens sempre ~1 s separadas)');
   // bot: diante do alto chegando, agacha em vez de pular
   const z = rodada('pular_corda', { humanos: 0 }); segundos(z, 0.7);
   const bp = z.players[0]; bp.x = def.CX + 120; bp.y = def.CY; bp.data.air = 0; bp.data.cd = 0; bp.data.crouch = 0; bp.data.crouchCd = 0;
   bp.data.bot = { prefR: 120, skill: 0.08, noise: 0, tw: 0, tt: 9 };
-  z.data.arms = []; def.ativarAlto(z); z.data.alto.theta = 0.25; z.data.sign = 1; z.data.omega = 3;   // o alto gira no sentido oposto: vem de +0,25 para 0
+  z.data.arms = []; def.ativarAlto(z); z.data.alto.theta = -0.25; z.data.sign = 1; z.data.omega = 3;   // o alto vem de -0,25 para 0 (sentido do baixo)
   const dec = def.bot(z, bp, 1 / 60);
   ok(dec.b === true && !dec.a, `corda: o bot agacha para o laser alto (${JSON.stringify(dec)})`);
-  // Review Focus 1: os bots sobrevivem aos dois braços na maioria das rodadas
-  let vivas = 0;
-  for (let r = 0; r < 6; r++) { const w = rodada('pular_corda', { humanos: 0 }); segundos(w, 20); if (w.alive().length >= 1) vivas++; }
-  ok(vivas >= 4, `corda: em ${vivas}/6 rodadas ainda há bot vivo aos 20 s`);
+  // Review Focus 1: os bots sobrevivem aos dois braços — com o fim de rodada desligado (senão o motor
+  // encerra 1,5 s depois de sobrar um e a curva não aparece), a maioria dos 24 bots ainda está viva aos 20 s
+  let vivos20 = 0, vivos30 = 0;
+  for (let r = 0; r < 6; r++) { const w = rodada('pular_corda', { humanos: 0 }); w.finish = () => {}; segundos(w, 20); vivos20 += w.alive().length; segundos(w, 10); vivos30 += w.alive().length; }
+  // medido em 30 rodadas: média 2,4 vivos/rodada aos 20 s e 1,4 aos 30 s; pior janela de 6 rodadas 10/24 e 3/24
+  ok(vivos20 >= 7 && vivos30 >= 1, `corda: dos 24 bots, ${vivos20} vivos aos 20 s e ${vivos30} aos 30 s`);
 }
 
 // SEÇÕES (uma por jogo)
@@ -111,6 +117,16 @@ function secaoEmpilhadeira() {
   const q = g.players[1], qd = q.data;
   q.x = zona.x + zona.w / 2 - def.FORK; q.y = zona.y + zona.h / 2; q.dir = 0; qd.crate = null; qd.pegaCd = 0; passo(g);
   ok(qd.crate === cr, 'empilhadeira: o rival rouba a caixa da minha zona só encostando');
+  // batida forte: a vítima perde a caixa e NÃO a pega de volta no quadro seguinte (0,6 s de recarga)
+  const v = g.players[2], vd = v.data, atk = g.players[3], ad = atk.data;
+  for (const pl of g.players) { pl.data.crate = null; pl.data.hitCool = 0; pl.data.pegaCd = 0; pl.data.pedal = 0; pl.x = 100 + pl.id * 60; pl.y = 450; pl.dir = 0; }
+  for (const c of d.crates) { c.carrier = null; c.x = 700 + (c.x % 60); c.y = 120 + (c.y % 60); }
+  const cv = d.crates[0]; v.x = 480; v.y = 300; v.dir = 0; vd.crate = cv; cv.carrier = v; cv.x = 514; cv.y = 300;
+  atk.x = 450; atk.y = 300; atk.dir = 0; ad.pedal = 1; ad.speed = def.MAX_SPEED;   // vem de trás a toda, encostado
+  passo(g);
+  ok(!vd.crate && vd.pegaCd > 0.5, `empilhadeira: batida forte derruba a caixa e dá recarga à vítima (recarga ${vd.pegaCd.toFixed(2)})`);
+  segundos(g, 0.5);
+  ok(vd.crate !== cv, 'empilhadeira: a vítima não pega a caixa derrubada de volta na hora');
   // eliminação só do pior (o turno seguinte começa 3,7 s depois do apito: 1,2 + 0,9 + 1,6)
   const h = rodada('empilhadeira'), e = h.data; segundos(h, 0.5);
   const porZona = [3, 1, 1, 0], caixas = e.crates.filter((c) => !c.removed);

@@ -169,6 +169,7 @@ TN.registerMinigame({
             atk.data.pedal *= 0.35;
             if (v > this.HIT_STRONG && vic.data.crate) {
               this.dropCrate(vic, nx * sx * v * 0.9 + U.rand(-60, 60), ny * sx * v * 0.9 + U.rand(-60, 60));
+              vic.data.pegaCd = this.PEGA_CD;   // senão o garfo pegava a caixa de volta no quadro seguinte
               g.popup('DERRUBOU!', vic.x, vic.y - 30, '#ffb02e');
             }
           }
