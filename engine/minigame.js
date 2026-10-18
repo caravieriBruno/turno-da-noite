@@ -46,7 +46,7 @@
         id: r.id, name: r.name, color: r.color, isBot: !!r.isBot, device: r.device,
         input: { x: 0, y: 0, a: false, b: false, aPressed: false, bPressed: false },
         alive: true, score: 0, x: 0, y: 0, vx: 0, vy: 0, r: 16, dir: 0,
-        data: {}, finished: false, eliminatedAt: null, label: `P${r.id + 1}`,
+        data: {}, finished: false, eliminatedAt: null, label: r.name || `P${r.id + 1}`,
       }));
       this.playerCount = this.players.length;
       // posição inicial padrão: espalhados em círculo

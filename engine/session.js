@@ -16,14 +16,33 @@
   TN.go = function (scene) { TN.scene = scene; scene.t = 0; scene.enter && scene.enter(); };
   TN.session = null;
 
+  // ---------- nomes dos jogadores ----------
+  // Cada detento escolhe o nome no lobby (roda de letras). O padrão é o último nome usado naquele dispositivo
+  // (localStorage) ou um apelido de detento sorteado; bots sempre ganham apelido.
+  const APELIDOS = ['BIGODE', 'SOMBRA', 'FAISCA', 'MUDO', 'CANHOTO', 'PIOLHO', 'TRINTA', 'FUMACA', 'CAVEIRA', 'MAGRELO', 'TUBARAO', 'GAIOLA', 'PAREDE', 'CORUJA', 'FERRUGEM', 'BARATA', 'CHAVEIRO', 'PINGUIM', 'TRANCA', 'ZOIO'];
+  const NOMES_KEY = 'turno-da-noite-nomes';
+  function nomesSalvos() { try { return JSON.parse(localStorage.getItem(NOMES_KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function salvarNome(device, nome) { try { const n = nomesSalvos(); n[device] = nome; localStorage.setItem(NOMES_KEY, JSON.stringify(n)); } catch (e) { /* sem storage */ } }
+  function nomePadrao(device, emUso) {
+    const salvo = device ? nomesSalvos()[device] : null;
+    if (salvo && !emUso.includes(salvo)) return salvo;
+    const livres = APELIDOS.filter((a) => !emUso.includes(a));
+    return U.pick(livres.length ? livres : APELIDOS);
+  }
+
   function buildRoster(slots, fillBots) {
     const roster = [];
-    slots.forEach((s, i) => { if (s && s.device) roster.push({ device: s.device, isBot: false, slot: i }); });
+    slots.forEach((s, i) => { if (s && s.device) roster.push({ device: s.device, nome: s.nome, isBot: false, slot: i }); });
     if (fillBots || roster.length === 0) {
       for (let i = 0; i < 4 && roster.length < 4; i++) if (!roster.find((r) => r.slot === i)) roster.push({ device: null, isBot: true, slot: i });
     }
     roster.sort((a, b) => a.slot - b.slot);
-    return roster.map((r) => ({ id: r.slot, name: TN.PLAYER_NAMES[r.slot], color: TN.PLAYER_COLORS[r.slot], device: r.device, isBot: r.isBot }));
+    const usados = [];
+    return roster.map((r) => {
+      const name = r.nome || nomePadrao(r.device, usados);
+      usados.push(name);
+      return { id: r.slot, name, color: TN.PLAYER_COLORS[r.slot], device: r.device, isBot: r.isBot };
+    });
   }
 
   function newSession(roster, playlist, { test = null } = {}) {
@@ -590,7 +609,7 @@
       TN.go(Title);
     }
   };
-  TN._internal = { buildRoster, newSession, Picker };  // usado por tools/simular.js --sessao
+  TN._internal = { buildRoster, newSession, Picker, APELIDOS, nomesSalvos, salvarNome, nomePadrao };  // usado por tools/simular.js --sessao e pelos testes
   TN.LobbyScene = Lobby;
   // cenas que a rede precisa recriar no cliente (engine/net.js)
   TN.sceneClasses = { Title, Controls, TestList, Lobby, Setup, Picker, Brief, RoundIntro, Play, Pause, RoundOver, ScoreScreen, Final };

@@ -207,12 +207,32 @@ function secaoInstrucoes() {
   ok(ler('tools/servidor.js').includes('CHAMAR COMPARSAS') && ler('README.md').includes('ENTRAR NO PLANO'), 'servidor e README ensinam a rede com os nomes novos do menu');
 }
 
+// --- 7. nomes: apelidos, persistência e roster ---
+function secaoNomes() {
+  const I = TN._internal;
+  ok(Array.isArray(I.APELIDOS) && I.APELIDOS.length >= 16 && I.APELIDOS.every((a) => /^[A-Z0-9 -]{1,8}$/.test(a)), 'nomes: lista de apelidos válidos');
+  localStorage.setItem('turno-da-noite-nomes', JSON.stringify({ kb2: 'BRUNO' }));
+  ok(I.nomePadrao('kb2', []) === 'BRUNO', 'nomes: o padrão do dispositivo vem do localStorage');
+  ok(I.nomePadrao('kb2', ['BRUNO']) !== 'BRUNO', 'nomes: salvo mas já em uso → sorteia outro');
+  const a = I.nomePadrao('gp0', []), b = I.nomePadrao('gp0', [a]);
+  ok(I.APELIDOS.includes(a) && I.APELIDOS.includes(b) && a !== b, 'nomes: sem nome salvo, apelido sorteado sem repetir');
+  I.salvarNome('kb3', 'ZECA'); ok(I.nomesSalvos().kb3 === 'ZECA', 'nomes: salvarNome persiste');
+  const roster = I.buildRoster([{ device: 'kb2', nome: 'BRUNO' }, null, null, null], true);
+  ok(roster[0].name === 'BRUNO' && roster.slice(1).every((r) => I.APELIDOS.includes(r.name)) && new Set(roster.map((r) => r.name)).size === 4, 'nomes: roster leva o nome escolhido e apelidos únicos para os bots');
+  const g = new TN.Round(TN.minigames[TN.minigameOrder[0]], roster, 1, 1);
+  ok(g.players[0].label === 'BRUNO' && g.players.every((p) => p.label && p.label.length > 0), 'nomes: o label do jogador é o nome');
+  // Review Focus 3: roster sem lobby (?game= e --sessao) também tem nome
+  const semLobby = I.buildRoster([{ device: 'kb1' }, null, null, null], true);
+  ok(semLobby.every((r) => r.name && r.name.length > 0), 'nomes: roster montado sem lobby ganha apelidos');
+}
+
 secaoDono();
 secaoGiz();
 secaoCenas();
 secaoTelasSemSessao();
 secaoTelasDaPartida();
 secaoInstrucoes();
+secaoNomes();
 // CHAMADAS EXTRAS (as tarefas seguintes acrescentam aqui)
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
