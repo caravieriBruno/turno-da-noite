@@ -164,10 +164,12 @@ function secaoPisoFalso() {
   ok(alcance, 'piso falso: todo mundo tem um piso seguro ao alcance');
   ok(padroes.size >= 2, `piso falso: os padrões variam (${[...padroes].join(', ')})`);
   // Review Focus 3: gone fica gone
-  const gone = e.tiles[0]; gone.state = 'gone'; for (const q of h.players) { q.x = def.center(h, gone).x; q.y = def.center(h, gone).y; }
-  for (const t of e.tiles) if (t !== gone) t.state = 'down';
+  const gone = e.tiles[0], longe = e.tiles[e.tiles.length - 1]; gone.state = 'gone';
+  for (const t of e.tiles) if (t !== gone && t !== longe) t.state = 'down';
+  longe.state = 'up'; longe.sym = (e.safe + 1) % 3;
+  const cg = def.center(h, gone); for (const q of h.players) { q.x = cg.x + 50; q.y = cg.y; }   // o gone é o candidato mais perto
   def.garantir(h);
-  ok(gone.state === 'gone', 'piso falso: a garantia não ressuscita ladrilho removido');
+  ok(gone.state === 'gone' && gone.sym !== e.safe && longe.sym === e.safe, 'piso falso: a garantia não ressuscita ladrilho removido (converte o piso de pé mais perto)');
   // quem fica parado precisa se mexer: o piso garantido nunca é o que está sob o jogador
   for (const t of e.tiles) t.state = 'up';
   const q0 = h.players[0]; const meu = e.tiles[40]; const cm = def.center(h, meu); q0.x = cm.x; q0.y = cm.y;
@@ -208,6 +210,7 @@ function secaoBatata() {
   ok(g._popups.some((pp) => pp.text === 'QUEIMANDO!'), 'batata: aviso QUEIMANDO! depois de 1,5 s');
   const i = dono.id; aperta(i, { a: true }); passo(g); solta();
   ok(pot.state === 'flight' && pot.heldT === 0, 'batata: passar zera o tempo na mão');
+  ok(def.BOT_ESPERA_MAX <= 0.7 && def.CATCH_LOCK + def.BOT_ESPERA_MAX < def.QUEIMA_AVISO, 'batata: o bot solta mais cedo, sempre antes do QUEIMANDO!');
 }
 
 // --- cabo de guerra: janela de ritmo 3–5 toques/s, medidor de cadência ---
@@ -231,8 +234,10 @@ function secaoCabo() {
   // os bots seguem a regra nova: o ritmo deles fica dentro da janela (nunca afobado)
   const b = rodada('cabo_de_guerra', { humanos: 0 }); let afobados = 0;
   const popup = b.popup.bind(b); b.popup = (txt, ...r) => { if (txt === 'AFOBADO') afobados++; return popup(txt, ...r); };
-  segundos(b, 8);
-  ok(afobados === 0, `cabo: bots nunca são afobados (${afobados} avisos em 8 s)`);
+  segundos(b, 2.5);
+  ok(b.players.every((p) => p.data.lastT >= 0 && p.data.lastT < 2.5), `cabo: todos os bots já puxaram no começo (último toque em ${b.players.map((p) => p.data.lastT.toFixed(2)).join(', ')})`);
+  segundos(b, 17.5);
+  ok(afobados === 0, `cabo: bots nunca são afobados (${afobados} avisos em 20 s)`);
 }
 
 // --- hora do trem: empurrão tira do nicho de verdade ---
@@ -249,8 +254,13 @@ function secaoTrem() {
     def.shove(g, a);
     ok(Math.abs(v.vx) < 1 && Math.sign(v.vy) === -lado && Math.abs(v.vy) > 300, `trem (lado ${lado}): empurrão sai reto do nicho (vx ${v.vx.toFixed(0)}, vy ${v.vy.toFixed(0)})`);
     ok(v.data.foraT === 0.3, `trem (lado ${lado}): vítima fica 0,3 s sem reentrar (${v.data.foraT})`);
-    v.vx = 0; v.vy = 0; passo(g);   // ainda no nicho, mas com foraT > 0: não conta como segura
-    ok(v.data.foraT > 0 && !def.seguro(g, v), `trem (lado ${lado}): enquanto foraT > 0 não conta como segura`);
+    let quadros = 0;   // quadros reais: enquanto está atordoada (vel > 40), a janela de reentrada nem começa a contar
+    while (Math.hypot(v.vx, v.vy) > 40 && quadros < 120) { passo(g); quadros++; }
+    ok(quadros > 0 && v.data.foraT >= 0.29, `trem (lado ${lado}): ao fim do atordoamento (${(quadros / 60).toFixed(2)} s) ainda faltam ${v.data.foraT.toFixed(2)} s sem poder reentrar`);
+    v.x = n.cx; v.y = lado < 0 ? d.floorTop - 20 : d.floorBot + 20; passo(g);   // teleporta de volta ao fundo do nicho
+    ok(!def.seguro(g, v), `trem (lado ${lado}): dentro do nicho mas com foraT > 0 não conta como segura`);
+    segundos(g, 0.35); v.x = n.cx; v.y = lado < 0 ? d.floorTop - 20 : d.floorBot + 20;
+    ok(v.data.foraT === 0 && def.seguro(g, v), `trem (lado ${lado}): passada a janela, volta a valer o esconderijo`);
   }
 }
 

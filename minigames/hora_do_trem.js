@@ -94,8 +94,9 @@ TN.registerMinigame({
     const bounds = { x: a.x, y: d.floorTop - this.NOOK_D, w: a.w, h: d.floorBot - d.floorTop + this.NOOK_D * 2 };
     for (const p of g.alive()) {
       const b = p.data;
-      b.lock -= dt; b.foraT = Math.max(0, b.foraT - dt);
+      b.lock -= dt;
       const stunned = Math.hypot(p.vx, p.vy) > 40;
+      if (!stunned) b.foraT = Math.max(0, b.foraT - dt);   // a janela sem reentrar conta depois do atordoamento
       if (stunned) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt, bounds); p.input = save; }
       else g.movePlayer(p, this.SPEED, dt, bounds);
       g.decayPush(p, dt, 6);

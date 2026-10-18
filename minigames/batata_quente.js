@@ -26,6 +26,7 @@ TN.registerMinigame({
   FUSE_MIN: 4, FUSE_MAX: 12,
   AQUECE: 0.6, AQUECE_MAX: 3,   // a batata esquenta na mão: o pavio queima 1 + 0,6×s (até 3×) com o tempo seguro
   QUEIMA_AVISO: 1.5,            // segundos na mão até o aviso QUEIMANDO!
+  BOT_ESPERA_MAX: 0.7,          // o bot solta entre 0,05 e 0,7 s depois do lock: sempre antes de queimar
   DROP_TIME: 0.7,      // tempo para juntar a batata do chão depois de derrubar
   RESPAWN: 1.8,        // pausa entre uma explosão e a próxima batata
 
@@ -206,7 +207,7 @@ TN.registerMinigame({
     }
     if (d.botWait == null) {
       const urgency = U.clamp(pot.interval / 0.5, 0.3, 1);
-      d.botWait = this.CATCH_LOCK + U.rand(0.08, 0.9) * urgency;   // o bot nunca chega perto do QUEIMANDO! (1,5 s)
+      d.botWait = this.CATCH_LOCK + U.rand(0.05, this.BOT_ESPERA_MAX) * urgency;   // solta mais cedo que antes (0,08–0,9)
       d.botSense = U.chance(0.5) ? 1 : -1;
       d.botMash = U.chance(0.06);
     }

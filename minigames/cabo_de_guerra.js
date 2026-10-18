@@ -239,7 +239,8 @@ TN.registerMinigame({
   bot(g, p) {
     const U = TN.util, q = p.data, d = g.data, tr = d.tranco;
     const b = q.bot || (q.bot = {
-      cad: U.rand(0.23, 0.30),   // dentro da janela boa (0,20–0,32 s); com o ±0,03 nunca fica afobado err: U.rand(0.03, 0.1), next: U.rand(0.05, 0.4), trId: 0, trAt: 0, trBtn: 'a',
+      // cadência dentro da janela boa (0,20–0,32 s); com o ±0,03 o bot nunca fica afobado
+      cad: U.rand(0.23, 0.30), err: U.rand(0.03, 0.1), next: U.rand(0.05, 0.4), trId: 0, trAt: 0, trBtn: 'a',
     });
     if (d.phase !== 'pull' || q.slip > 0) { b.next = g.time + U.rand(0.05, 0.25); return {}; }
     // TRANCO: agenda a reação
