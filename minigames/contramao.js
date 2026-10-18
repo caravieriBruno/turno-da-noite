@@ -11,7 +11,7 @@ TN.registerMinigame({
     'Aperte a direção que aparece na sua seta para subir.',
     'Errou a seta? Você perde quase metade da velocidade.',
     'A escada desce na velocidade do mais rápido. Não fique para trás.',
-    'Topo: 2 pts (1º) ou 1. Cada queda dá +1 a quem ainda está na escada.',
+    'Só a chegada conta: 4, 3, 2, 1. Cair é 0.',
   ],
   controls: { move: 'apertar a seta pedida' },
   icon: '↗',
@@ -26,6 +26,7 @@ TN.registerMinigame({
   MAX_SPEED: 2, ESC_MAX: 1, DECAY: 0.01,
   K: 0.11,                   // fração da escada percorrida por segundo por unidade de velocidade relativa
   START: 0.45,                // posição inicial (0 = buraco, 1 = saída)
+  CONSOLACAO: 1,              // pontos do último que sobra na escada (sobreviver nunca vale mais que chegar)
   DIRS: ['up', 'down', 'left', 'right'],
   VEC: { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] },
 
@@ -40,7 +41,7 @@ TN.registerMinigame({
   init(g) {
     g.data.esc = 0;           // velocidade atual da escada
     g.data.stepAnim = 0;      // deslocamento animado dos degraus
-    g.data.firstUp = false;
+    g.data.chegaram = 0;      // quantos já chegaram ao topo (define os pontos do próximo: 4, 3, 2, 1)
     g.data.over = false;
     g.players.forEach((p, i) => {
       p.data = {
@@ -54,6 +55,8 @@ TN.registerMinigame({
   },
 
   active(g) { return g.players.filter((p) => p.data.state === 'on'); },
+  // pontos do próximo a chegar ao topo: 4/3/2/1 com 4 jogadores (n, n-1, ... com menos)
+  pontosChegada(g) { return Math.max(1, g.playerCount - g.data.chegaram); },
 
   newArrow(prev) { return TN.util.pick(this.DIRS.filter((d) => d !== prev)); },
 
@@ -90,8 +93,8 @@ TN.registerMinigame({
       s.s += (s.speed - d.esc) * this.K * dt;
       if (s.s >= 1) {
         s.state = 'top';
-        const pts = d.firstUp ? 1 : 2;
-        d.firstUp = true;
+        const pts = this.pontosChegada(g);
+        d.chegaram++;
         const q = this.pos(s.lane, 1);
         p.x = q.x; p.y = q.y - 40;
         g.addScore(p, pts); g.sfx('coin'); g.particles(q.x, q.y - 20, '#46e27b', 18, 180);
@@ -101,7 +104,6 @@ TN.registerMinigame({
         p.x = q.x; p.y = q.y - 20;
         g.eliminate(p, { sound: 'boom', msg: 'CAIU!' });
         g.particles(q.x, q.y, '#ff3b3b', 26, 220);
-        for (const o of this.active(g)) g.addScore(o, 1);
       }
     }
     this.animate(g, dt);
@@ -109,7 +111,7 @@ TN.registerMinigame({
     const left = this.active(g);
     if (left.length <= 1) {
       d.over = true;
-      if (left.length === 1) { g.addScore(left[0], 1); g.popup('ÚLTIMO NA ESCADA', left[0].x, left[0].y - 60, '#4dd2ff'); }
+      if (left.length === 1) { g.addScore(left[0], this.CONSOLACAO); g.popup('ÚLTIMO NA ESCADA', left[0].x, left[0].y - 60, '#4dd2ff'); }
       g.finish(2);
     }
   },
@@ -151,7 +153,7 @@ TN.registerMinigame({
     if (s > 1) return { x: this.X1 + (s - 1) * 900, y: this.TOP, z: this.laneZ(i) };
     return { x: TN.util.lerp(this.X0, this.X1, s), y: s * this.TOP, z: this.laneZ(i) };
   },
-  camera: { pos: [470, 330, 1080], target: [470, 105, 270], fov: 40 },
+  camera: { pos: [470, 300, 900], target: [470, 110, 270], fov: 40 },
   // onde cada jogador está no mundo 3D (usado pelo motor para rótulos)
   worldPos(g, p) { const w = this.world(p.data.lane, Math.min(p.data.s, 1.08)); return { x: w.x, y: w.y, z: w.z }; },
   env: { bg: '#0b0f15', fog: [900, 2200], sunDir: [-0.5, 1, 0.8] },
@@ -216,7 +218,7 @@ TN.registerMinigame({
     }
   },
 
-  // HUD 2D por cima do 3D: velocidade da escada + seta pedida de cada jogador presa acima da cabeça
+  // HUD 2D por cima do 3D: velocidade da escada + painel grande e fixo com a seta de cada jogador
   drawOverlay(g, c) {
     if (!TN.R3.available || !g.uses3d()) return;
     const D = TN.draw, d = g.data;
@@ -224,22 +226,29 @@ TN.registerMinigame({
     D.text(c, 'VELOCIDADE DA ESCADA', 26, 58, { size: 12, color: '#9fb3c8' });
     D.bar(c, 26, 70, 170, 12, d.esc / this.ESC_MAX, d.esc > 0.95 ? '#ff6b6b' : '#4dd2ff', '#1b2229');
     D.text(c, `${d.esc.toFixed(2)} ▼`, 206, 76, { size: 12, color: '#cde' });
-    for (const p of g.players) {
-      const s = p.data;
-      if (s.state === 'fell') continue;
-      const w = this.world(s.lane, Math.min(s.s, 1.08));
-      const q = TN.R3.project(w.x, w.y + 78, w.z);
-      D.text(c, p.label, q.x, q.y - 26, { size: 12, color: p.color, align: 'center' });
-      if (s.state === 'top') { D.text(c, '✔', q.x, q.y, { size: 20, color: '#46e27b', align: 'center' }); continue; }
-      D.panel(c, q.x - 16, q.y - 16, 32, 32, { fill: s.wrong > 0 ? '#5a1010' : s.good > 0 ? '#1d4a2c' : 'rgba(10,14,18,0.9)', stroke: p.color, radius: 5 });
-      this.drawArrow(c, q.x, q.y, 22, s.arrow, s.wrong > 0 ? '#ff8080' : '#fff');
-      const mx = q.x + 20, my = q.y - 16, mh = 32, t = s.speed / this.MAX_SPEED;
-      c.fillStyle = '#1b2229'; c.fillRect(mx, my, 5, mh);
-      c.fillStyle = s.speed >= d.esc - 0.001 ? '#46e27b' : '#ff6b6b'; c.fillRect(mx, my + mh * (1 - t), 5, mh * t);
-      const ey = my + mh * (1 - d.esc / this.MAX_SPEED);
-      c.fillStyle = '#fff'; c.fillRect(mx - 2, ey - 1, 9, 2);
-    }
+    // painel fixo de cada jogador na borda inferior (a seta presa à cabeça era pequena e se movia)
+    g.players.forEach((p, i) => {
+      const s = p.data, px = 120 + i * 220, py = TN.H - 80, L = 64;
+      if (s.state !== 'fell') {   // marcador pequeno sobre o boneco, só para achar quem é quem
+        const w = this.world(s.lane, Math.min(s.s, 1.08)), q = TN.R3.project(w.x, w.y + 78, w.z);
+        c.fillStyle = p.color; c.beginPath(); c.moveTo(q.x, q.y + 6); c.lineTo(q.x - 6, q.y - 5); c.lineTo(q.x + 6, q.y - 5); c.fill();
+        D.text(c, p.label, q.x, q.y - 16, { size: 12, color: p.color, align: 'center' });
+      }
+      D.panel(c, px - L / 2, py - L / 2, L, L, { fill: s.state === 'fell' ? 'rgba(20,10,10,0.8)' : s.wrong > 0 ? '#5a1010' : s.good > 0 ? '#1d4a2c' : 'rgba(10,14,18,0.9)', stroke: s.state === 'on' ? p.color : '#444', radius: 8, lw: 3 });
+      D.text(c, p.label, px - L / 2, py - L / 2 - 10, { size: 12, color: p.color });
+      if (s.state === 'top') D.text(c, '✔', px, py, { size: 34, color: '#46e27b', align: 'center' });
+      else if (s.state === 'fell') D.text(c, '✖', px, py, { size: 34, color: '#ff3b3b', align: 'center' });
+      else this.drawArrow(c, px, py, 44, s.arrow, s.wrong > 0 ? '#ff8080' : '#fff');
+      if (s.state === 'on') {   // medidor de ritmo ao lado: a sua velocidade contra a da escada
+        const mx = px + L / 2 + 8, my = py - L / 2, mh = L, t = s.speed / this.MAX_SPEED;
+        c.fillStyle = '#1b2229'; c.fillRect(mx, my, 8, mh);
+        c.fillStyle = s.speed >= d.esc - 0.001 ? '#46e27b' : '#ff6b6b'; c.fillRect(mx, my + mh * (1 - t), 8, mh * t);
+        const ey = my + mh * (1 - d.esc / this.MAX_SPEED);
+        c.fillStyle = '#fff'; c.fillRect(mx - 3, ey - 1, 14, 2);
+      }
+    });
   },
+
 
   // ------------------------------------------------------------------ desenho 2D (alternativa)
   drawArrow(c, x, y, size, dir, color) {

@@ -49,8 +49,28 @@ function gravador() {
 const textos = (fn) => { const c = gravador(); fn(c); return c.log.filter((e) => e[0] === 'fillText').map((e) => String(e[1])).join(' | '); };
 const estilos = (fn) => { const c = gravador(); fn(c); return c.log.filter((e) => e[0] === '=fillStyle').map((e) => String(e[1])); };
 
+// --- contramão: só a chegada pontua (4/3/2/1), cair é 0, último na escada ganha 1 ---
+function secaoContramao() {
+  const g = rodada('contramao'), d = g.data, P = g.players, def = g.def;
+  for (const p of P) p.data.speed = 0;
+  P[0].data.s = 1.01; passo(g);
+  ok(P[0].score === 4, `contramão: 1º a chegar ganha 4 (deu ${P[0].score})`);
+  P[1].data.s = -0.01; passo(g);
+  ok(!P[1].alive && P[1].score === 0 && P[0].score === 4 && P[2].score === 0, 'contramão: cair vale 0 e não dá ponto a ninguém');
+  P[2].data.s = 1.01; passo(g);
+  ok(P[2].score === 3, `contramão: 2º a chegar ganha 3 (deu ${P[2].score})`);
+  passo(g);
+  ok(P[3].score === def.CONSOLACAO && d.over, 'contramão: último na escada ganha 1 de consolação e a rodada termina');
+  // Review Focus 1: o tempo acaba com todos na escada
+  const h = rodada('contramao');
+  for (const p of h.players) p.data.speed = 0.5;
+  segundos(h, 61);
+  ok(h.finished && h.players.every((p) => p.score === 0), 'contramão: tempo esgotado com todos na escada → todos 0 e a rodada termina');
+  ok(def.brief.some((b) => /cair/i.test(b) && /0/.test(b)), 'contramão: brief avisa que cair é 0');
+}
+
 // SEÇÕES (uma por jogo; cada tarefa define a sua função acima deste bloco e acrescenta o nome no array)
-const secoes = [];
+const secoes = [secaoContramao];
 for (const s of secoes) { try { s(); } catch (e) { ok(false, `${s.name}: exceção ${e.message}`); } }
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
