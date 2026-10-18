@@ -74,7 +74,8 @@ function secaoDono() {
   const lobby = new S.Lobby({}); TN.go(lobby);
   quadro({ kb2: 'a' }); quadro({ 'n1:kb1': 'a' });
   ok(lobby.slots[0] && lobby.slots[0].device === 'kb2' && lobby.slots[1] && lobby.slots[1].device === 'n1:kb1', 'lobby: cada um (local ou remoto) entra na sua cela');
-  quadro({ 'n1:kb1': 'a' }); ok(lobby.slots[1].ready && !lobby.slots[0].ready, 'lobby: o remoto dá PRONTO na própria cela');
+  quadro({ 'n1:kb1': 'a' }); quadro({ 'n1:kb1': 'a' });   // confirma o nome (roda) e depois PRONTO
+  ok(lobby.slots[1].ready && !lobby.slots[0].ready, 'lobby: o remoto dá PRONTO na própria cela');
   I.newSession(roster, [{ id: TN.minigameOrder[0], rounds: 1 }]);
   const b2 = new S.Brief(); TN.go(b2); espera(0.5);
   quadro({ kb1: 'a' }); ok(b2.ready[1] && !b2.ready[0], 'briefing: o P2 dá o próprio PRONTO');
@@ -226,6 +227,53 @@ function secaoNomes() {
   ok(semLobby.every((r) => r.name && r.name.length > 0), 'nomes: roster montado sem lobby ganha apelidos');
 }
 
+// --- 8. roda de letras no lobby ---
+function secaoRoda() {
+  const I = TN._internal;
+  localStorage.setItem('turno-da-noite-nomes', JSON.stringify({}));
+  TN.session = null; TN.net.nomesRemotos = {};
+  const lobby = new S.Lobby({}); TN.go(lobby);
+  quadro({ kb1: 'a' });
+  const s0 = lobby.slots[0];
+  ok(s0 && s0.editando && s0.cursor === s0.nome.length && I.APELIDOS.includes(s0.nome), 'roda: entrar abre a roda com um apelido e o cursor no ✓');
+  quadro({ kb1: 'a' });
+  ok(!s0.editando && !s0.ready, 'roda: AÇÃO no ✓ aceita o padrão → na cela');
+  quadro({ kb1: 'b' }); ok(s0.editando, 'roda: EXTRA na cela volta a editar');
+  s0.nome = 'ABCDEFGH'; s0.cursor = 8;
+  for (let i = 0; i < 8; i++) quadro({ kb1: 'b' });
+  ok(s0.nome === '' && s0.editando && lobby.slots[0] === s0, 'roda: EXTRA apaga uma letra por toque; com 8 toques esvazia e continua na cela');
+  quadro({ kb1: 'a' }); ok(s0.editando && lobby.slots[0] === s0, 'roda: nome vazio não confirma');
+  quadro({ kb1: 'up' }); ok(s0.nome === 'A' && s0.cursor === 0, 'roda: ↑ no ✓ de um nome vazio acrescenta A');
+  quadro({ kb1: 'up' }); ok(s0.nome === 'B', 'roda: ↑ troca a letra');
+  quadro({ kb1: 'down' }); quadro({ kb1: 'down' }); ok(s0.nome === '-', 'roda: ↓ anda para trás e dá a volta no alfabeto');
+  quadro({ kb1: 'right' }); ok(s0.cursor === 1, 'roda: → vai para o ✓ (posição nome.length)');
+  for (let i = 0; i < 12; i++) { quadro({ kb1: 'up' }); quadro({ kb1: 'right' }); }
+  ok(s0.nome.length === 8 && s0.cursor === 8, 'roda: nunca passa de 8 letras');
+  quadro({ kb1: 'a' }); ok(!s0.editando && s0.nome.length === 8, 'roda: confirma com 8 letras');
+  ok(I.nomesSalvos().kb1 === s0.nome, 'roda: ao confirmar, o nome fica salvo para o dispositivo');
+  // Review Focus 4: espaço no fim some
+  quadro({ kb1: 'b' }); s0.nome = 'BRUNO   '; s0.cursor = 8; quadro({ kb1: 'a' });
+  ok(s0.nome === 'BRUNO', `roda: espaço no fim é cortado (${JSON.stringify(s0.nome)})`);
+  // Review Focus 1: nome repetido
+  quadro({ kb2: 'a' }); const s1 = lobby.slots[1]; s1.nome = 'BRUNO'; s1.cursor = 5; quadro({ kb2: 'a' });
+  ok(s1.nome === 'BRUNO 2', `roda: nome repetido vira "BRUNO 2" (${s1.nome})`);
+  quadro({ kb3: 'a' }); const s2 = lobby.slots[2]; s2.nome = 'FERRUGEM'; s2.cursor = 8; quadro({ kb3: 'a' });
+  quadro({ gp0: 'a' }); const s3 = lobby.slots[3]; s3.nome = 'FERRUGEM'; s3.cursor = 8; quadro({ gp0: 'a' });
+  ok(s3.nome.length <= 8 && s3.nome !== 'FERRUGEM' && s3.nome.endsWith(' 2'), `roda: repetido com 8 letras cabe em 8 (${s3.nome})`);
+  // o remoto edita o próprio nome pela entrada abstrata, e a cela vazia sai com EXTRA
+  quadro({ kb1: 'a' }); ok(s0.ready, 'roda: AÇÃO na cela = PRONTO');
+  const l2 = new S.Lobby({}); TN.go(l2);
+  quadro({ 'n1:kb1': 'a' }); quadro({ 'n1:kb1': 'up' });
+  ok(l2.slots[0] && l2.slots[0].device === 'n1:kb1' && l2.slots[0].editando && l2.slots[0].nome.length > 0, 'roda: jogador remoto edita o próprio nome');
+  for (let i = 0; i < 10; i++) quadro({ 'n1:kb1': 'b' });
+  ok(l2.slots[0] === null, 'roda: EXTRA com o nome vazio sai da cela');
+  // desenho
+  const t = textos(lobby);
+  ok(/BRUNO/.test(t) && /BRUNO 2/.test(t), 'roda: a cela mostra o nome');
+  const l3 = new S.Lobby({}); TN.go(l3); quadro({ kb1: 'a' });
+  ok(/AÇÃO ✓/.test(textos(l3)), 'roda: a cela editando mostra a dica dos botões');
+}
+
 secaoDono();
 secaoGiz();
 secaoCenas();
@@ -233,6 +281,7 @@ secaoTelasSemSessao();
 secaoTelasDaPartida();
 secaoInstrucoes();
 secaoNomes();
+secaoRoda();
 // CHAMADAS EXTRAS (as tarefas seguintes acrescentam aqui)
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

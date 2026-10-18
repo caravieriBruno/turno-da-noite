@@ -21,6 +21,7 @@
   // (localStorage) ou um apelido de detento sorteado; bots sempre ganham apelido.
   const APELIDOS = ['BIGODE', 'SOMBRA', 'FAISCA', 'MUDO', 'CANHOTO', 'PIOLHO', 'TRINTA', 'FUMACA', 'CAVEIRA', 'MAGRELO', 'TUBARAO', 'GAIOLA', 'PAREDE', 'CORUJA', 'FERRUGEM', 'BARATA', 'CHAVEIRO', 'PINGUIM', 'TRANCA', 'ZOIO'];
   const NOMES_KEY = 'turno-da-noite-nomes';
+  const ALFABETO = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -', NOME_MAX = 8;
   function nomesSalvos() { try { return JSON.parse(localStorage.getItem(NOMES_KEY) || '{}') || {}; } catch (e) { return {}; } }
   function salvarNome(device, nome) { try { const n = nomesSalvos(); n[device] = nome; localStorage.setItem(NOMES_KEY, JSON.stringify(n)); } catch (e) { /* sem storage */ } }
   function nomePadrao(device, emUso) {
@@ -169,25 +170,66 @@
   // ======================= LOBBY =======================
   class Lobby {
     constructor({ test = null }) { this.test = test; this.slots = [null, null, null, null]; this.startIn = null; }
+    nomesEmUso(fora) { return this.slots.filter((x) => x && x !== fora).map((x) => x.nome); }
+    // roda de letras: ←→ movem o cursor (a última posição é o ✓), ↑↓ trocam a letra, AÇÃO no ✓ confirma,
+    // EXTRA apaga (e com o nome vazio sai da cela)
+    editarNome(slot, s, idx) {
+      const n = slot.nome;
+      if (s.leftPressed) slot.cursor = Math.max(0, slot.cursor - 1);
+      if (s.rightPressed) slot.cursor = Math.min(n.length, slot.cursor + 1);
+      if (s.upPressed || s.downPressed) {
+        if (slot.cursor >= n.length) {
+          if (n.length < NOME_MAX) { slot.nome = n + (s.upPressed ? 'A' : '-'); slot.cursor = n.length; TN.audio.play('blip'); }
+        } else {
+          const i = ALFABETO.indexOf(n[slot.cursor]), j = (i + (s.upPressed ? 1 : -1) + ALFABETO.length) % ALFABETO.length;
+          slot.nome = n.slice(0, slot.cursor) + ALFABETO[j] + n.slice(slot.cursor + 1); TN.audio.play('blip');
+        }
+      }
+      if (s.aPressed) { if (slot.cursor >= slot.nome.length) this.confirmarNome(slot); else slot.cursor++; }
+      if (s.bPressed) {
+        if (!slot.nome.length) this.slots[idx] = null;
+        else { slot.nome = slot.nome.slice(0, -1); slot.cursor = Math.min(slot.cursor, slot.nome.length); }
+        TN.audio.play('back');
+      }
+    }
+    confirmarNome(slot) {
+      let nome = slot.nome.trim();
+      if (!nome) { slot.nome = ''; slot.cursor = 0; TN.audio.play('back'); return; }
+      const outros = this.nomesEmUso(slot);
+      for (let k = 2; outros.includes(nome) && k < 10; k++) nome = (slot.nome.trim().length > NOME_MAX - 2 ? slot.nome.trim().slice(0, NOME_MAX - 2) : slot.nome.trim()) + ' ' + k;
+      slot.nome = nome; slot.cursor = nome.length; slot.editando = false;
+      if (TN.input.ehLocal(slot.device)) salvarNome(slot.device, nome);
+      TN.audio.play('confirm');
+    }
     update(dt) {
       for (const dev of TN.input.devices()) {
         const s = TN.input.get(dev);
         const idx = this.slots.findIndex((x) => x && x.device === dev);
-        if (s.aPressed) {
-          if (idx === -1) {
+        const slot = idx === -1 ? null : this.slots[idx];
+        if (!slot) {
+          if (s.aPressed) {
             const free = this.slots.findIndex((x) => !x);
-            if (free !== -1) { this.slots[free] = { device: dev, ready: false }; TN.audio.play('select'); }
-          } else { this.slots[idx].ready = !this.slots[idx].ready; TN.audio.play(this.slots[idx].ready ? 'confirm' : 'back'); }
+            if (free !== -1) {
+              // padrão: o nome que o cliente de rede mandou, ou o salvo neste computador, ou um apelido
+              const remoto = ((TN.net && TN.net.nomesRemotos) || {})[dev], emUso = this.nomesEmUso();
+              const nome = remoto && !emUso.includes(remoto) ? remoto : nomePadrao(dev, emUso);
+              this.slots[free] = { device: dev, ready: false, nome, editando: true, cursor: nome.length };
+              TN.audio.play('select');
+            }
+          }
+          continue;
         }
-        if (s.bPressed && idx !== -1) {
-          if (this.slots[idx].ready) this.slots[idx].ready = false; else this.slots[idx] = null;
+        if (slot.editando) { this.editarNome(slot, s, idx); continue; }
+        if (s.aPressed) { slot.ready = !slot.ready; TN.audio.play(slot.ready ? 'confirm' : 'back'); }
+        if (s.bPressed) {
+          if (slot.ready) slot.ready = false; else { slot.editando = true; slot.cursor = slot.nome.length; }
           TN.audio.play('back');
         }
       }
       if (TN.input.keyPressed('KeyT')) { TN.settings.bots = !TN.settings.bots; TN.saveSettings(); TN.audio.play('blip'); }
       if (TN.input.keyPressed('Escape')) { TN.audio.play('back'); TN.go(this.test ? new TestList() : Title); return; }
       const joined = this.slots.filter(Boolean);
-      const allReady = joined.length > 0 && joined.every((s) => s.ready);
+      const allReady = joined.length > 0 && joined.every((s) => s.ready && !s.editando);
       if (allReady) {
         if (this.startIn === null) this.startIn = 0.8;
         this.startIn -= dt;
@@ -204,16 +246,22 @@
     draw(c) {
       G.parede(c);
       G.titulo(c, this.test ? 'ENSAIO: ' + TN.minigames[this.test].title : 'ESCOLHA SUA CELA', TN.W / 2, 46, 34);
-      G.texto(c, 'Aperte AÇÃO no seu teclado/controle para entrar. AÇÃO de novo = PRONTO. EXTRA = sair.', TN.W / 2, 92, { size: 14, color: G.CORES.apagadoForte, align: 'center' });
+      G.texto(c, 'Aperte AÇÃO no seu teclado/controle para entrar, escolha o nome, AÇÃO de novo = PRONTO.', TN.W / 2, 92, { size: 14, color: G.CORES.apagadoForte, align: 'center' });
       for (let i = 0; i < 4; i++) {
         const x = 40 + i * 225, y = 125, s = this.slots[i], cor = TN.PLAYER_COLORS[i];
         G.retangulo(c, x, y, 205, 285, { color: s ? G.desbotar(cor) : G.CORES.apagadoForte, lw: s ? 2.5 : 1.5 });
         for (let gx = x + 18; gx < x + 205; gx += 24) G.linha(c, gx, y + 4, gx, y + 60, { color: G.CORES.apagadoForte, lw: 1.5 });   // grade
-        G.texto(c, `CELA ${i + 1}`, x + 102, y + 82, { size: 22, color: G.desbotar(cor), align: 'center' });
+        G.texto(c, s && !s.editando ? s.nome : `CELA ${i + 1}`, x + 102, y + 82, { size: 22, color: G.desbotar(cor), align: 'center', maxWidth: 190 });
         if (s) {
           G.detento(c, x + 102, y + 160, 26, cor, { comemorando: s.ready && Math.sin(this.t * 6 + i) > 0 });
-          G.linhas(c, TN.input.deviceLabel(s.device).split(' · ').join('\n'), x + 102, y + 215, { size: 12, align: 'center', lineHeight: 15, maxWidth: 195 });
-          G.texto(c, s.ready ? 'PRONTO PRA FUGIR!' : 'na cela…', x + 102, y + 266, { size: 17, color: s.ready ? G.CORES.destaque : G.CORES.giz, align: 'center', maxWidth: 195 });
+          if (s.editando) {
+            G.rodaDeLetras(c, x + 102, y + 218, s.nome, s.cursor, this.t);
+            G.texto(c, '↑↓ letra · ←→ posição', x + 102, y + 252, { size: 12, color: G.CORES.apagadoForte, align: 'center' });
+            G.texto(c, 'AÇÃO ✓ confirma · EXTRA apaga', x + 102, y + 268, { size: 12, color: G.CORES.apagadoForte, align: 'center' });
+          } else {
+            G.linhas(c, TN.input.deviceLabel(s.device).split(' · ').join('\n'), x + 102, y + 215, { size: 12, align: 'center', lineHeight: 15, maxWidth: 195 });
+            G.texto(c, s.ready ? 'PRONTO PRA FUGIR!' : 'na cela…', x + 102, y + 266, { size: 17, color: s.ready ? G.CORES.destaque : G.CORES.giz, align: 'center', maxWidth: 195 });
+          }
         } else {
           if (TN.settings.bots) { c.save(); c.globalAlpha = 0.35; G.detento(c, x + 102, y + 160, 26, cor); c.restore(); }
           G.texto(c, TN.settings.bots ? 'BOT' : 'cela vazia', x + 102, y + 230, { size: 18, color: G.CORES.apagadoForte, align: 'center' });
@@ -226,7 +274,7 @@
         G.texto(c, `SALA ${TN.net.room} · ${n} computador(es) conectado(s)`, 80, 470, { size: 15, color: G.CORES.lapis, papel: true });
         G.texto(c, `Nos outros PCs abra ${TN.net.urls.slice(0, 2).join('  ou  ') || 'http://<seu-ip>:8765'} → ENTRAR NO PLANO`, 80, 491, { size: 13, color: G.CORES.lapis, papel: true, maxWidth: 800 });
       }
-      rodape(c, 'Começa quando todos estiverem PRONTOS PRA FUGIR · ESC volta pra cela');
+      rodape(c, 'Começa quando todos estiverem PRONTOS PRA FUGIR · EXTRA = mudar o nome · ESC volta');
     }
 
   }

@@ -93,6 +93,19 @@
     linha(c, x - w / 2, yy, x + w / 2, yy, { color, lw: 2.5 });
     linha(c, x - w / 2 + 12, yy + 6, x + w / 2 - 20, yy + 6, { color, lw: 1.5, alpha: 0.6 });
   }
+  // roda de letras do lobby: o nome letra a letra, a do cursor em destaque com setas ↑↓ pulsando, e o ✓ no fim
+  // (circulado quando o cursor está nele). `t` é o tempo da cena, só para o pulso.
+  function rodaDeLetras(c, x, y, nome, cursor, t) {
+    const passo = 16, total = nome.length + 1, x0 = x - ((total - 1) * passo) / 2, pulso = 2 + Math.sin(t * 8) * 1.5;
+    for (let i = 0; i < nome.length; i++) {
+      const on = i === cursor, cx = x0 + i * passo;
+      texto(c, nome[i] === ' ' ? '␣' : nome[i], cx, y, { size: on ? 22 : 18, color: on ? CORES.destaque : CORES.giz, align: 'center' });
+      if (on) { texto(c, '▲', cx, y - 16 - pulso, { size: 9, color: CORES.destaque, align: 'center' }); texto(c, '▼', cx, y + 16 + pulso, { size: 9, color: CORES.destaque, align: 'center' }); }
+    }
+    const cx = x0 + nome.length * passo, noOk = cursor >= nome.length;
+    texto(c, '✓', cx, y, { size: 20, color: noOk ? CORES.destaque : CORES.apagadoForte, align: 'center' });
+    if (noOk) circulo(c, cx, y, 12, 12, { color: CORES.destaque, lw: 2 });
+  }
   // bilhete de papel preso com fita (o texto em cima usa { papel: true, color: CORES.lapis })
   function bilhete(c, x, y, w, h, { rot = 0, fita = true } = {}) {
     c.save(); c.translate(x + w / 2, y + h / 2); c.rotate(rot);
@@ -156,5 +169,5 @@
     c.fillStyle = v; c.fillRect(0, 0, TN.W, TN.H);
   }
 
-  TN.giz = { CORES, FONTE, texto, linhas, titulo, linha, retangulo, circulo, selecao, bilhete, detento, parede, desbotar };
+  TN.giz = { CORES, FONTE, texto, linhas, titulo, linha, retangulo, circulo, selecao, bilhete, detento, parede, desbotar, rodaDeLetras };
 })();
