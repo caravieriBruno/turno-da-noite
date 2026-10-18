@@ -387,22 +387,22 @@ TN.registerMinigame({
       if (!p) continue;
       const s = p.data, top = b.owner < 2, cx = b.x + b.w / 2;
       const an = TN.R3.project(cx, top ? 60 : 0, top ? b.y : b.y + b.h + 14);
-      const W = 150, H = 44;
+      const W = 190, H = 44;   // 70 px para o nome (até 8 letras) e o resto para a receita
       const x = Math.round(TN.util.clamp(an.x - W / 2, 4, g.W - W - 4)), y = Math.round(TN.util.clamp(top ? an.y - H - 2 : an.y + 2, 38, g.H - H - 4));
       c.save();
       c.globalAlpha = p.alive ? 1 : 0.45;
       c.fillStyle = 'rgba(8,10,13,0.82)'; c.fillRect(x, y, W, H);
       c.fillStyle = p.alive ? p.color : '#555'; c.fillRect(x, y, 4, H);
       c.strokeStyle = 'rgba(255,255,255,0.12)'; c.lineWidth = 1; c.strokeRect(x + 0.5, y + 0.5, W - 1, H - 1);
-      D.text(c, p.label, x + 8, y + 13, { size: 10, color: p.alive ? p.color : '#777', maxWidth: 58 });   // nome à esquerda, antes dos ícones
+      D.text(c, p.label, x + 8, y + 13, { size: 11, color: p.alive ? p.color : '#777', maxWidth: 62 });   // nome à esquerda, antes dos ícones
       if (s.gunReady) {
-        D.text(c, 'ARMA PRONTA!', x + W / 2 + 10, y + 15, { size: 13, color: '#ffb02e', align: 'center' });
-        D.text(c, 'PEGUE (AÇÃO)', x + W / 2 + 10, y + 32, { size: 10, color: '#ffd28a', align: 'center' });
+        D.text(c, 'ARMA PRONTA!', x + W / 2 + 30, y + 15, { size: 13, color: '#ffb02e', align: 'center' });
+        D.text(c, 'PEGUE (AÇÃO)', x + W / 2 + 30, y + 32, { size: 10, color: '#ffd28a', align: 'center' });
       } else if (s.hasGun || (!p.alive && s.prog >= 5)) {
-        D.text(c, 'ARMA EM USO', x + W / 2 + 10, y + H / 2, { size: 12, color: '#999', align: 'center' });
+        D.text(c, 'ARMA EM USO', x + W / 2 + 30, y + H / 2, { size: 12, color: '#999', align: 'center' });
       } else {
         for (let i = 0; i < 5; i++) {
-          const sx = x + 33 + i * 23, sy = y + 4;
+          const sx = x + 73 + i * 23, sy = y + 4;
           const done = i < s.prog, next = i === s.prog;
           c.fillStyle = done ? '#1b2e22' : '#22262c'; c.fillRect(sx, sy, 20, 22);
           c.globalAlpha = (p.alive ? 1 : 0.45) * (done || next ? 1 : 0.35);
@@ -414,7 +414,7 @@ TN.registerMinigame({
             c.strokeRect(sx - 1, sy - 1, 22, 24);
           }
         }
-        if (s.prog < 5) D.text(c, this.NAMES[s.recipe[s.prog]], x + 33 + 57, y + 35, { size: 10, color: s.wrong > 0 ? '#f66' : '#cfd6dd', align: 'center' });
+        if (s.prog < 5) D.text(c, this.NAMES[s.recipe[s.prog]], x + 73 + 57, y + 35, { size: 10, color: s.wrong > 0 ? '#f66' : '#cfd6dd', align: 'center' });
       }
       c.restore();
     }
