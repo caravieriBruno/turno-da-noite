@@ -256,9 +256,9 @@ TN.registerMinigame({
       if (pd.air > 0) {
         const k = Math.sin(Math.PI * (1 - pd.air / this.AIR));
         r.disc(p.x, 0.9, p.y, p.r * (1 - k * 0.4), '#000', { opacity: 0.45 });
-        r.character(p, { pose: 'fall', y: k * 34 });
+        r.character(p, { pose: 'jump', y: k * 34 });
       } else {
-        r.character(p, { pose: pd.crouch > 0 || pd.cd > 0.12 ? 'crouch' : 'auto' });
+        r.character(p, { pose: pd.crouch > 0 ? 'crouch' : pd.cd > 0.12 ? 'land' : 'auto' });
         if (pd.cd > 0) r.ring(p.x, 1, p.y, p.r + 4, p.r + 7, '#ffffff', { glow: true, opacity: 0.4, arc: pd.cd / this.JUMP_CD });
       }
     }

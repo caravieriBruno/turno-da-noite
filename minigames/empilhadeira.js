@@ -362,7 +362,7 @@ TN.registerMinigame({
     // motorista sentado (ou caído ao lado se a empilhadeira foi eliminada)
     if (!dead) {
       q = L(-8, 0);
-      r.character({ x: q[0], y: q[1], dir: p.dir, alive: true, color: p.color, label: p.label, r: 16 }, { pose: 'sit', y: 1, key: 'drv' + p.id });
+      r.character({ x: q[0], y: q[1], dir: p.dir, alive: true, color: p.color, label: p.label, r: 16 }, { pose: 'drive', y: 1, key: 'drv' + p.id });
     } else {
       q = L(-6, 34);
       r.character({ x: q[0], y: q[1], dir: p.dir + 0.6, alive: false, color: p.color, label: p.label, r: 16 }, { pose: 'dead', key: 'drv' + p.id });

@@ -350,7 +350,7 @@ TN.registerMinigame({
         r.character(p, { pose: 'fall', y: -0.5 * 900 * t * t });
         continue;
       }
-      r.character(p, { pose: pd.held >= 0 ? 'arms' : 'auto', flash: pd.stun > 0 && Math.floor(g.time * 12) % 2 === 0 });
+      r.character(p, { pose: pd.held >= 0 ? 'hold' : 'auto', flash: pd.stun > 0 && Math.floor(g.time * 12) % 2 === 0 });
     }
   },
 

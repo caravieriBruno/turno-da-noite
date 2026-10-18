@@ -331,7 +331,7 @@ TN.registerMinigame({
     for (const p of g.players) {
       if (!p.alive) { r.character(p); continue; }
       const busy = p.data.wind > 0;
-      r.character(p, { pose: busy ? 'arms' : 'auto', flash: Math.hypot(p.vx, p.vy) > 40 || busy });
+      r.character(p, { pose: busy ? 'work' : 'auto', flash: Math.hypot(p.vx, p.vy) > 40 || busy });
     }
   },
 

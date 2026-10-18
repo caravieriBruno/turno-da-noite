@@ -297,7 +297,7 @@ TN.registerMinigame({
     // jogadores vivos (quem segura estende os braços; quem derrubou se abaixa)
     for (const p of g.alive()) {
       const mine = pot && pot.holder === p && pot.state !== 'flight';
-      r.character(p, { pose: mine ? (pot.state === 'dropped' ? 'crouch' : 'arms') : 'idle', flash: mine && pot.blink > 0 });
+      r.character(p, { pose: mine ? (pot.state === 'dropped' ? 'crouch' : 'hold') : 'idle', flash: mine && pot.blink > 0 });
       if (mine && p.data.lock > 0) r.ring(p.x, 1, p.y, p.r + 6, p.r + 9, '#ffffff', { glow: true, opacity: 0.6, arc: p.data.lock / this.CATCH_LOCK });
     }
     // a batata-bomba

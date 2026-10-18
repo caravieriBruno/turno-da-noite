@@ -250,7 +250,7 @@ TN.registerMinigame({
     // ---- fiscal com quepe e bastão de choque ----
     const IX = this.INSPECTOR_X, IS = 2.0, idir = Math.PI - 0.75;
     const zapping = d.zap > 0;
-    r.character({ id: 'fiscal', x: IX, y: Z + 10, alive: true, color: '#8d99a6', label: 'FISCAL' }, { pose: zapping ? 'arms' : 'idle', dir: idir, scale: IS, key: 'fiscal' });
+    r.character({ id: 'fiscal', x: IX, y: Z + 10, alive: true, color: '#8d99a6', label: 'FISCAL' }, { pose: zapping ? 'swing' : 'idle', dir: idir, scale: IS, key: 'fiscal' });
     const cap = this.w3(IX, Z + 10, 0, 60, 0, idir, IS, 0);
     r.cyl(cap.x, cap.y, cap.z, 9 * IS, 3 * IS, '#1d2a44');
     r.cyl(cap.x, cap.y - 1, cap.z, 10.5 * IS, 1.2, '#141d30');

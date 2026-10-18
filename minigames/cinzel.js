@@ -299,7 +299,7 @@
         }
         // escultor atrás da bancada, olhando para a câmera
         r.box(tx, 0, tz - 92, 90, 14, 46, '#3b302a');   // degrau do escultor
-        r.character({ ...p, x: tx, y: tz - 92 }, { key: p.id, y: 14, scale: 1.15, dir: Math.PI / 2, pose: !p.alive ? 'dead' : d.phase === 'carve' && !s.sent ? 'arms' : 'idle', label: false });
+        r.character({ ...p, x: tx, y: tz - 92 }, { key: p.id, y: 14, scale: 1.15, dir: Math.PI / 2, pose: !p.alive ? 'dead' : d.phase === 'carve' && !s.sent ? 'work' : 'idle', label: false });
       });
     },
 

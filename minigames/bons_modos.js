@@ -247,7 +247,7 @@ TN.registerMinigame({
     const walkDir = h.vx > 0 ? 0 : Math.PI;
     const dir = walkDir + (Math.PI / 2 - walkDir) * face;
     const fx = Math.cos(dir), fz = Math.sin(dir), rx = -fz, rz = fx;   // frente e lado direito
-    const pose = d.shot ? 'aim' : h.state === 'walk' ? 'auto' : 'idle';
+    const pose = d.shot ? (d.shot.fired ? 'shoot' : 'aim') : h.state === 'walk' ? 'auto' : 'idle';
     // o guarda: uniforme azul-escuro, quepe e cassetete
     r.character({ id: 'host', x: HX, y: HZ, alive: true, color: '#2b3a6b', label: false }, { pose, dir, scale: HS, key: 'host', y: HY });
     r.box(HX, HY + 59 * HS, HZ, 11 * HS, 2.5 * HS, 10 * HS, '#1d2a52', { rotY: -dir });

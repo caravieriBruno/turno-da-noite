@@ -52,7 +52,7 @@ TN.registerMinigame({
     // patos na largada (esquerda), caçador = posição da mira (para os "+1" aparecerem lá)
     runners.forEach((p, i) => {
       p.x = 78; p.y = F.y0 + 30 + ((F.y1 - F.y0 - 60) * (i + 0.5)) / runners.length; p.dir = 0;
-      p.data = { hp: this.HP, crouch: false, out: false, shot: false, step: 0 };
+      p.data = { hp: this.HP, crouch: false, out: false, shot: false, step: 0, hurtT: -9 };
     });
     hunter.data = { hunter: true };
     hunter.x = d.cross.x; hunter.y = d.cross.y;
@@ -95,7 +95,7 @@ TN.registerMinigame({
         g.particles(qx, qy, '#c22', 26, 240);
         g.addScore(h, 1);
       } else {
-        p.data.hp--; g.sfx('hurt');
+        p.data.hp--; p.data.hurtT = g.time; g.sfx('hurt');
         g.particles(qx, qy, '#c22', 12, 160);
         g.popup('FERIDO!', p.x, p.y - 70, '#f88');
       }
@@ -291,7 +291,7 @@ TN.registerMinigame({
     const h = this.hunter(g), T = this.anchor(r, 930, F.y0 - 6);
     for (const [ox, oz] of [[-14, -14], [14, -14], [-14, 14], [14, 14]]) r.beam(T.x + ox * 2, 0, T.z + oz * 2, T.x + ox, 120, T.z + oz, 5, '#5a4128');
     r.box(T.x, 120, T.z, 44, 6, 44, '#6b4d2e');
-    if (h) r.character({ ...h, x: T.x, y: T.z }, { key: 'hunter', y: 126, dir: Math.PI, pose: 'arms', label: false });
+    if (h) r.character({ ...h, x: T.x, y: T.z }, { key: 'hunter', y: 126, dir: Math.PI, pose: 'aim', label: false });
     // coberturas e patos (o motor cuida da profundidade)
     for (const cv of d.covers) this.cover3d(r, cv);
     for (const p of this.runners(g)) {
@@ -300,7 +300,7 @@ TN.registerMinigame({
       const standPx = (32 + 8 * 0.8 + 8) * gm.s;
       const hurtBlink = p.alive && p.data.hp < this.HP && Math.floor(g.time * 5) % 2;
       r.character({ ...p, x: A.x, y: A.z }, { key: p.id, scale: (standPx * A.upp) / 60, dir: 0, flash: hurtBlink,
-        pose: !p.alive ? 'dead' : p.data.crouch ? 'crouch' : undefined, label: p.label });
+        pose: !p.alive ? 'dead' : g.time - p.data.hurtT < 0.4 ? 'hit' : p.data.crouch ? 'crouch' : undefined, label: p.label });
     }
   },
 

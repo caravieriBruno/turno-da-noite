@@ -244,7 +244,7 @@ TN.registerMinigame({
       r.box(a.x + a.w - 46, 0, cy, 70, 30, 50, '#22262b', { metal: 0.5 });
       r.box(a.x + a.w - 46, 30, cy - 20, 66, 1, 6, dead ? '#444' : p.color, { glow: !dead });
       // operador (de frente para a esteira)
-      r.character(p, { pose: dead ? 'dead' : 'arms', dir: 0, flash: !dead && pd.wrong > 0.15 });
+      r.character(p, { pose: dead ? 'dead' : 'work', dir: 0, flash: !dead && pd.wrong > 0.15 });
       // prensa hidráulica: desce do teto em cima do operador
       if (dead) r.disc(p.x + 26, 0.6, cy, 34, '#4a0c0c', { rough: 0.4 });
       const up = dead ? TN.util.clamp(((pd.deadT || 0) - 0.6) / 0.5, 0, 1) : 0;

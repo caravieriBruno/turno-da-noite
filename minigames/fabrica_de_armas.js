@@ -360,7 +360,7 @@ TN.registerMinigame({
     for (const p of g.players) {
       const s = p.data;
       const holding = p.alive && (s.hasGun || s.carry);
-      r.character(p, holding ? { pose: 'arms' } : {});
+      r.character(p, holding ? { pose: s.hasGun ? 'gun' : 'hold' } : {});
       if (!p.alive) continue;
       const fx = Math.cos(p.dir), fz = Math.sin(p.dir);
       if (s.hasGun) {

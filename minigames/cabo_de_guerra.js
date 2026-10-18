@@ -360,7 +360,7 @@ TN.registerMinigame({
     this.drawRope3d(g, r);
     // ---- manequim (só jogando sozinho) ----
     if (d.phantom) {
-      const root = r.character({ id: 'manequim', x: this.FRONT_R + d.rope, y: PZ, alive: true, color: '#777', label: false }, { pose: 'arms', dir: Math.PI - 0.3, scale: S, key: 'manequim' });
+      const root = r.character({ id: 'manequim', x: this.FRONT_R + d.rope, y: PZ, alive: true, color: '#777', label: false }, { pose: 'pull', dir: Math.PI - 0.3, scale: S, key: 'manequim' });
       if (root && root.rotation) root.rotation.z = 0.25;
     }
     // ---- jogadores ----
@@ -374,7 +374,7 @@ TN.registerMinigame({
         for (let k = 0; k < 3; k++) r.box(p.x - 12 + k * 12, -PD + 8 + ((t * 30 + k * 13) % 30), PZ + 6, 2.5, 2.5, 2.5, '#ff8a1e', { glow: true });
         continue;
       }
-      let pose = 'arms', oy = y0, lean = this.lean3(p);
+      let pose = 'pull', oy = y0, lean = this.lean3(p);
       if (q.fall) { pose = q.fall.falling ? 'fall' : 'walk'; }
       else if (q.won) { pose = 'sit'; oy = -20 * S; lean = 0; }
       else if (q.slip > 0) pose = 'fall';

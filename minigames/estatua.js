@@ -293,8 +293,9 @@ TN.registerMinigame({
     // jogadores: dançam no ritmo; parados viram estátua (braços estendidos)
     for (const p of g.alive()) {
       const q = p.data;
-      if (music) r.character(p, { y: pulse * 5, flash: q.spin > 0 });
-      else r.character(p, { pose: q.moved ? 'walk' : 'arms', flash: q.spin > 0 });
+      // com música, quem está parado dança no lugar; sem música, quem congelou vira estátua (T-pose)
+      if (music) r.character(p, { pose: q.moved ? 'auto' : 'dance', y: pulse * 5, flash: q.spin > 0 });
+      else r.character(p, { pose: q.moved ? 'walk' : 'statue', flash: q.spin > 0 });
       if (music && q.ocio > 0.65 && Math.floor(t * 8) % 2 === 0) r.ring(p.x, 1, p.y, p.r + 5, p.r + 9, '#ff4433', { glow: true });
     }
     // torretas nos cantos: poste, cabeça que mira o jogador mais próximo e lente indicando a fase

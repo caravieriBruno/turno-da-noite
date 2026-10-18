@@ -360,8 +360,8 @@ TN.registerMinigame({
       if (dark) r.disc(p.x, 0.6, p.y, (pd.infected ? this.LIGHT_R_INF : this.LIGHT_R) * 0.7, pd.infected ? '#9be15d' : '#ffe8c0', { glow: true, opacity: 0.06 });
       let pose = 'auto';
       if (pd.frozen > 0) pose = 'crouch';
-      else if (this.isHunter(p)) pose = 'arms';
-      else if (pd.searchT > 0) pose = 'arms';
+      else if (this.isHunter(p)) pose = pd.swing > 0 ? 'swing' : 'hold';   // seringa na mão; golpe ao infectar
+      else if (pd.searchT > 0) pose = 'work';
       r.character(p, { pose, flash: pd.frozen > 0 && Math.floor(g.time * 6) % 2 === 0 });
       if (this.isHunter(p) && pd.swing > 0) {
         const L = 0.29, rho = -Math.PI / 2 - L * Math.PI - p.dir;

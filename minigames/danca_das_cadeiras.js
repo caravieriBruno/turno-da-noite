@@ -329,7 +329,7 @@ TN.registerMinigame({
         continue;
       }
       const it = p.data.hold;
-      r.character(p, { pose: it ? 'arms' : 'auto', flash: Math.hypot(p.vx, p.vy) > 40 });
+      r.character(p, { pose: it ? 'hold' : 'auto', flash: Math.hypot(p.vx, p.vy) > 40 });
       if (it) this.drawItem3d(r, it.kind, it.x, 36, it.y, 0.95, p.dir, {});
     }
   },

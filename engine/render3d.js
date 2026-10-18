@@ -279,6 +279,8 @@
   }
 
   // ---------------- personagem (detento de uniforme; no visual antigo, boneco de macacão com visor) ----------------
+  // poses do detento glTF que o boneco de caixas não tem → a mais parecida
+  const BOX_POSE = { hold: 'arms', work: 'arms', pull: 'arms', swing: 'arms', shoot: 'aim', gun: 'aim', statue: 'idle', dance: 'walk', drive: 'sit', hit: 'idle', jump: 'fall', land: 'crouch' };
   const charPool = { list: [], n: 0, quadro: 0 };   // c.quadro = último quadro em que a vaga foi usada
   const charState = new Map(); // key -> { x, z, phase, t }
   // detento glTF (visual novo): carregado em segundo plano no init; até ficar pronto, ou se falhar, o pool
@@ -462,7 +464,8 @@
     project,
     unproject,
     // Personagem. Aceita o jogador `p` (usa p.x, p.y, p.dir, p.alive, p.color, p.label) ou um objeto parecido.
-    // o: { pose: 'auto'|'idle'|'walk'|'dead'|'sit'|'crouch'|'fall'|'lie'|'arms'|'aim',
+    // o: { pose: 'auto'|'idle'|'walk'|'dead'|'sit'|'crouch'|'fall'|'lie'|'arms'|'aim'|'hold'|'work'|'pull'|'statue'|'dance'
+    //            |'swing'|'gun'|'shoot'|'drive'|'hit'|'jump'|'land' (lista completa em docs/COMO_CRIAR_MINIGAME.md),
     //      y (elevação), scale, color, flash, label (texto ou false), key (id do cache), dir (rad) }
     character(p, o = {}) {
       const key = o.key ?? p.id ?? charPool.n + 1;
@@ -522,6 +525,8 @@
         c.gltf.avancar(dt);
         c.body.rotation.set(0, 0, o.lean || 0);
       } else {
+        // boneco de caixas: as poses novas caem na mais parecida
+        pose = BOX_POSE[pose] || pose;
         // reset
         c.body.position.set(0, 0, 0); c.body.rotation.set(0, 0, 0); c.body.scale.set(1, 1, 1);
         for (const l of [c.legL, c.legR, c.armL, c.armR]) l.pivot.rotation.set(0, 0, 0);

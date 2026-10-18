@@ -7,9 +7,16 @@
   // pose do r.character → clipe (o asset só tem estes, ver tools/preparar_detento.js)
   const POSE_CLIPE = {
     idle: 'Idle_Loop', walk: 'Jog_Fwd_Loop', dead: 'Death01', lie: 'Death01', sit: 'Sitting_Idle_Loop',
-    crouch: 'Crouch_Idle_Loop', fall: 'Jump_Loop', arms: 'Push_Loop', aim: 'Pistol_Idle_Loop',
+    crouch: 'Crouch_Idle_Loop', fall: 'Jump_Loop', arms: 'Push_Loop', aim: 'Pistol_Aim_Neutral',
+    hold: 'Idle_Torch_Loop', work: 'Interact', pull: 'Push_Loop', statue: 'A_TPose', dance: 'Dance_Loop',
+    swing: 'Sword_Attack', gun: 'Pistol_Idle_Loop', shoot: 'Pistol_Shoot', drive: 'Driving_Loop', hit: 'Hit_Chest',
+    jump: 'Jump_Start', land: 'Jump_Land',
   };
-  const UMA_VEZ = new Set(['Death01']);                  // toca uma vez e para no último quadro
+  const UMA_VEZ = new Set(['Death01', 'Sword_Attack', 'Pistol_Shoot', 'Hit_Chest', 'Jump_Start', 'Jump_Land']);   // tocam uma vez e param no último quadro
+  const SEGUE = { Jump_Start: 'Jump_Loop' };             // clipe de uma vez que emenda num loop (o impulso do pulo vira o pulo)
+  // walk e crouch escolhem o clipe pela velocidade (px/s); CORRIDA_1X etc. são a velocidade em que cada um anima em 1x
+  const ANDAR_MAX = 90, SPRINT_MIN = 330, ARRASTO_MIN = 20;
+  const VEL_1X = { Walk_Loop: 60, Jog_Fwd_Loop: 170, Sprint_Loop: 330, Crouch_Fwd_Loop: 80 };
   const OSSOS_PELE = /^(Head|neck_01|hand_[lr])$|^(index|middle|pinky|ring|thumb)_/;
   const CORRIDA_1X = 170;                                // px/s em que a corrida anima em 1x
   const FADE = 0.15;
@@ -96,28 +103,41 @@
     for (const lado of [-1, 1]) prender(new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 1.2), mat.olho), 'Head', cabeca.x + 3.3, cabeca.y + 4.5, cabeca.z + lado * 1.3);
     const mixer = new THREE.AnimationMixer(modelo);
     return {
-      root, corpo, luz, placa, mixer, atual: null, acao: null,
-      // troca de pose com crossfade; pose sem clipe → Idle_Loop; a corrida anima conforme a velocidade (px/s)
+      root, corpo, luz, placa, mixer, atual: null, acao: null, nome: null,
+      // troca de pose com crossfade; pose sem clipe → Idle_Loop; walk e crouch escolhem o clipe pela velocidade
+      // (px/s), e a corrida anima conforme ela; `pull` é o empurrar tocado ao contrário
       pose(nome, velocidade = 0) {
-        let clipe = POSE_CLIPE[nome] && m.clipes.has(POSE_CLIPE[nome]) ? POSE_CLIPE[nome] : 'Idle_Loop';
+        const padrao = POSE_CLIPE[nome] && m.clipes.has(POSE_CLIPE[nome]) ? POSE_CLIPE[nome] : 'Idle_Loop';
+        let clipe = padrao;
+        if (nome === 'walk' && velocidade > 0) clipe = velocidade < ANDAR_MAX ? 'Walk_Loop' : velocidade >= SPRINT_MIN ? 'Sprint_Loop' : 'Jog_Fwd_Loop';
+        else if (nome === 'crouch' && velocidade > ARRASTO_MIN) clipe = 'Crouch_Fwd_Loop';
+        if (!m.clipes.has(clipe)) clipe = padrao;
         if (!m.clipes.has(clipe)) return;
-        if (clipe !== this.atual) {
-          const nova = mixer.clipAction(m.clipes.get(clipe));
-          // a morte recomeça do início; clipe em loop continua de onde estava (troca rápida walk/idle,
-          // como um bot hesitando ou a rede a 30 snapshots/s, não pode reiniciar a corrida)
-          if (UMA_VEZ.has(clipe)) nova.reset();
-          else { nova.stopFading(); nova.enabled = true; nova.paused = false; }
-          nova.setLoop(UMA_VEZ.has(clipe) ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
-          nova.clampWhenFinished = UMA_VEZ.has(clipe);
-          nova.play();
-          if (this.acao) nova.crossFadeFrom(this.acao, FADE, false);
-          this.acao = nova; this.atual = clipe;
-        }
-        this.acao.timeScale = clipe === POSE_CLIPE.walk ? Math.min(1.8, Math.max(0.5, velocidade / CORRIDA_1X))
-          : nome === 'lie' ? DEITAR_RAPIDO : 1;
+        // a mesma pose mantida depois de o clipe de uma vez emendar no loop (jump → Jump_Loop) continua no loop
+        if (nome === this.nome && SEGUE[clipe] === this.atual) clipe = this.atual;
+        this.nome = nome;
+        this.tocar(clipe);
+        this.acao.timeScale = VEL_1X[clipe] ? Math.min(1.8, Math.max(0.5, (velocidade || VEL_1X[clipe]) / VEL_1X[clipe]))
+          : nome === 'lie' ? DEITAR_RAPIDO : nome === 'pull' ? -1 : 1;
+      },
+      tocar(clipe) {
+        if (clipe === this.atual) return;
+        const nova = mixer.clipAction(m.clipes.get(clipe));
+        // clipe de uma vez (morte, tiro, golpe...) recomeça do início; clipe em loop continua de onde estava
+        // (troca rápida walk/idle, como um bot hesitando ou a rede a 30 snapshots/s, não pode reiniciar a corrida)
+        if (UMA_VEZ.has(clipe)) nova.reset();
+        else { nova.stopFading(); nova.enabled = true; nova.paused = false; }
+        nova.setLoop(UMA_VEZ.has(clipe) ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+        nova.clampWhenFinished = UMA_VEZ.has(clipe);
+        nova.play();
+        if (this.acao) nova.crossFadeFrom(this.acao, FADE, false);
+        this.acao = nova; this.atual = clipe;
       },
       avancar(dt) {
         mixer.update(dt);
+        // o impulso do pulo acabou: emenda no loop do pulo (com crossfade)
+        const seg = SEGUE[this.atual];
+        if (seg && m.clipes.has(seg) && this.acao.time >= this.acao.getClip().duration - FADE) { this.tocar(seg); this.acao.timeScale = 1; }
         const k = this.atual === POSE_CLIPE.dead ? Math.min(1, Math.max(0, (this.acao.time - QUEDA_INI) / (QUEDA_FIM - QUEDA_INI))) : 0;
         corpo.position.x = RECUO_MORTE * k;
       },

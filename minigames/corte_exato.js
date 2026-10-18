@@ -216,7 +216,7 @@ TN.registerMinigame({
       }
       // operador atrás da bancada, olhando para a câmera
       const s = this.standPos(g, p);
-      r.character({ ...p, x: s.x, y: s.z }, { key: 'ce' + p.id, dir: s.dir, scale: 1.15, pose: !p.alive ? 'dead' : d.phase === 'cut' && !b.done ? 'arms' : 'idle', label: false });
+      r.character({ ...p, x: s.x, y: s.z }, { key: 'ce' + p.id, dir: s.dir, scale: 1.15, pose: !p.alive ? 'dead' : d.phase === 'cut' && !b.done ? 'work' : 'idle', label: false });
     });
   },
 
