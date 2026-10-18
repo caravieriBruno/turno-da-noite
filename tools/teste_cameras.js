@@ -40,6 +40,7 @@ function secaoPisaLeve() {
   ok(def.camera.pos[0] < d.startX && def.camera.target[0] > def.camera.pos[0] && def.camera.pos[1] < 300, 'pisa leve: câmera atrás da largada, baixa, olhando para a van');
   ok(d.caes && !d.caes.on && d.harv === undefined, 'pisa leve: a matilha começa presa; não há mais colheitadeira');
   const sons = {}; g.sfx = (n) => { sons[n] = (sons[n] || 0) + 1; };
+  for (const m of d.mines) m.dead = true;   // sem minas: os jogadores do teste ficam parados onde são postos
   segundos(g, def.CAES_DELAY + 0.1);
   ok(d.caes.on && g._message && /CÃES/.test(g._message.text), `pisa leve: aos 5 s soltam os cães (${g._message && g._message.text})`);
   // latidos: mais frequentes quando a matilha está perto
@@ -55,7 +56,7 @@ function secaoPisaLeve() {
   const comVinheta = com3d(g, () => estilos((c) => def.drawOverlay(g, c))).some((s) => /rgba\(255,\s*(0|2\d|3\d|4\d),/.test(String(s)));
   ok(!semVinheta && comVinheta, 'pisa leve: vinheta vermelha só com cão a menos de 80 px');
   // mordida: mata no contato e marca `mordido`; a matilha estoura as minas por onde passa
-  const m = d.mines.find((k) => !k.dead); m.x = d.caes.x - 10; m.y = 275;
+  const m = d.mines[0]; m.dead = false; m.x = d.caes.x - 10; m.y = 275;
   P[1].x = d.caes.x - 2; P[1].y = 275;
   passo(g);
   ok(!P[1].alive && P[1].data.mordido === true && m.dead, `pisa leve: cão pega quem fica para trás e estoura as minas atrás (vivo ${P[1].alive}, mina ${m.dead})`);
@@ -106,4 +107,64 @@ function secaoTrem() {
   ok(/NICHOS ABERTOS|PRÓXIMO TREM/.test(t3), `trem: overlay mostra o estado (${t3.slice(0, 40)})`);
 }
 
-fim([secaoMotor, secaoPisaLeve, secaoTrem]);
+// --- temporada de caça: guarda em cima, fugitivos embaixo ---
+function secaoTemporada() {
+  const def = TN.minigames.temporada_de_caca;
+  ok(def.LASER === 0.5 && def.RECARGA === 1.5 && def.AIM_LOCK === 2 && def.MAX_TIME === 40 && def.MERGULHO === 0.5 && def.rounds === 4 && def.fixedRounds === true && !def.screenSpace, 'temporada: constantes da spec, 4 rodadas fixas, coordenadas de mundo');
+  ok(def.tagline === 'O guarda da torre tem uma bala para cada um.' && /muro/.test(def.brief[0]) && /EXTRA/.test(def.brief[1]) && /AÇÃO/.test(def.brief[2]), 'temporada: textos novos');
+  const g = rodada('temporada_de_caca'), d = g.data, G = def.guarda(g), F = def.fugitivos(g);
+  ok(G === g.players[0] && F.length === 3 && F.every((p) => p.y === def.START_Y && !p.data.out), 'temporada: rodada 1 → P1 é o guarda; fugitivos na largada');
+  const vp = def.viewports(g);
+  ok(vp.length === 2 && vp[0].rect[1] === 34 && vp[0].rect[3] === 228 && vp[1].rect[1] === 262 && vp[1].rect[1] + vp[1].rect[3] === 540 && TN.R3.validate(g).length === 0, 'temporada: duas vistas empilhadas (45 % / 55 %) válidas');
+  ok(vp[0].camera.fov === 38 && (d.zoom = true, def.viewports(g)[0].camera.fov === 16) && (d.zoom = false, true), 'temporada: zoom fecha a luneta (fov 38 → 16)');
+  // mira travada nos 2 s iniciais
+  const m0 = { ...d.mira }; aperta(0, { x: 1 }); passo(g, 1 / 60, 10); solta();
+  ok(d.mira.x === m0.x, 'temporada: mira travada na largada');
+  segundos(g, def.AIM_LOCK); aperta(0, { x: 1 }); passo(g, 1 / 60, 10); solta();
+  ok(d.mira.x > m0.x, 'temporada: depois de 2 s a mira anda');
+  // laser 0,5 s antes do tiro; acerta quem está de pé na mira; recarga 1,5 s
+  const alvo = F[0]; alvo.x = 480; alvo.y = 500; d.mira = { x: 482, y: 505 };
+  aperta(0, { a: true }); passo(g); solta();
+  ok(d.tiro && d.tiro.t > 0.45 && alvo.alive, 'temporada: AÇÃO acende o laser e ainda não atira');
+  aperta(0, { x: 1 }); const mx = d.mira.x; passo(g); solta();
+  ok(d.mira.x - mx > 0 && d.mira.x - mx < def.AIM_SPEED * 0.5 / 60 + 0.01, 'temporada: com o laser aceso a mira anda a 40 %');
+  d.mira = { x: 482, y: 505 }; segundos(g, def.LASER);
+  ok(!alvo.alive && alvo.data.baleado && G.score === 1 && !d.tiro && d.recarga > 1.3, `temporada: tiro sai depois de 0,5 s (vivo ${alvo.alive}, guarda ${G.score}, recarga ${d.recarga.toFixed(2)})`);
+  aperta(0, { a: true }); passo(g); solta();
+  ok(!d.tiro, 'temporada: AÇÃO na recarga não acende outro laser');
+  segundos(g, def.RECARGA);
+  // agachado atrás de cobertura: invisível; de pé atrás: alvo; agachado no aberto: caixa menor
+  const cv = d.covers[0], f1 = F[1]; f1.x = cv.x; f1.y = cv.y - 20; d.mira = { x: f1.x, y: f1.y };
+  f1.data.agachado = true;
+  ok(def.protegido(g, f1) && def.alvoNaMira(g) === null, 'temporada: agachado atrás da cobertura não é alvo');
+  f1.data.agachado = false;
+  ok(!def.protegido(g, f1) && def.alvoNaMira(g) === f1, 'temporada: de pé atrás da cobertura ainda é alvo');
+  f1.x = 300; f1.y = 400; f1.data.agachado = true; d.mira = { x: 300 + 14, y: 400 };
+  ok(def.alvoNaMira(g) === null, 'temporada: agachado no aberto tem caixa menor (14 px ao lado escapa)');
+  f1.data.agachado = false;
+  ok(def.alvoNaMira(g) === f1, 'temporada: de pé, 14 px ao lado ainda acerta');
+  // EXTRA: mergulho de 0,5 s sem andar
+  aperta(2, { b: true, x: 1 }); passo(g, 1 / 60, 6); solta();   // f1 = F[1] = players[2] → dispositivo 2
+  ok(f1.data.mergulho > 0 && f1.data.agachado && f1.x === 300, 'temporada: EXTRA mergulha (0,5 s parado)');
+  // chegar ao muro: +1 e +1 para o primeiro; fim quando todos saíram
+  const f2 = F[2]; f2.y = def.WALL_Y + 2; f1.data.mergulho = 0; f1.y = def.WALL_Y + 2;
+  aperta(2, { y: -1 }); aperta(3, { y: -1 }); passo(g, 1 / 60, 10); solta();
+  ok(f1.data.escapou && f2.data.escapou && f1.score + f2.score === 3, `temporada: dois escaparam, um deles com o bônus de primeiro (${f1.score} + ${f2.score})`);
+  segundos(g, 2);
+  ok(g.finished && G.score === 1, 'temporada: todos fora → acabou; guarda sem o bônus porque alguém escapou');
+  // ninguém escapou → +1 para o guarda; e o relógio de 40 s encerra sozinho com humanos parados
+  const h = rodada('temporada_de_caca'); segundos(h, def.MAX_TIME + 2);
+  ok(h.finished && def.guarda(h).score === 1, 'temporada: 40 s com todos parados → acaba e o guarda ganha o bônus de ninguém ter escapado');
+  // bots: em 6 rodadas alguém é baleado e alguém escapa
+  let baleados = 0, escapados = 0;
+  for (let r = 0; r < 6; r++) { const z = rodada('temporada_de_caca', { humanos: 0, rodadaN: 1 + (r % 4), total: 4 }); segundos(z, def.MAX_TIME + 2); ok(z.finished, `temporada: rodada ${r + 1} com bots termina`); for (const p of def.fugitivos(z)) { if (p.data.baleado) baleados++; if (p.data.escapou) escapados++; } }
+  ok(baleados >= 1 && escapados >= 1, `temporada: bots → ${baleados} baleados e ${escapados} escapados em 6 rodadas`);
+  // 3D e 2D passam; a mira só aparece na vista do guarda (overlay com vista 0)
+  const z = rodada('temporada_de_caca', { humanos: 0 }); segundos(z, 3);
+  ok(TN.R3.trace((r) => def.draw3d(z, r)).errs.length === 0, 'temporada: draw3d passa no validador');
+  const t3 = com3d(z, () => textos((c) => def.drawOverlay(z, c)));
+  ok(/GUARDA/.test(t3) && /MURO|EXTRA/.test(t3), `temporada: overlay tem o painel do guarda e a dica dos fugitivos`);
+  ok(/GUARDA/.test(textos((c) => def.draw(z, c))), 'temporada: 2D desenha');
+}
+
+fim([secaoMotor, secaoPisaLeve, secaoTrem, secaoTemporada]);
