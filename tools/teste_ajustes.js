@@ -210,8 +210,28 @@ function secaoBatata() {
   ok(pot.state === 'flight' && pot.heldT === 0, 'batata: passar zera o tempo na mão');
 }
 
+// --- cabo de guerra: janela de ritmo 3–5 toques/s, medidor de cadência ---
+function secaoCabo() {
+  const def = TN.minigames.cabo_de_guerra, g = rodada('cabo_de_guerra'), q = g.players[0].data;
+  ok(def.FAST === 0.2 && def.SLOW === 0.32 && def.IMP_FAST === 0.3 && def.GRIP_COST === 0.18, 'cabo: janela 0,20–0,32 s, afobado 0,3 e custo de pegada 0,18');
+  segundos(g, 1.5);
+  const toque = (btn, espera) => { solta(); segundos(g, espera); aperta(0, btn === 'a' ? { a: true } : { b: true }); passo(g); solta(); };
+  toque('a', 0.5); toque('b', 0.25);
+  ok(q.qualidade === 'bom', `cabo: 0,25 s entre toques = bom (${q.qualidade})`);
+  toque('a', 0.1);
+  ok(q.qualidade === 'afobado', `cabo: 0,1 s = afobado (${q.qualidade})`);
+  toque('b', 0.6);
+  ok(q.qualidade === 'devagar', `cabo: 0,6 s = devagar (${q.qualidade})`);
+  ok(def.brief.some((b) => /4 toques/.test(b)), 'cabo: brief fala em 4 toques por segundo');
+  // o HUD 3D só desenha com WebGL: finge o 3D para ler os rótulos
+  g.uses3d = () => true; const proj = TN.R3.project; TN.R3.project = () => ({ x: 480, y: 300, visible: true });
+  const t = textos((c) => def.drawOverlay(g, c));
+  TN.R3.project = proj;
+  ok(/PEGADA/.test(t), 'cabo: HUD tem o rótulo PEGADA');
+}
+
 // SEÇÕES (uma por jogo; cada tarefa define a sua função acima deste bloco e acrescenta o nome no array)
-const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato, secaoMemoria, secaoPisoFalso, secaoTragada, secaoBatata];
+const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato, secaoMemoria, secaoPisoFalso, secaoTragada, secaoBatata, secaoCabo];
 for (const s of secoes) { try { s(); } catch (e) { ok(false, `${s.name}: exceção ${e.message}`); } }
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

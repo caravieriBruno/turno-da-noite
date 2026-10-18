@@ -10,8 +10,8 @@ TN.registerMinigame({
   inspiredBy: 'brincadeira: cabo de guerra',
   tagline: 'A FORNALHA NÃO TORCE PARA NINGUÉM.',
   brief: [
-    'Alterne AÇÃO e EXTRA no ritmo para puxar.',
-    'Apertar rápido demais gasta a pegada.',
+    'Alterne AÇÃO e EXTRA, uns 4 toques por segundo. Martelar escorrega.',
+    'O anel embaixo de você pulsa no ritmo certo: verde = bom, vermelho = afobado.',
     'No TRANCO!, aperte AÇÃO na hora certa.',
     'Quem for arrastado até o fogo vira cinza.',
   ],
@@ -27,12 +27,13 @@ TN.registerMinigame({
   GROUND: 400, PIT_L: 390, PIT_R: 570, CENTER: 480,
   FRONT_L: 280, FRONT_R: 680, SPACING: 80, LIMIT: 110,
   // ---- ritmo e força ----
-  FAST: 0.12,        // intervalo menor que isso = afobado (gasta pegada)
+  FAST: 0.20,        // intervalo menor que isso = afobado (gasta pegada); a janela boa é 0,20–0,32 s (3 a 5 toques/s)
   SLOW: 0.32,        // intervalo maior que isso = puxão preguiçoso
-  IMP_GOOD: 1, IMP_FAST: 0.6, IMP_SLOW: 0.7, IMP_SAME: 0.2,
+  IMP_GOOD: 1, IMP_FAST: 0.3, IMP_SLOW: 0.7, IMP_SAME: 0.2,
+  RITMO_HZ: 4,       // cadência ideal mostrada no HUD (centro da janela)
   DECAY: 2.5,        // a força de cada puxão se esvai (por segundo)
   K: 18,             // px/s de cabo por unidade de diferença de força
-  GRIP_COST: 0.13, GRIP_REGEN: 0.25, SLIP_TIME: 1.0,
+  GRIP_COST: 0.18, GRIP_REGEN: 0.25, SLIP_TIME: 1.0,
   SOLO_BONUS: 1.6,
   // ---- tranco ----
   WARN: 0.9, WINDOW: 0.45, BURST: 3.4,
@@ -130,6 +131,13 @@ TN.registerMinigame({
       else if (gap > this.SLOW) imp = this.IMP_SLOW;
       else imp = this.IMP_GOOD;                          // alternou no ritmo: puxão cheio
       if (fast) q.grip -= this.GRIP_COST;
+      // qualidade do toque, para o medidor de cadência do HUD (antes o jogador não via o ritmo, só o resultado)
+      const qual = q.last === btn ? 'mesmo' : fast ? 'afobado' : gap > this.SLOW ? 'devagar' : 'bom';
+      if (qual !== q.qualidade) {
+        q.qualidade = qual; q.qualidadeT = 0;
+        if (qual === 'afobado') g.popup('AFOBADO', p.x, p.y - 80, '#f55');
+        else if (qual === 'devagar' && q.lastT >= 0) g.popup('DEVAGAR', p.x, p.y - 80, '#aaa');
+      }
       const m = this.mult(p);
       // TRANCO: só o primeiro botão depois do aviso conta
       if (tr.state === 'go' && !q.trancoDone) {
@@ -433,11 +441,22 @@ TN.registerMinigame({
     const D = TN.draw;
     this.drawGauge(g, c);
     this.drawTrancoText(g, c);
+    if (g.time < 5) {   // metrônomo dos primeiros segundos: dois traços alternando no ritmo ideal
+      const lado = Math.floor(g.time * this.RITMO_HZ) % 2;
+      D.text(c, 'RITMO', g.W / 2, 112, { size: 12, color: '#9ab', align: 'center' });
+      c.fillStyle = lado ? '#ff8a1e' : '#2a2f35'; c.fillRect(g.W / 2 - 30, 122, 24, 10);
+      c.fillStyle = lado ? '#2a2f35' : '#3fa9ff'; c.fillRect(g.W / 2 + 6, 122, 24, 10);
+    }
     for (const p of g.players) {
       const q = p.data;
       if (!p.alive || q.fall) continue;
       const s = TN.R3.project(p.x, 0, this.PZ3 + 70);
-      D.bar(c, s.x - 22, s.y, 44, 6, q.grip, q.grip > 0.5 ? '#3f6' : q.grip > 0.25 ? '#fc3' : '#f43');
+      // anel de cadência: pulsa no ritmo ideal, na cor do último toque (verde bom, vermelho afobado, cinza devagar)
+      const pulso = 1 + 0.25 * Math.sin(g.time * Math.PI * 2 * this.RITMO_HZ);
+      const corQ = q.qualidade === 'bom' ? '#46e27b' : q.qualidade === 'afobado' ? '#ff3b3b' : q.qualidade ? '#777' : '#bbb';
+      c.strokeStyle = corQ; c.lineWidth = 3; c.beginPath(); c.ellipse(s.x, s.y - 14, 14 * pulso, 6 * pulso, 0, 0, Math.PI * 2); c.stroke();
+      D.text(c, 'PEGADA', s.x - 60, s.y + 3, { size: 9, color: '#9ab', shadow: false });
+      D.bar(c, s.x - 22, s.y, 60, 10, q.grip, q.grip > 0.5 ? '#3f6' : q.grip > 0.25 ? '#fc3' : '#f43');
       const next = q.last === 'a' ? 'b' : q.last === 'b' ? 'a' : null;
       [['a', 'AÇÃO', -19], ['b', 'EXTRA', 19]].forEach(([k, txt, ox]) => {
         const on = next === null || next === k;
