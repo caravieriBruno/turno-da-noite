@@ -1,7 +1,9 @@
 // HORA DO TREM — inspirado em "TUNNEL HAZARD" (train_race) de Machine Party.
-// Túnel visto de cima: trilhos no meio, nichos nas duas paredes. A cada ciclo a luz vermelha avisa,
-// alguns nichos abrem (verdes) e o trem varre o túnel inteiro. Quem estiver no chão morre.
+// Túnel visto de frente: a câmera fica no fim do túnel e o trem vem do fundo, crescendo, até passar
+// por baixo dela. Nichos nas duas paredes laterais. A cada ciclo a luz vermelha avisa, alguns nichos
+// abrem (verdes) e o trem varre o túnel inteiro. Quem estiver no chão morre.
 // A cada trem abre um nicho a menos. Nicho vermelho esmaga quem entra. AÇÃO empurra.
+// Eixos da lógica: x = largura do túnel (travessia), y = eixo do túnel (y pequeno = fundo, longe).
 TN.registerMinigame({
   id: 'hora_do_trem',
   title: 'HORA DO TREM',
@@ -18,39 +20,44 @@ TN.registerMinigame({
   //      abertos = max(vivos+2-ciclos, 1), empurrão 0,1 s de preparo, impulso 15 decaindo) ----
   SPEED: 180, SHOVE: 600, SHOVE_WIND: 0.1, SHOVE_LOCK: 0.35, SHOVE_RANGE: 72,
   FORA_DO_NICHO: 0.3,   // quem é empurrado para fora de um nicho fica este tempo sem contar como escondido
-  WALL: 58, NOOK_W: 54, NOOK_D: 50,
+  NOOK_W: 54, NOOK_D: 50,
+  Y0: -200, Y1: 540, HALF: 150,   // túnel em y (fundo → câmera) e meia largura do chão (paredes em 480 ± HALF)
   WAIT: 3, OPEN_AFTER: 1, TRAIN_ENTER: 3.4, TRAIN_V: 470, TRAIN_LEN: 560, CLOSE_TIME: 1.2,
+  SAIDA_FIM: 1100,      // o comboio que já passou continua visível até a cauda passar daqui (atrás da câmera)
 
   init(g) {
-    const a = g.arena, d = g.data;
-    d.floorTop = a.y + this.WALL; d.floorBot = a.y + a.h - this.WALL;
+    const d = g.data;
+    d.floorL = 480 - this.HALF; d.floorR = 480 + this.HALF;
     d.nooks = [];
-    const step = a.w / 6;
+    const step = (this.Y1 - this.Y0 - 120) / 6;
     for (let i = 0; i < 6; i++) {
-      d.nooks.push({ side: -1, cx: a.x + step * (i + 0.5) - 18, w: this.NOOK_W, state: 'closed' });
-      d.nooks.push({ side: 1, cx: a.x + step * (i + 0.5) + 18, w: this.NOOK_W, state: 'closed' });
+      d.nooks.push({ side: -1, cy: this.Y0 + 60 + step * (i + 0.5) - 18, w: this.NOOK_W, state: 'closed' });
+      d.nooks.push({ side: 1, cy: this.Y0 + 60 + step * (i + 0.5) + 18, w: this.NOOK_W, state: 'closed' });
     }
     d.phase = 'wait'; d.phaseT = 0; d.cycles = 0;
-    d.train = null;        // { front } quando o trem está no túnel
-    g.placeInCircle(a.x + a.w / 2, (d.floorTop + d.floorBot) / 2, 100);
+    d.train = null;        // { front } quando o trem está no túnel (front em y, crescendo)
+    d.saida = null;        // { front } do comboio que já passou (só visual)
+    g.placeInCircle(480, 330, 90);
     for (const p of g.players) Object.assign(p.data, { lock: 0, wind: 0, shoveT: 0, noise: 0, noiseT: 0, foraT: 0 });
   },
 
   setPhase(g, ph) { g.data.phase = ph; g.data.phaseT = 0; },
+  // área onde se anda: o chão mais o fundo dos nichos, ao longo do túnel inteiro
+  bounds(g) { const d = g.data; return { x: d.floorL - this.NOOK_D, y: this.Y0, w: 2 * this.HALF + 2 * this.NOOK_D, h: this.Y1 - this.Y0 }; },
 
-  // em qual nicho (coluna) o jogador está, e se está fundo o bastante para o trem não pegar
+  // em qual nicho (coluna em y) o jogador está, e se está fundo o bastante para o trem não pegar
   nookOf(g, p) {
     const d = g.data;
     for (const n of d.nooks) {
-      if (Math.abs(p.x - n.cx) > n.w / 2) continue;
-      if (n.side < 0 && p.y < d.floorTop + p.r - 2) return n;
-      if (n.side > 0 && p.y > d.floorBot - p.r + 2) return n;
+      if (Math.abs(p.y - n.cy) > n.w / 2) continue;
+      if (n.side < 0 && p.x < d.floorL + p.r - 2) return n;
+      if (n.side > 0 && p.x > d.floorR - p.r + 2) return n;
     }
     return null;
   },
   isSafeIn(g, p, n) {
     const d = g.data;
-    return n.side < 0 ? p.y + p.r <= d.floorTop + 6 : p.y - p.r >= d.floorBot - 6;
+    return n.side < 0 ? p.x + p.r <= d.floorL + 6 : p.x - p.r >= d.floorR - 6;
   },
   // escondido do trem: num nicho aberto, fundo o bastante, e sem ter acabado de ser expulso dele
   seguro(g, p) {
@@ -59,7 +66,7 @@ TN.registerMinigame({
   },
 
   update(g, dt) {
-    const U = TN.util, a = g.arena, d = g.data;
+    const U = TN.util, d = g.data;
     d.phaseT += dt;
     // ---------- ciclo do trem ----------
     if (d.phase === 'wait' && d.phaseT >= this.WAIT) {
@@ -71,10 +78,12 @@ TN.registerMinigame({
         for (const n of TN.util.shuffle(d.nooks.slice()).slice(0, count)) n.state = 'open';
         g.sfx('confirm');
       }
-      if (d.phaseT >= this.TRAIN_ENTER - (a.x + 40 + 200) / this.TRAIN_V && !d.train) { d.train = { front: a.x - 200 }; g.sfx('whoosh'); }
+      // o trem entra pelo fundo e chega a Y0 + 40 em TRAIN_ENTER
+      if (d.phaseT >= this.TRAIN_ENTER - 240 / this.TRAIN_V && !d.train) { d.train = { front: this.Y0 - 200 }; g.sfx('whoosh'); }
       if (d.train) {
         d.train.front += this.TRAIN_V * dt;
-        if (d.train.front - this.TRAIN_LEN > a.x + a.w + 20) {
+        if (d.train.front - this.TRAIN_LEN > this.Y1 + 20) {
+          d.saida = { front: d.train.front };
           d.train = null; d.opened = false; d.cycles++;
           for (const n of d.nooks) if (n.state === 'open') n.state = 'closing';
           this.setPhase(g, 'closing'); g.sfx('tick');
@@ -84,14 +93,16 @@ TN.registerMinigame({
       // nichos fecham: quem ainda estiver dentro é cuspido de volta para o trilho
       for (const p of g.alive()) {
         const n = this.nookOf(g, p);
-        if (n && n.state === 'closing') { p.y = n.side < 0 ? d.floorTop + p.r + 2 : d.floorBot - p.r - 2; p.vx = 0; p.vy = -n.side * 320; g.sfx('hit'); }
+        if (n && n.state === 'closing') { p.x = n.side < 0 ? d.floorL + p.r + 2 : d.floorR - p.r - 2; p.vy = 0; p.vx = -n.side * 320; g.sfx('hit'); }
       }
       for (const n of d.nooks) n.state = 'closed';
       this.setPhase(g, 'wait');
     }
+    // o comboio que passou segue até sair de trás da câmera
+    if (d.saida) { d.saida.front += this.TRAIN_V * dt; if (d.saida.front - this.TRAIN_LEN > this.SAIDA_FIM) d.saida = null; }
 
     // ---------- jogadores ----------
-    const bounds = { x: a.x, y: d.floorTop - this.NOOK_D, w: a.w, h: d.floorBot - d.floorTop + this.NOOK_D * 2 };
+    const bounds = this.bounds(g);
     for (const p of g.alive()) {
       const b = p.data;
       b.lock -= dt;
@@ -114,17 +125,17 @@ TN.registerMinigame({
     for (const p of g.alive()) {
       const n = this.nookOf(g, p);
       // entrar num nicho fechado = esmagado
-      if (n && n.state === 'closed' && (n.side < 0 ? p.y < d.floorTop - 2 : p.y > d.floorBot + 2)) {
+      if (n && n.state === 'closed' && (n.side < 0 ? p.x < d.floorL - 2 : p.x > d.floorR + 2)) {
         g.eliminate(p, { sound: 'boom', msg: 'ESMAGADO!' });
         g.particles(p.x, p.y, '#a00', 26, 200); n.crush = 0.4;
         continue;
       }
       // o trem pega quem está no chão (ou mal escondido)
       const t = d.train;
-      if (t && p.x + p.r > t.front - this.TRAIN_LEN && p.x - p.r < t.front) {
+      if (t && p.y + p.r > t.front - this.TRAIN_LEN && p.y - p.r < t.front) {
         if (!this.seguro(g, p)) {
           g.eliminate(p, { sound: 'boom', msg: 'ATROPELADO!' });
-          for (let i = 0; i < 3; i++) g.particles(p.x + 20, p.y, i ? '#a00' : p.color, 14, 380);
+          for (let i = 0; i < 3; i++) g.particles(p.x, p.y + 20, i ? '#a00' : p.color, 14, 380);
         }
       }
     }
@@ -141,42 +152,42 @@ TN.registerMinigame({
         // empurrões não acumulam: a velocidade é substituída. Quem está num nicho sai reto para o trilho
         // (a parede do nicho segurava o impulso lateral) e fica um instante sem poder se reesconder.
         const n = this.nookOf(g, o);
-        if (n) { o.vx = 0; o.vy = -n.side * this.SHOVE; o.data.foraT = this.FORA_DO_NICHO; }
+        if (n) { o.vy = 0; o.vx = -n.side * this.SHOVE; o.data.foraT = this.FORA_DO_NICHO; }
         else { o.vx = (dx / dist) * this.SHOVE; o.vy = (dy / dist) * this.SHOVE; }
         g.sfx('hit'); g.particles((o.x + p.x) / 2, (o.y + p.y) / 2, '#fff', 6, 140);
       }
     }
   },
 
-  // Paredes: só dá para atravessar a linha da parede dentro da coluna de um nicho.
+  // Paredes laterais: só dá para atravessar a linha da parede dentro da coluna (em y) de um nicho.
   resolveWalls(g, p, dt) {
     const d = g.data;
     for (const side of [-1, 1]) {
-      const wallY = side < 0 ? d.floorTop : d.floorBot;
-      const pen = side < 0 ? wallY + p.r - p.y : p.y - (wallY - p.r);
+      const wallX = side < 0 ? d.floorL : d.floorR;
+      const pen = side < 0 ? wallX + p.r - p.x : p.x - (wallX - p.r);
       // funil: empurrando contra a parede perto de um nicho, desliza para o centro dele
-      const pushing = side < 0 ? p.input.y < -0.3 : p.input.y > 0.3;
+      const pushing = side < 0 ? p.input.x < -0.3 : p.input.x > 0.3;
       if (pen > -6 && pushing) {
-        const n = d.nooks.find((k) => k.side === side && Math.abs(p.x - k.cx) < k.w / 2 + 12);
-        if (n) p.x = TN.util.approach(p.x, n.cx, 140 * dt);
+        const n = d.nooks.find((k) => k.side === side && Math.abs(p.y - k.cy) < k.w / 2 + 12);
+        if (n) p.y = TN.util.approach(p.y, n.cy, 140 * dt);
       }
       if (pen <= 0) continue;
       const half = this.NOOK_W / 2 - p.r;
-      const n = d.nooks.find((k) => k.side === side && Math.abs(p.x - k.cx) < half + 5);
-      if (!n) { p.y = side < 0 ? wallY + p.r : wallY - p.r; if (side * p.vy > 0) p.vy = 0; continue; }
-      p.x = TN.util.clamp(p.x, n.cx - half, n.cx + half);
+      const n = d.nooks.find((k) => k.side === side && Math.abs(p.y - k.cy) < half + 5);
+      if (!n) { p.x = side < 0 ? wallX + p.r : wallX - p.r; if (side * p.vx > 0) p.vx = 0; continue; }
+      p.y = TN.util.clamp(p.y, n.cy - half, n.cy + half);
     }
   },
 
   // Bot: espera no meio; quando os nichos abrem, corre para o nicho livre mais próximo que
   // consegue alcançar antes do trem, empurra quem disputar, e sai depois que o trem passa.
   bot(g, p, dt) {
-    const U = TN.util, a = g.arena, d = g.data, b = p.data;
+    const U = TN.util, d = g.data, b = p.data;
     if (Math.hypot(p.vx, p.vy) > 40) return {};
-    const midY = (d.floorTop + d.floorBot) / 2;
+    const midX = 480;
     const cur = this.nookOf(g, p);
     const t = d.train;
-    const trainPassed = t && t.front - this.TRAIN_LEN > p.x + 30;
+    const trainPassed = t && t.front - this.TRAIN_LEN > p.y + 30;
     const opened = d.nooks.some((n) => n.state === 'open');
     b.noiseT -= dt;
     if (b.noiseT <= 0) { b.noiseT = U.rand(0.5, 1.4); b.noise = { x: U.rand(-1, 1), y: U.rand(-0.6, 0.6) }; }
@@ -186,29 +197,28 @@ TN.registerMinigame({
     if (opened && !trainPassed) {
       // já está seguro num nicho aberto: só afunda
       if (cur && cur.state === 'open') {
-        const deep = cur.side < 0 ? d.floorTop - this.NOOK_D : d.floorBot + this.NOOK_D;
         // alguém tentando entrar/disputar? empurra para fora
-        const rival = g.alive().find((o) => o !== p && Math.abs(o.x - cur.cx) < 34 && Math.abs(o.y - p.y) < 50);
+        const rival = g.alive().find((o) => o !== p && Math.abs(o.y - cur.cy) < 34 && Math.abs(o.x - p.x) < 50);
         if (rival && U.chance(0.06)) return this.startShove(b, rival.x - p.x, rival.y - p.y);
-        return { x: (cur.cx - p.x) / 10, y: cur.side };
+        return { x: cur.side, y: (cur.cy - p.y) / 10 };
       }
       const n = this.pickNook(g, p);
       if (n) {
-        const mouthY = n.side < 0 ? d.floorTop + p.r + 6 : d.floorBot - p.r - 6;
-        const deepY = n.side < 0 ? d.floorTop - this.NOOK_D : d.floorBot + this.NOOK_D;
+        const mouthX = n.side < 0 ? d.floorL + p.r + 6 : d.floorR - p.r - 6;
+        const deepX = n.side < 0 ? d.floorL - this.NOOK_D : d.floorR + this.NOOK_D;
         // rival perto disputando o mesmo nicho: empurra
-        const rival = g.alive().find((o) => o !== p && U.dist(o.x, o.y, p.x, p.y) < 52 && U.dist(o.x, o.y, n.cx, mouthY) < 90);
+        const rival = g.alive().find((o) => o !== p && U.dist(o.x, o.y, p.x, p.y) < 52 && U.dist(o.x, o.y, mouthX, n.cy) < 90);
         if (rival && b.lock <= 0 && U.chance(0.12)) return this.startShove(b, rival.x - p.x, rival.y - p.y);
-        const tx = n.cx, ty = Math.abs(p.x - n.cx) > 9 ? mouthY : deepY;
+        const ty = n.cy, tx = Math.abs(p.y - n.cy) > 9 ? mouthX : deepX;
         const v = U.norm(tx - p.x, ty - p.y);
         return { x: v.x, y: v.y };
       }
-      // sem nicho possível: fica longe do trem o máximo que puder (para a direita)
-      return { x: 1, y: (midY - p.y) / 100 };
+      // sem nicho possível: foge do trem (que vem do fundo) o máximo que puder, para perto da câmera
+      return { x: (midX - p.x) / 100, y: 1 };
     }
     // fora de perigo: sai do nicho e espera perto do meio do túnel
-    const tx = a.x + a.w / 2 + b.noise.x * 220, ty = midY + b.noise.y * 70;
-    if (cur) return { x: 0, y: -cur.side };
+    const tx = midX + b.noise.y * 70, ty = 260 + b.noise.x * 180;
+    if (cur) return { x: -cur.side, y: 0 };
     const v = U.norm(tx - p.x, ty - p.y), far = U.dist(p.x, p.y, tx, ty) > 25;
     let out = { x: far ? v.x : 0, y: far ? v.y : 0 };
     // de vez em quando empurra alguém que está do lado
@@ -225,21 +235,21 @@ TN.registerMinigame({
 
   // escolhe o nicho aberto mais promissor: perto, livre e alcançável antes do trem
   pickNook(g, p) {
-    const U = TN.util, d = g.data;
+    const d = g.data;
     let best = null, bestScore = 1e9;
     for (const n of d.nooks) {
       if (n.state !== 'open') continue;
-      const mouthY = n.side < 0 ? d.floorTop : d.floorBot;
-      const dist = Math.abs(p.x - n.cx) + Math.abs(p.y - mouthY);
+      const mouthX = n.side < 0 ? d.floorL : d.floorR;
+      const dist = Math.abs(p.y - n.cy) + Math.abs(p.x - mouthX);
       const myT = dist / this.SPEED + 0.3;
-      if (d.train) { const trainT = (n.cx - d.train.front) / this.TRAIN_V; if (trainT < myT) continue; }
-      else { const trainT = this.TRAIN_ENTER - d.phaseT + (n.cx - g.arena.x) / this.TRAIN_V; if (trainT < myT) continue; }
+      if (d.train) { const trainT = (n.cy - d.train.front) / this.TRAIN_V; if (trainT < myT) continue; }
+      else { const trainT = this.TRAIN_ENTER - d.phaseT + (n.cy - this.Y0) / this.TRAIN_V; if (trainT < myT) continue; }
       let score = dist;
       for (const o of g.alive()) {
         if (o === p) continue;
         const on = this.nookOf(g, o);
         if (on === n) score += 1000;                                  // ocupado
-        else if (Math.abs(o.x - n.cx) + Math.abs(o.y - mouthY) < dist - 15) score += 220;  // alguém chega antes
+        else if (Math.abs(o.y - n.cy) + Math.abs(o.x - mouthX) < dist - 15) score += 220;  // alguém chega antes
       }
       if (p.data.goal === n) score -= 40;                             // mantém a decisão
       if (score < bestScore) { bestScore = score; best = n; }
@@ -249,83 +259,78 @@ TN.registerMinigame({
   },
 
   // ---------------- 3D (câmera fixa) ----------------
-  // Túnel em corte: parede do fundo alta de tijolo com canos, parede da frente baixa (para ver os nichos
-  // de baixo), dois trilhos com dormentes, nichos com lâmpada verde/vermelha e prensa dentada, e o trem
-  // (dois comboios lado a lado, cabine amarela e faróis) varrendo da esquerda para a direita.
-  camera: { pos: [480, 600, 770], target: [480, 0, 268], fov: 40 },
-  env: { bg: '#07080a', fog: [1000, 2300], ambient: 0.4, sun: 1.0, sunDir: [-0.2, 1, 0.35], sunColor: '#ffdcb0' },
-  FAR_H: 130, NEAR_H: 24,
+  // Túnel de frente: a câmera no fim do túnel, baixa; paredes laterais de tijolo com os nichos, dois
+  // trilhos em perspectiva, boca escura ao fundo de onde o trem sai (os faróis iluminam o túnel antes)
+  // e o trem crescendo até passar por baixo da câmera.
+  camera: { pos: [480, 150, 1000], target: [480, 50, 100], fov: 45 },
+  env: { bg: '#07080a', fog: [1300, 2600], ambient: 0.65, sun: 1.2, sunDir: [-0.2, 1, 0.6], sunColor: '#ffdcb0', hemiSky: '#8a8f99', hemiGround: '#2a2420' },
+  WALL_H: 160,
 
   draw3d(g, r) {
-    const a = g.arena, d = g.data, U = TN.util;
-    const ft = d.floorTop, fb = d.floorBot, X0 = -500, X1 = 1460, LEN = X1 - X0, MX = (X0 + X1) / 2;
+    const d = g.data, U = TN.util, Y0 = this.Y0, Y1 = this.Y1, fl = d.floorL, fr = d.floorR, H = this.WALL_H;
+    const Z0 = Y0 - 700, Z1 = 1200, LEN = Z1 - Z0, MZ = (Z0 + Z1) / 2;
     const lights = [];
-    // ---- chão de cascalho e trilhos ----
-    r.plane(MX, -1, 280, LEN, 1400, '#0a0b0d');
-    r.plane(MX, 0, (ft + fb) / 2, LEN, fb - ft, '#2a2d31', { rough: 1 });
-    const tracks = [ft + (fb - ft) * 0.27, ft + (fb - ft) * 0.73];
-    for (const tz of tracks) {
-      for (let x = -260; x < 1240; x += 34) r.box(x, 0, tz, 12, 3, 68, '#4a3a2c', { rough: 1, shadow: false });
-      for (const dz of [-21.5, 21.5]) r.beam(X0, 5, tz + dz, X1, 5, tz + dz, 4, '#9aa3ab', { metal: 0.85, rough: 0.3, shadow: false });
+    // ---- chão de cascalho e trilhos (ao longo de y) ----
+    r.plane(480, -1, MZ, 1400, LEN, '#0a0b0d');
+    r.plane(480, 0, MZ, fr - fl, LEN, '#2a2d31', { rough: 1 });
+    for (const tx of [480 - 55, 480 + 55]) {
+      for (let z = Y0 - 400; z < Z1; z += 34) r.box(tx, 0, z, 68, 3, 12, '#4a3a2c', { rough: 1, shadow: false });
+      for (const dx of [-21.5, 21.5]) r.beam(tx + dx, 5, Z0, tx + dx, 5, Z1, 4, '#9aa3ab', { metal: 0.85, rough: 0.3, shadow: false });
     }
     // faixas de segurança na beira das paredes
-    r.plane(MX, 0.4, ft + 2, LEN, 4, '#f5c400', { glow: true, opacity: 0.55 });
-    r.plane(MX, 0.4, fb - 2, LEN, 4, '#f5c400', { glow: true, opacity: 0.55 });
-    // ---- paredes (com recortes nos nichos) ----
+    r.plane(fl + 2, 0.4, MZ, 4, LEN, '#f5c400', { glow: true, opacity: 0.55 });
+    r.plane(fr - 2, 0.4, MZ, 4, LEN, '#f5c400', { glow: true, opacity: 0.55 });
+    // ---- paredes laterais (com recortes nos nichos) ----
+    const brick = '#4d3329', bo = { rough: 0.95, tex: 'tijolo' };
     for (const side of [-1, 1]) {
-      const far = side < 0, H = far ? this.FAR_H : this.NEAR_H;
-      const wall = far ? ft : fb, back = far ? wall - this.NOOK_D : wall + this.NOOK_D;
-      const brick = far ? '#4d3329' : '#4a342c', bo = { rough: 0.95, tex: 'tijolo' };
+      const wall = side < 0 ? fl : fr, back = wall + side * this.NOOK_D;
       // parte de trás (fundo dos nichos), contínua
-      const bz = far ? back - 40 : back + 24;
-      r.box(MX, 0, bz, LEN, H, 80 * (far ? 1 : 0.6), brick, bo);
+      r.box(back + side * 30, 0, MZ, 60, H, LEN, brick, bo);
       // segmentos entre os nichos
-      const ns = d.nooks.filter((n) => n.side === side).sort((n1, n2) => n1.cx - n2.cx);
-      let x = X0;
-      for (const n of [...ns, { cx: X1 + this.NOOK_W / 2, w: this.NOOK_W }]) {
-        const x2 = n.cx - n.w / 2;
-        if (x2 > x) r.box((x + x2) / 2, 0, (wall + back) / 2, x2 - x, H, this.NOOK_D, brick, bo);
-        x = n.cx + n.w / 2;
+      const ns = d.nooks.filter((n) => n.side === side).sort((n1, n2) => n1.cy - n2.cy);
+      let z = Z0;
+      for (const n of [...ns, { cy: Z1 + this.NOOK_W / 2, w: this.NOOK_W }]) {
+        const z2 = n.cy - n.w / 2;
+        if (z2 > z) r.box((wall + back) / 2, 0, (z + z2) / 2, this.NOOK_D, H, z2 - z, brick, bo);
+        z = n.cy + n.w / 2;
       }
-      if (far) {
-        // canos e cabos na parede do fundo
-        // vergas sobre os nichos (o nicho vira uma porta baixa), canos e beirada escura do teto
-        for (const n of ns) r.box(n.cx, 84, (wall + back) / 2, n.w, H - 84, this.NOOK_D, brick, bo);
-        r.beam(X0, 104, ft + 5, X1, 104, ft + 5, 9, '#4d5560', { metal: 0.7, rough: 0.4 });
-        r.beam(X0, 119, ft + 4, X1, 119, ft + 4, 5, '#6b3a22', { metal: 0.6, rough: 0.5 });
-        r.box(MX, H, ft - 60, LEN, 6, 130, '#121314', { rough: 1 });
-      } else {
-        // tampa da mureta com faixa zebrada
-        for (let k = 0, sx = X0; sx < X1; k++, sx += 40) r.box(sx + 20, H, fb + this.NOOK_D + 10, 40, 1.5, 20, k % 2 ? '#141414' : '#c9a200', { shadow: false });
-      }
+      // vergas sobre os nichos (o nicho vira uma porta baixa) e cano ao longo da parede
+      for (const n of ns) r.box((wall + back) / 2, 84, n.cy, this.NOOK_D, H - 84, n.w, brick, bo);
+      r.beam(wall - side * 5, 104, Z0, wall - side * 5, 104, Z1, 9, '#4d5560', { metal: 0.7, rough: 0.4 });
+      r.beam(wall - side * 4, 119, Z0, wall - side * 4, 119, Z1, 5, '#6b3a22', { metal: 0.6, rough: 0.5 });
     }
+    // teto escuro e boca do túnel ao fundo
+    r.box(480, H, MZ, fr - fl + 2 * this.NOOK_D + 120, 6, LEN, '#121314', { rough: 1 });
+    r.box(480, 0, Y0 - 460, 1400, H + 40, 20, '#050506');
     // ---- aviso: lâmpadas vermelhas piscando nas paredes (entre os nichos) ----
     const warnOn = d.phase === 'warn' && Math.sin(g.time * 14) > 0;
     const wcol = warnOn ? '#ff2a2a' : '#3a0c0c';
     for (const side of [-1, 1]) {
-      const xs = d.nooks.filter((n) => n.side === side).map((n) => n.cx).sort((p1, p2) => p1 - p2);
-      for (let i = 0; i < xs.length - 1; i++) {
-        const x = (xs[i] + xs[i + 1]) / 2;
-        if (side < 0) { r.box(x, 62, ft, 14, 14, 4, '#1a1a1a'); r.sphere(x, 69, ft + 3, 5, wcol, { glow: true }); }
-        else r.sphere(x, this.NEAR_H + 6, fb + this.NOOK_D + 14, 5, wcol, { glow: true });
+      const wall = side < 0 ? fl : fr;
+      const zs = d.nooks.filter((n) => n.side === side).map((n) => n.cy).sort((p1, p2) => p1 - p2);
+      for (let i = 0; i < zs.length - 1; i++) {
+        const z = (zs[i] + zs[i + 1]) / 2;
+        r.box(wall, 62, z, 4, 14, 14, '#1a1a1a'); r.sphere(wall - side * 3, 69, z, 5, wcol, { glow: true });
       }
     }
     if (d.phase === 'warn') {
       const k = warnOn ? 1.4 : 0.25;
-      lights.push([300, 140, ft + 20, '#ff2a2a', k, 520], [700, 140, fb - 20, '#ff2a2a', k, 520]);
+      lights.push([fl + 20, 140, 100, '#ff2a2a', k, 520], [fr - 20, 140, 400, '#ff2a2a', k, 520]);
     }
     // ---- nichos ----
     for (const n of d.nooks) this.drawNook3d(g, r, n);
-    // ---- trem chegando: clarão do farol na boca do túnel ----
-    const warning = d.phase === 'warn' && (!d.train || d.train.front < a.x + 40);
+    // ---- trem chegando: os faróis iluminam o fundo do túnel antes de ele aparecer ----
+    const warning = d.phase === 'warn' && (!d.train || d.train.front < Y0 + 40);
     if (warning) {
       const k = U.clamp(d.phaseT / this.TRAIN_ENTER, 0, 1);
-      lights.unshift([d.train ? d.train.front + 30 : a.x - 160 + 120 * k, 50, (ft + fb) / 2, '#fff2b0', 0.6 + 2.2 * k, 520]);
+      lights.unshift([480, 50, d.train ? d.train.front + 30 : Y0 - 100 + 300 * k, '#fff2b0', 0.6 + 2.2 * k, 600]);
+      r.sphere(480, 30, Y0 - 420, 10 + 30 * k, '#fff6c8', { glow: true, opacity: 0.6 });
     }
-    // ---- trem ----
+    // ---- trem (o que está no túnel e o que já passou) ----
     if (d.train) this.drawTrain3d(g, r, d.train.front, lights);
-    // luzes de serviço quentes
-    lights.push([240, 170, (ft + fb) / 2, '#ffd9a8', 0.75, 560], [720, 170, (ft + fb) / 2, '#ffd9a8', 0.75, 560]);
+    if (d.saida) this.drawTrain3d(g, r, d.saida.front, lights);
+    // luzes de serviço quentes ao longo das paredes (a câmera está no fim do túnel: as mais perto dela pesam mais)
+    lights.push([fl + 30, 150, 520, '#ffd9a8', 1.1, 620], [fr - 30, 150, 300, '#ffd9a8', 1.0, 620], [fl + 30, 150, 60, '#ffd9a8', 0.9, 620], [fr - 30, 150, -160, '#ffd9a8', 0.8, 620]);
     for (const l of lights.slice(0, 6)) r.light(...l);
     // ---- jogadores ----
     for (const p of g.players) {
@@ -336,59 +341,58 @@ TN.registerMinigame({
   },
 
   drawNook3d(g, r, n) {
-    const d = g.data, far = n.side < 0, wall = far ? d.floorTop : d.floorBot;
-    const back = far ? wall - this.NOOK_D : wall + this.NOOK_D, mid = (wall + back) / 2, H = far ? this.FAR_H : this.NEAR_H;
+    const d = g.data, wall = n.side < 0 ? d.floorL : d.floorR;
+    const back = wall + n.side * this.NOOK_D, mid = (wall + back) / 2;
     const blink = n.state === 'closing' && Math.sin(g.time * 18) > 0;
     const col = n.state === 'open' ? '#2fdc5a' : n.state === 'closing' ? (blink ? '#ffd23f' : '#6a5a10') : '#d0302a';
     // piso do nicho (brilho fraco da cor do estado) e soleira acesa
-    r.plane(n.cx, 0.3, mid, n.w, this.NOOK_D, '#121416');
-    r.plane(n.cx, 0.5, mid, n.w - 4, this.NOOK_D - 4, col, { glow: true, opacity: n.state === 'closed' ? 0.14 : 0.22 });
-    r.plane(n.cx, 0.7, wall, n.w, 3, col, { glow: true });
+    r.plane(mid, 0.3, n.cy, this.NOOK_D, n.w, '#121416');
+    r.plane(mid, 0.5, n.cy, this.NOOK_D - 4, n.w - 4, col, { glow: true, opacity: n.state === 'closed' ? 0.14 : 0.22 });
+    r.plane(wall, 0.7, n.cy, 3, n.w, col, { glow: true });
     // lâmpada do batente
-    if (far) { r.box(n.cx, 86, wall + 1.5, 24, 10, 3, '#1a1a1a'); r.box(n.cx, 88, wall + 3.2, 20, 6, 1, col, { glow: true }); }
-    else { r.box(n.cx, H, back + 12, 16, 6, 12, '#1a1a1a'); r.sphere(n.cx, H + 9, back + 12, 5, col, { glow: true }); }
+    r.box(wall - n.side * 1.5, 86, n.cy, 3, 10, 24, '#1a1a1a'); r.box(wall - n.side * 3.2, 88, n.cy, 1, 6, 20, col, { glow: true });
     // prensa dentada (nicho fechado): parede de dentes no fundo; avança quando esmaga
     if (n.state === 'closed') {
       const slam = n.crush > 0 ? n.crush / 0.4 : 0;
-      const pz = back - n.side * (6 + slam * (this.NOOK_D - 14));
-      const ph = far ? 70 : H;
-      r.box(n.cx, 0, pz, n.w - 4, ph, 10, n.crush > 0 ? '#e8e8e8' : '#6f757c', { metal: 0.8, rough: 0.35 });
-      for (let k = 0; k < 4; k++) for (const hy of far ? [14, 44] : [8]) {
-        r.cone(n.cx - (n.w - 14) / 2 + k * (n.w - 14) / 3, hy, pz - n.side * 5, 5, 12, '#9aa1a8', { rotX: n.side < 0 ? Math.PI / 2 : -Math.PI / 2, metal: 0.9, rough: 0.3 });
+      const px = back - n.side * (6 + slam * (this.NOOK_D - 14));
+      r.box(px, 0, n.cy, 10, 70, n.w - 4, n.crush > 0 ? '#e8e8e8' : '#6f757c', { metal: 0.8, rough: 0.35 });
+      for (let k = 0; k < 4; k++) for (const hy of [14, 44]) {
+        r.cone(px - n.side * 5, hy, n.cy - (n.w - 14) / 2 + k * (n.w - 14) / 3, 5, 12, '#9aa1a8', { rotZ: n.side < 0 ? -Math.PI / 2 : Math.PI / 2, metal: 0.9, rough: 0.3 });
       }
     }
   },
 
+  // comboio de dois trens lado a lado vindo do fundo (y crescendo): cabine na frente (y maior)
   drawTrain3d(g, r, front, lights) {
-    const d = g.data, L = this.TRAIN_LEN, half = (d.floorBot - d.floorTop) / 2;
-    for (let k = 0; k < 2; k++) {
-      const zc = d.floorTop + k * half + half / 2, dz = half - 10;
+    const L = this.TRAIN_LEN, W = 130;
+    for (const k of [-1, 1]) {
+      const xc = 480 + k * 72;
       // vagões (com vãos entre eles)
-      for (let x = front - L; x < front - 90; x += 125) {
-        const x2 = Math.min(x + 118, front - 90);
-        r.box((x + x2) / 2, 8, zc, x2 - x, 64, dz, '#5a6470', { metal: 0.5, rough: 0.45 });
-        r.box((x + x2) / 2, 40, zc + dz / 2 + 0.5, x2 - x - 16, 14, 1, '#ffe8a8', { glow: true, opacity: 0.85 });   // janelas acesas
-        r.box((x + x2) / 2, 72, zc, x2 - x - 20, 6, dz - 20, '#434c55', { metal: 0.6 });
+      for (let z = front - L; z < front - 90; z += 125) {
+        const z2 = Math.min(z + 118, front - 90);
+        r.box(xc, 8, (z + z2) / 2, W, 64, z2 - z, '#5a6470', { metal: 0.5, rough: 0.45 });
+        r.box(xc + k * (W / 2 + 0.5), 40, (z + z2) / 2, 1, 14, z2 - z - 16, '#ffe8a8', { glow: true, opacity: 0.85 });   // janelas acesas
+        r.box(xc, 72, (z + z2) / 2, W - 20, 6, z2 - z - 20, '#434c55', { metal: 0.6 });
       }
-      // cabine amarela com para-brisa e faróis
-      r.box(front - 46, 8, zc, 88, 74, dz, '#c9a227', { metal: 0.4, rough: 0.4 });
-      r.box(front - 3, 48, zc, 6, 22, dz - 22, '#1d2a33', { metal: 0.8, rough: 0.15 });
-      for (let s = 0; s < 6; s++) r.box(front - 88 + s * 15, 8, zc + dz / 2 + 0.6, 7, 20, 1, s % 2 ? '#141414' : '#f5c400', { shadow: false });
-      for (const s of [-1, 1]) r.sphere(front + 1, 28, zc + s * (dz / 2 - 12), 7, '#fff6c8', { glow: true });
+      // cabine amarela com para-brisa virado para a câmera e faróis
+      r.box(xc, 8, front - 46, W, 74, 88, '#c9a227', { metal: 0.4, rough: 0.4 });
+      r.box(xc, 48, front - 3, W - 22, 22, 6, '#1d2a33', { metal: 0.8, rough: 0.15 });
+      for (let s = 0; s < 6; s++) r.box(xc - W / 2 + 12 + s * 21, 8, front + 0.6, 10, 20, 1, s % 2 ? '#141414' : '#f5c400', { shadow: false });
+      for (const s of [-1, 1]) r.sphere(xc + s * (W / 2 - 12), 28, front + 1, 7, '#fff6c8', { glow: true });
       // facho de luz à frente
-      r.plane(front + 70, 0.9, zc, 140, dz - 10, '#fff2b0', { glow: true, opacity: 0.18 });
-      for (const wz of [-1, 1]) r.cyl(front - 60, 0, zc + wz * (dz / 2 - 6), 10, 6, '#111', { rotX: Math.PI / 2 });
+      r.plane(xc, 0.9, front + 70, W - 10, 140, '#fff2b0', { glow: true, opacity: 0.18 });
+      for (const wx of [-1, 1]) r.cyl(xc + wx * (W / 2 - 6), 0, front - 60, 10, 6, '#111', { rotZ: Math.PI / 2 });
     }
-    lights.unshift([front + 60, 40, (d.floorTop + d.floorBot) / 2, '#fff2c0', 2.4, 420]);
+    lights.unshift([480, 40, front + 60, '#fff2c0', 2.4, 420]);
   },
 
   drawOverlay(g, c) {
-    if (!TN.R3.available || !g.uses3d()) return;
-    const a = g.arena, d = g.data, D = TN.draw;
-    const warning = d.phase === 'warn' && (!d.train || d.train.front < a.x + 40);
+    if (!g.uses3d()) return;
+    const d = g.data, D = TN.draw;
+    const warning = d.phase === 'warn' && (!d.train || d.train.front < this.Y0 + 40);
     if (warning && Math.sin(g.time * 14) > 0) {
-      const s = TN.R3.project(a.x + 70, 0, (d.floorTop + d.floorBot) / 2);
-      D.text(c, '▶▶ TREM', s.x, s.y, { size: 28, color: '#ff4040', align: 'center' });
+      const s = TN.R3.project(480, 0, this.Y0 + 60);
+      D.text(c, '▼ TREM', s.x, s.y, { size: 28, color: '#ff4040', align: 'center' });
     }
     const open = d.nooks.filter((n) => n.state === 'open').length;
     let txt = null, col = '#aaa';
@@ -397,46 +401,45 @@ TN.registerMinigame({
     if (txt) { D.panel(c, g.W / 2 - 120, g.H - 34, 240, 24, { fill: 'rgba(8,10,12,0.75)', stroke: col }); D.text(c, txt, g.W / 2, g.H - 22, { size: 15, color: col, align: 'center' }); }
   },
 
+  // ---------------- 2D (alternativa sem WebGL): túnel de cima, trem de cima para baixo da tela ----------------
   draw(g, c) {
-    const a = g.arena, d = g.data, D = TN.draw, U = TN.util;
+    const d = g.data, D = TN.draw, U = TN.util, Y0 = this.Y0, Y1 = this.Y1, fl = d.floorL, fr = d.floorR;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);
-    const ft = d.floorTop, fb = d.floorBot;
+    c.save();
+    c.translate(0, 34); c.scale(1, 506 / (Y1 - Y0)); c.translate(0, -Y0);   // y do mundo → tela
     // paredes de tijolo
-    for (const [y0, h] of [[a.y, this.WALL], [fb, this.WALL]]) {
-      c.fillStyle = '#3a3330'; c.fillRect(a.x, y0, a.w, h);
+    for (const [x0, w] of [[fl - this.NOOK_D - 58, 58], [fr + this.NOOK_D, 58]]) {
+      c.fillStyle = '#3a3330'; c.fillRect(x0, Y0, w, Y1 - Y0);
       c.strokeStyle = '#2a2422'; c.lineWidth = 2;
-      for (let row = 0; row * 14 < h; row++) {
-        c.beginPath(); c.moveTo(a.x, y0 + row * 14); c.lineTo(a.x + a.w, y0 + row * 14); c.stroke();
-        for (let x = a.x + (row % 2) * 20; x < a.x + a.w; x += 40) { c.beginPath(); c.moveTo(x, y0 + row * 14); c.lineTo(x, y0 + Math.min(h, row * 14 + 14)); c.stroke(); }
+      for (let col = 0; col * 14 < w; col++) {
+        c.beginPath(); c.moveTo(x0 + col * 14, Y0); c.lineTo(x0 + col * 14, Y1); c.stroke();
+        for (let y = Y0 + (col % 2) * 20; y < Y1; y += 40) { c.beginPath(); c.moveTo(x0 + col * 14, y); c.lineTo(x0 + Math.min(w, col * 14 + 14), y); c.stroke(); }
       }
     }
-    // chão de cascalho + dois trilhos
-    c.fillStyle = '#25282c'; c.fillRect(a.x, ft, a.w, fb - ft);
-    const tracks = [ft + (fb - ft) * 0.27, ft + (fb - ft) * 0.73];
-    for (const ty of tracks) {
+    // faixa dos nichos (fundo escuro) e chão de cascalho + dois trilhos
+    c.fillStyle = '#1a1c1f'; c.fillRect(fl - this.NOOK_D, Y0, this.NOOK_D, Y1 - Y0); c.fillRect(fr, Y0, this.NOOK_D, Y1 - Y0);
+    c.fillStyle = '#25282c'; c.fillRect(fl, Y0, fr - fl, Y1 - Y0);
+    for (const tx of [480 - 55, 480 + 55]) {
       c.fillStyle = '#4a3a2c';
-      for (let x = a.x + 6; x < a.x + a.w; x += 26) c.fillRect(x, ty - 34, 12, 68);
-      c.fillStyle = '#9aa3ab'; c.fillRect(a.x, ty - 24, a.w, 5); c.fillRect(a.x, ty + 19, a.w, 5);
+      for (let y = Y0 + 6; y < Y1; y += 26) c.fillRect(tx - 34, y, 68, 12);
+      c.fillStyle = '#9aa3ab'; c.fillRect(tx - 24, Y0, 5, Y1 - Y0); c.fillRect(tx + 19, Y0, 5, Y1 - Y0);
     }
-    // faixas de segurança na beira das paredes
-    c.fillStyle = 'rgba(245,196,0,0.5)'; c.fillRect(a.x, ft, a.w, 3); c.fillRect(a.x, fb - 3, a.w, 3);
-    // aviso: lâmpadas vermelhas nas paredes piscando
-    const warning = d.phase === 'warn' && !d.train || (d.train && d.train.front < a.x + 40);
+    c.fillStyle = 'rgba(245,196,0,0.5)'; c.fillRect(fl, Y0, 3, Y1 - Y0); c.fillRect(fr - 3, Y0, 3, Y1 - Y0);
+    // aviso: lâmpadas vermelhas nas paredes piscando; farol do trem vindo do fundo (de cima)
+    const warning = d.phase === 'warn' && (!d.train || d.train.front < Y0 + 40);
     if (d.phase === 'warn') {
       const on = Math.sin(g.time * 14) > 0;
-      for (let x = a.x + 20; x < a.x + a.w; x += 110) {
-        for (const y of [a.y + 8, a.y + a.h - 8]) {
+      for (let y = Y0 + 30; y < Y1; y += 110) {
+        for (const x of [fl - this.NOOK_D - 8, fr + this.NOOK_D + 8]) {
           c.fillStyle = on ? '#ff2a2a' : '#4a0d0d'; c.beginPath(); c.arc(x, y, 5, 0, Math.PI * 2); c.fill();
-          if (on) { c.fillStyle = 'rgba(255,40,40,0.18)'; c.beginPath(); c.arc(x, y, 16, 0, Math.PI * 2); c.fill(); }
         }
       }
       if (warning) {
-        // farol do trem se aproximando pela esquerda
         const k = U.clamp(d.phaseT / this.TRAIN_ENTER, 0, 1);
-        const gr = c.createLinearGradient(a.x, 0, a.x + 260 * k + 40, 0);
+        const gr = c.createLinearGradient(0, Y0, 0, Y0 + 260 * k + 40);
         gr.addColorStop(0, `rgba(255,240,160,${0.45 * k})`); gr.addColorStop(1, 'rgba(255,240,160,0)');
-        c.fillStyle = gr; c.fillRect(a.x, ft, 300, fb - ft);
-        if (on) D.text(c, '▶▶ TREM', a.x + 14, (ft + fb) / 2, { size: 26, color: '#ff4040' });
+        c.fillStyle = gr; c.fillRect(fl, Y0, fr - fl, 300);
+        if (on) D.text(c, '▼ TREM', 480, Y0 + 40, { size: 26, color: '#ff4040', align: 'center' });
       }
     }
     // nichos
@@ -444,56 +447,56 @@ TN.registerMinigame({
     // jogadores mortos (embaixo do trem), vivos
     for (const p of g.players) if (!p.alive) g.drawPlayer(c, p);
     for (const p of g.alive()) g.drawPlayer(c, p, { flash: Math.hypot(p.vx, p.vy) > 40 || p.data.wind > 0 });
-    // trem (dois vagões lado a lado ocupando o túnel)
+    // trem (dois comboios lado a lado)
     if (d.train) this.drawTrain(g, c, d.train.front);
+    if (d.saida) this.drawTrain(g, c, d.saida.front);
+    c.restore();
     // contagem de nichos abertos
     const open = d.nooks.filter((n) => n.state === 'open').length;
-    if (d.phase === 'wait') D.text(c, `PRÓXIMO TREM: ${Math.max(0, this.WAIT - d.phaseT).toFixed(1)} s`, g.W / 2, a.y + a.h + 26, { size: 16, color: '#aaa', align: 'center' });
-    else if (open) D.text(c, `NICHOS ABERTOS: ${open}`, g.W / 2, a.y + a.h + 26, { size: 16, color: '#4f4', align: 'center' });
+    if (d.phase === 'wait') D.text(c, `PRÓXIMO TREM: ${Math.max(0, this.WAIT - d.phaseT).toFixed(1)} s`, g.W / 2, g.H - 18, { size: 16, color: '#aaa', align: 'center' });
+    else if (open) D.text(c, `NICHOS ABERTOS: ${open}`, g.W / 2, g.H - 18, { size: 16, color: '#4f4', align: 'center' });
   },
 
   drawNook(g, c, n) {
-    const d = g.data, w = n.w, D = TN.draw;
-    const x = n.cx - w / 2, y = n.side < 0 ? d.floorTop - this.NOOK_D : d.floorBot;
+    const d = g.data, w = n.w;
+    const y = n.cy - w / 2, x = n.side < 0 ? d.floorL - this.NOOK_D : d.floorR;
     const blink = n.state === 'closing' && Math.sin(g.time * 18) > 0;
     const col = n.state === 'open' ? '#2fdc5a' : n.state === 'closing' ? (blink ? '#ffd23f' : '#6a5a10') : '#d0302a';
-    c.fillStyle = '#121416'; c.fillRect(x, y, w, this.NOOK_D);
+    c.fillStyle = '#121416'; c.fillRect(x, y, this.NOOK_D, w);
     c.fillStyle = n.state === 'open' ? 'rgba(47,220,90,0.22)' : n.state === 'closed' ? 'rgba(208,48,42,0.18)' : 'rgba(255,210,63,0.15)';
-    c.fillRect(x, y, w, this.NOOK_D);
+    c.fillRect(x, y, this.NOOK_D, w);
     if (n.state === 'closed') {
       // prensa: dentes no fundo do nicho
-      const back = n.side < 0 ? y : y + this.NOOK_D;
+      const back = n.side < 0 ? x : x + this.NOOK_D;
       c.fillStyle = n.crush > 0 ? '#fff' : '#777';
       for (let k = 0; k < 5; k++) {
-        const tx = x + 3 + k * (w - 6) / 5;
-        c.beginPath(); c.moveTo(tx, back); c.lineTo(tx + (w - 6) / 10, back - n.side * 12); c.lineTo(tx + (w - 6) / 5, back); c.fill();
+        const ty = y + 3 + k * (w - 6) / 5;
+        c.beginPath(); c.moveTo(back, ty); c.lineTo(back - n.side * 12, ty + (w - 6) / 10); c.lineTo(back, ty + (w - 6) / 5); c.fill();
       }
     }
-    c.strokeStyle = col; c.lineWidth = 3; c.strokeRect(x + 1.5, y + 1.5, w - 3, this.NOOK_D - 3);
+    c.strokeStyle = col; c.lineWidth = 3; c.strokeRect(x + 1.5, y + 1.5, this.NOOK_D - 3, w - 3);
     // lâmpada no batente
-    const ly = n.side < 0 ? y - 0 + 6 : y + this.NOOK_D - 6;
-    c.fillStyle = col; c.beginPath(); c.arc(n.cx, ly, 4, 0, Math.PI * 2); c.fill();
+    const lx = n.side < 0 ? x + this.NOOK_D - 6 : x + 6;
+    c.fillStyle = col; c.beginPath(); c.arc(lx, n.cy, 4, 0, Math.PI * 2); c.fill();
   },
 
   drawTrain(g, c, front) {
-    const a = g.arena, d = g.data, L = this.TRAIN_LEN;
+    const d = g.data, L = this.TRAIN_LEN;
     c.save();
-    c.beginPath(); c.rect(a.x, d.floorTop - 4, a.w, d.floorBot - d.floorTop + 8); c.clip();
-    const half = (d.floorBot - d.floorTop) / 2;
+    c.beginPath(); c.rect(d.floorL - 4, this.Y0 - 400, d.floorR - d.floorL + 8, 2000); c.clip();
+    const half = (d.floorR - d.floorL) / 2;
     for (let k = 0; k < 2; k++) {
-      const y = d.floorTop + k * half + 3, h = half - 6;
+      const x = d.floorL + k * half + 3, w = half - 6;
       c.fillStyle = '#5a6470'; c.strokeStyle = '#1a1d20'; c.lineWidth = 3;
-      c.beginPath(); c.roundRect(front - L, y, L, h, 10); c.fill(); c.stroke();
-      c.fillStyle = '#c9a227'; c.beginPath(); c.roundRect(front - 70, y + 4, 66, h - 8, 12); c.fill();   // cabine
-      c.fillStyle = '#1d2a33'; c.fillRect(front - 28, y + 14, 14, h - 28);                           // para-brisa
+      c.beginPath(); c.roundRect(x, front - L, w, L, 10); c.fill(); c.stroke();
+      c.fillStyle = '#c9a227'; c.beginPath(); c.roundRect(x + 4, front - 70, w - 8, 66, 12); c.fill();   // cabine
+      c.fillStyle = '#1d2a33'; c.fillRect(x + 14, front - 28, w - 28, 14);                              // para-brisa
       c.fillStyle = '#434c55';
-      for (let x = front - L + 20; x < front - 90; x += 70) { c.fillRect(x, y + 14, 48, h - 28); }   // vagões
-      c.strokeStyle = '#1a1d20'; c.lineWidth = 2;
-      for (let x = front - L + 140; x < front - 80; x += 140) { c.beginPath(); c.moveTo(x, y); c.lineTo(x, y + h); c.stroke(); }
+      for (let y = front - L + 20; y < front - 90; y += 70) c.fillRect(x + 14, y, w - 28, 48);         // vagões
       // farol
-      const gr = c.createLinearGradient(front, 0, front + 120, 0);
+      const gr = c.createLinearGradient(0, front, 0, front + 120);
       gr.addColorStop(0, 'rgba(255,245,180,0.55)'); gr.addColorStop(1, 'rgba(255,245,180,0)');
-      c.fillStyle = gr; c.fillRect(front, y + 6, 120, h - 12);
+      c.fillStyle = gr; c.fillRect(x + 6, front, w - 12, 120);
     }
     c.restore();
   },

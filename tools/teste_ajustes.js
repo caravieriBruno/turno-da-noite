@@ -204,22 +204,22 @@ function secaoCabo() {
 function secaoTrem() {
   const def = TN.minigames.hora_do_trem;
   ok(def.SHOVE_RANGE === 72 && def.SHOVE_LOCK === 0.35 && def.FORA_DO_NICHO === 0.3, 'trem: alcance 72, recarga 0,35, 0,3 s sem reentrar');
-  for (const lado of [-1, 1]) {   // Review Focus 5: parede de cima e de baixo
+  for (const lado of [-1, 1]) {   // Review Focus 5: parede da esquerda e da direita (eixos transpostos: o túnel corre em y)
     const g = rodada('hora_do_trem'), d = g.data, n = d.nooks.find((k) => k.side === lado);
     n.state = 'open';
     const a = g.players[0], v = g.players[1];
-    v.x = n.cx; v.y = lado < 0 ? d.floorTop - 20 : d.floorBot + 20;   // fundo do nicho
-    a.x = n.cx + 30; a.y = lado < 0 ? d.floorTop + 10 : d.floorBot - 10; a.dir = Math.atan2(v.y - a.y, v.x - a.x);
+    v.y = n.cy; v.x = lado < 0 ? d.floorL - 20 : d.floorR + 20;   // fundo do nicho
+    a.y = n.cy + 30; a.x = lado < 0 ? d.floorL + 10 : d.floorR - 10; a.dir = Math.atan2(v.y - a.y, v.x - a.x);
     ok(def.nookOf(g, v) === n, `trem (lado ${lado}): vítima está no nicho`);
     def.shove(g, a);
-    ok(Math.abs(v.vx) < 1 && Math.sign(v.vy) === -lado && Math.abs(v.vy) > 300, `trem (lado ${lado}): empurrão sai reto do nicho (vx ${v.vx.toFixed(0)}, vy ${v.vy.toFixed(0)})`);
+    ok(Math.abs(v.vy) < 1 && Math.sign(v.vx) === -lado && Math.abs(v.vx) > 300, `trem (lado ${lado}): empurrão sai reto do nicho (vx ${v.vx.toFixed(0)}, vy ${v.vy.toFixed(0)})`);
     ok(v.data.foraT === 0.3, `trem (lado ${lado}): vítima fica 0,3 s sem reentrar (${v.data.foraT})`);
     let quadros = 0;   // quadros reais: enquanto está atordoada (vel > 40), a janela de reentrada nem começa a contar
     while (Math.hypot(v.vx, v.vy) > 40 && quadros < 120) { passo(g); quadros++; }
     ok(quadros > 0 && v.data.foraT >= 0.29, `trem (lado ${lado}): ao fim do atordoamento (${(quadros / 60).toFixed(2)} s) ainda faltam ${v.data.foraT.toFixed(2)} s sem poder reentrar`);
-    v.x = n.cx; v.y = lado < 0 ? d.floorTop - 20 : d.floorBot + 20; passo(g);   // teleporta de volta ao fundo do nicho
+    v.y = n.cy; v.x = lado < 0 ? d.floorL - 20 : d.floorR + 20; passo(g);   // teleporta de volta ao fundo do nicho
     ok(!def.seguro(g, v), `trem (lado ${lado}): dentro do nicho mas com foraT > 0 não conta como segura`);
-    segundos(g, 0.35); v.x = n.cx; v.y = lado < 0 ? d.floorTop - 20 : d.floorBot + 20;
+    segundos(g, 0.35); v.y = n.cy; v.x = lado < 0 ? d.floorL - 20 : d.floorR + 20;
     ok(v.data.foraT === 0 && def.seguro(g, v), `trem (lado ${lado}): passada a janela, volta a valer o esconderijo`);
   }
 }
