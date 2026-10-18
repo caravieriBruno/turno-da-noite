@@ -24,7 +24,8 @@ TN.registerMinigame({
   // ---- constantes (originais: 5 peças, cola nunca primeiro, recarga 3,0 s) ----
   SPEED: 175, PICK_R: 30, BENCH_REACH: 18,
   SHOT_RANGE: 170, SHOT_HALF: 0.24, COOLDOWN: 3,
-  RESPAWN: 3, MAX_FLOOR: 12, START_PARTS: 10,
+  RESPAWN: 2, MAX_FLOOR: 14, START_PARTS: 14,
+  SPAWN_TEMPO: 2, MIN_CHAO: 8,   // além da reposição por inserção, entra 1 peça a cada 2 s se o chão tem menos de 8
   TYPES: ['engrenagem', 'cano', 'cola', 'chapa', 'modulo'],
   NAMES: { engrenagem: 'ENGRENAGEM', cano: 'CANO', cola: 'COLA', chapa: 'CHAPA', modulo: 'MÓDULO' },
 
@@ -45,12 +46,7 @@ TN.registerMinigame({
     d.respawns = [];          // tempos (g.time) em que nasce uma peça nova
     d.shots = [];             // rastros de tiro (só visual)
     d.lastBonus = false;
-    // peças iniciais: ciclos embaralhados dos 5 tipos (como no original)
-    let bag = [];
-    for (const s of U.shuffle(d.spots.slice()).slice(0, this.START_PARTS)) {
-      if (!bag.length) bag = U.shuffle(this.TYPES.slice());
-      d.parts.push({ type: bag.pop(), x: s.x + U.rand(-8, 8), y: s.y + U.rand(-8, 8), rot: U.rand(0, 6.28) });
-    }
+    d.proximoSpawn = this.SPAWN_TEMPO;
     g.players.forEach((p, i) => {
       const b = d.benches[i];
       p.x = b.x + b.w / 2; p.y = i < 2 ? b.y + b.h + 34 : b.y - 34; p.dir = i < 2 ? Math.PI / 2 : -Math.PI / 2;
@@ -59,6 +55,25 @@ TN.registerMinigame({
       rec.splice(U.randInt(1, 4), 0, 'cola');
       p.data = { recipe: rec, prog: 0, carry: null, gunReady: false, hasGun: false, cd: 0, wrong: 0, okFlash: 0, botPrevA: false, botPrevB: false, bot: { dodge: 0, side: U.chance(0.5) ? 1 : -1 } };
     });
+    // peças iniciais: primeiro a 1ª peça da receita de cada um (ninguém começa travado), depois ciclos
+    // embaralhados dos 5 tipos (como no original)
+    let bag = g.players.map((p) => p.data.recipe[0]);
+    for (const s of U.shuffle(d.spots.slice()).slice(0, this.START_PARTS)) {
+      if (!bag.length) bag = U.shuffle(this.TYPES.slice());
+      d.parts.push({ type: bag.pop(), x: s.x + U.rand(-8, 8), y: s.y + U.rand(-8, 8), rot: U.rand(0, 6.28) });
+    }
+  },
+  // tipo a repor: o de maior demanda não atendida (quem precisa dele agora − no chão − nas mãos); sem
+  // demanda, sorteia. Antes era sorteio puro, e faltava justamente o tipo que alguém precisava.
+  tipoParaRepor(g) {
+    const d = g.data, vivos = g.alive();
+    let melhor = null, maior = 0;
+    for (const t of this.TYPES) {
+      const demanda = vivos.filter((p) => p.data.prog < 5 && p.data.recipe[p.data.prog] === t).length
+        - d.parts.filter((pt) => pt.type === t).length - vivos.filter((p) => p.data.carry === t).length;
+      if (demanda > maior) { maior = demanda; melhor = t; }
+    }
+    return melhor || TN.util.pick(this.TYPES);
   },
 
   nearBench(g, p) {
@@ -144,14 +159,15 @@ TN.registerMinigame({
     }
     U.separate(g.alive());
     for (const p of g.alive()) this.solidBenches(g, p);
-    // reposição de peças
+    // reposição de peças: por inserção certa (d.respawns) e por tempo, quando o chão está vazio
+    if (g.time >= d.proximoSpawn) { d.proximoSpawn = g.time + this.SPAWN_TEMPO; if (d.parts.length < this.MIN_CHAO) d.respawns.push(g.time); }
     for (let i = d.respawns.length - 1; i >= 0; i--) {
       if (g.time < d.respawns[i]) continue;
       d.respawns.splice(i, 1);
       if (d.parts.length >= this.MAX_FLOOR) continue;
       const free = d.spots.filter((sp) => !d.parts.some((pt) => U.dist(pt.x, pt.y, sp.x, sp.y) < 30));
       const sp = free.length ? U.pick(free) : U.pick(d.spots);
-      d.parts.push({ type: U.pick(this.TYPES), x: sp.x, y: sp.y, rot: U.rand(0, 6.28) });
+      d.parts.push({ type: this.tipoParaRepor(g), x: sp.x, y: sp.y, rot: U.rand(0, 6.28) });
       g.particles(sp.x, sp.y, '#fff', 6, 80);
     }
     for (const sh of d.shots) sh.t -= dt;

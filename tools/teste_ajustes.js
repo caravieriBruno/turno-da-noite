@@ -94,8 +94,25 @@ function secaoTriagem() {
   ok(d.phase === 'play' && d.sub === 2, 'triagem: ~1,5 s depois começa o turno 2');
 }
 
+// --- linha de montagem: reposição pela necessidade e por tempo ---
+function secaoFabrica() {
+  const def = TN.minigames.fabrica_de_armas, g = rodada('fabrica_de_armas'), d = g.data;
+  ok(def.START_PARTS === 14 && def.MAX_FLOOR === 14 && def.RESPAWN === 2, 'fábrica: 14 peças iniciais, chão 14, reposição 2 s');
+  ok(d.parts.length === 14 && g.players.every((p) => d.parts.some((pt) => pt.type === p.data.recipe[0])), 'fábrica: no início há 14 peças e a 1ª peça da receita de cada um');
+  const precisa = g.players[0].data.recipe[0];
+  d.parts = d.parts.filter((pt) => pt.type !== precisa);
+  for (const p of g.players) { p.data.prog = 0; p.data.recipe[0] = precisa; p.data.carry = null; }
+  ok(def.tipoParaRepor(g) === precisa, 'fábrica: repõe o tipo que todos precisam e não há no chão');
+  d.parts = []; segundos(g, 2.1);
+  ok(d.parts.length >= 1, `fábrica: com o chão vazio entra peça por tempo (${d.parts.length})`);
+  // Review Focus 2: todos já montaram
+  for (const p of g.players) p.data.prog = 5;
+  let erro = ''; try { def.tipoParaRepor(g); } catch (e) { erro = e.message; }
+  ok(!erro && def.TYPES.includes(def.tipoParaRepor(g)), 'fábrica: sem demanda, a reposição sorteia e não quebra');
+}
+
 // SEÇÕES (uma por jogo; cada tarefa define a sua função acima deste bloco e acrescenta o nome no array)
-const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem];
+const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica];
 for (const s of secoes) { try { s(); } catch (e) { ok(false, `${s.name}: exceção ${e.message}`); } }
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
