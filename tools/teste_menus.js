@@ -258,7 +258,7 @@ function secaoRoda() {
   quadro({ kb2: 'a' }); const s1 = lobby.slots[1]; s1.nome = 'BRUNO'; s1.cursor = 5; quadro({ kb2: 'a' });
   ok(s1.nome === 'BRUNO 2', `roda: nome repetido vira "BRUNO 2" (${s1.nome})`);
   quadro({ kb3: 'a' }); const s2 = lobby.slots[2]; s2.nome = 'FERRUGEM'; s2.cursor = 8; quadro({ kb3: 'a' });
-  quadro({ gp0: 'a' }); const s3 = lobby.slots[3]; s3.nome = 'FERRUGEM'; s3.cursor = 8; quadro({ gp0: 'a' });
+  quadro({ 'n1:kb1': 'a' }); const s3 = lobby.slots[3]; s3.nome = 'FERRUGEM'; s3.cursor = 8; quadro({ 'n1:kb1': 'a' });   // (gp0 não existe no Node)
   ok(s3.nome.length <= 8 && s3.nome !== 'FERRUGEM' && s3.nome.endsWith(' 2'), `roda: repetido com 8 letras cabe em 8 (${s3.nome})`);
   // o remoto edita o próprio nome pela entrada abstrata, e a cela vazia sai com EXTRA
   quadro({ kb1: 'a' }); ok(s0.ready, 'roda: AÇÃO na cela = PRONTO');
@@ -274,6 +274,16 @@ function secaoRoda() {
   ok(/AÇÃO ✓/.test(textos(l3)), 'roda: a cela editando mostra a dica dos botões');
 }
 
+// --- 9. menus mostram o nome, não P1 ---
+function secaoMenusComNome() {
+  for (const cena of ['Setup', 'Brief', 'RoundOver', 'ScoreScreen', 'Final']) {
+    const t = textos(TN.cenaDeTeste(cena));
+    ok(/BRUNO/.test(t) && /SOMBRA/.test(t) && !/\bP[1-4]\b/.test(t), `${cena}: mostra os nomes e nenhum P1..P4`);
+  }
+  TN.cenaDeTeste('Brief'); const ri = new S.RoundIntro(1); TN.go(ri);
+  ok(/BRUNO/.test(textos(ri)) && !/\bP1\b/.test(textos(ri)), 'RoundIntro: lembrete usa o nome');
+}
+
 secaoDono();
 secaoGiz();
 secaoCenas();
@@ -282,6 +292,7 @@ secaoTelasDaPartida();
 secaoInstrucoes();
 secaoNomes();
 secaoRoda();
+secaoMenusComNome();
 // CHAMADAS EXTRAS (as tarefas seguintes acrescentam aqui)
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
