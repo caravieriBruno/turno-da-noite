@@ -59,6 +59,11 @@
     return p1 && TN.input.devices().includes(p1.device) ? (id) => id === p1.device : TN.input.ehLocal;
   }
   TN.donoDoMenu = donoDoMenu;
+  // texto do rodapé: quem manda no menu agora (o P1 pelo nome; sem humano local, o host)
+  function avisoDono(roster) {
+    const p1 = (roster || []).filter((p) => !p.isBot && TN.input.ehLocal(p.device)).sort((a, b) => a.id - b.id)[0];
+    return p1 ? `só ${p1.name} mexe no menu` : 'só o host mexe no menu';
+  }
 
   // ---- menus de giz ----
   // move a seleção com cima/baixo; selAt marca quando ela mudou (o círculo de giz se redesenha)
@@ -329,7 +334,7 @@
         G.detento(c, 660, 140 + i * 56, 13, p.color);
         G.texto(c, `${p.name} ${p.isBot ? '(BOT)' : TN.input.deviceLabel(p.device).split(' · ')[0]}`, 690, 140 + i * 56, { size: 15, color: G.desbotar(p.color), maxWidth: 250 });
       });
-      rodape(c, 'As etapas sorteadas são embaralhadas · só o P1 mexe no menu · ESC volta ao lobby');
+      rodape(c, `As etapas sorteadas são embaralhadas · ${avisoDono(this.roster)} · ESC volta ao lobby`);
     }
   }
 
@@ -487,7 +492,7 @@
       G.linha(c, 0, 110, TN.W, 110, { color: G.CORES.apagadoForte }); G.linha(c, 0, 430, TN.W, 430, { color: G.CORES.apagadoForte });
       G.titulo(c, 'SILÊNCIO, GUARDA NA RONDA', TN.W / 2, 165, 36);
       menuGiz(c, this.items(), this.sel, TN.W / 2, 255, this.t - (this.selAt || 0), { size: 24, gap: 48 });
-      G.texto(c, 'só o P1 mexe no menu', TN.W / 2, 410, { size: 13, color: G.CORES.apagadoForte, align: 'center' });
+      G.texto(c, avisoDono(TN.session && TN.session.roster), TN.W / 2, 410, { size: 13, color: G.CORES.apagadoForte, align: 'center' });
     }
   }
 
@@ -602,7 +607,7 @@
         G.texto(c, ultimo ? 'SOLITÁRIA' : 'RECAPTURADO', x, CHAO + 42, { size: 14, color: ultimo ? G.CORES.perigo : G.CORES.giz, align: 'center', maxWidth: 140 });
       });
       menuGiz(c, ['TENTAR DE NOVO', 'VOLTAR PRA CELA'], this.sel, TN.W / 2, 468, this.t - (this.selAt || 0), { size: 20, gap: 30 });
-      rodape(c, 'só o P1 mexe no menu');
+      rodape(c, avisoDono(s.roster));
     }
   }
 

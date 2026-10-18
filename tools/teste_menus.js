@@ -174,12 +174,12 @@ function secaoTelasSemSessao() {
 // --- 5. telas da partida: giz e vocabulário do plano em etapas ---
 function secaoTelasDaPartida() {
   const ts = textos(TN.cenaDeTeste('Setup'));
-  ok(['MONTAR O PLANO', 'COMEÇAR A FUGA', 'ETAPAS DO PLANO', 'TENTATIVAS POR ETAPA', 'ETAPAS POSSÍVEIS', 'só o P1 mexe no menu'].every((x) => ts.includes(x)), 'montar o plano: textos novos');
+  ok(['MONTAR O PLANO', 'COMEÇAR A FUGA', 'ETAPAS DO PLANO', 'TENTATIVAS POR ETAPA', 'ETAPAS POSSÍVEIS', 'mexe no menu'].every((x) => ts.includes(x)), 'montar o plano: textos novos');
   ok(textos(TN.cenaDeTeste('Picker')).includes('ETAPA 3 DE 6'), 'roleta: ETAPA 3 DE 6');
   const tb = textos(TN.cenaDeTeste('Brief'));
   ok(tb.includes('TÚNEL CAVADO') && tb.includes('51 m') && tb.includes('3 TENTATIVAS · ETAPA 3/6'), 'briefing: túnel cavado em metros');
   const tp = textos(TN.cenaDeTeste('Pause'));
-  ok(['SILÊNCIO, GUARDA NA RONDA', 'CONTINUAR', 'PULAR ESTA ETAPA', 'DESISTIR DA FUGA', 'só o P1 mexe no menu'].every((x) => tp.includes(x)), 'pausa: textos novos e aviso de que só o P1 mexe');
+  ok(['SILÊNCIO, GUARDA NA RONDA', 'CONTINUAR', 'PULAR ESTA ETAPA', 'DESISTIR DA FUGA', 'mexe no menu'].every((x) => tp.includes(x)), 'pausa: textos novos e aviso de que só o P1 mexe');
   const tr = textos(TN.cenaDeTeste('RoundOver'));
   ok(tr.includes('FIM DA TENTATIVA') && /\+\d+ m/.test(tr), 'fim da tentativa: ganho em metros');
   const ri = new S.RoundIntro(2); TN.go(ri);
@@ -188,7 +188,7 @@ function secaoTelasDaPartida() {
   const tsc = textos(sc);
   ok(tsc.includes('QUANTO CADA UM CAVOU') && tsc.includes('Próxima: etapa 4/6'), 'placar: quanto cada um cavou');
   const tf = textos(TN.cenaDeTeste('Final'));
-  ok(['O APITO TOCOU', 'SOLITÁRIA', 'RECAPTURADO', 'TENTAR DE NOVO', 'VOLTAR PRA CELA', 'só o P1 mexe no menu'].every((x) => tf.includes(x)) && /P\d (\(BOT\) )?FUGIU!/.test(tf), 'pódio: fugiu, recapturado e solitária');
+  ok(['O APITO TOCOU', 'SOLITÁRIA', 'RECAPTURADO', 'TENTAR DE NOVO', 'VOLTAR PRA CELA', 'mexe no menu'].every((x) => tf.includes(x)) && /[A-Z0-9 -]+ (\(BOT\) )?FUGIU!/.test(tf), 'pódio: fugiu, recapturado e solitária');
   // com 2 detentos: só FUGIU e SOLITÁRIA
   TN.cenaDeTeste('Final');
   TN.session.roster = TN.session.roster.slice(0, 2);
