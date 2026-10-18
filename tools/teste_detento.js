@@ -108,11 +108,28 @@ async function secaoDetento() {
   const p0 = W(a, 'pelvis'); a.avancar(1); a.root.updateMatrixWorld(true); const p1 = W(a, 'pelvis');
   ok(Math.hypot(p1.x - p0.x, p1.z - p0.z) < 6, `corrida no lugar (pélvis andou ${Math.hypot(p1.x - p0.x, p1.z - p0.z).toFixed(1)})`);
   ok(Math.abs(a.acao.timeScale - 1) < 0.05, 'velocidade 170 → animação em 1x');
-  a.pose('walk', 340); ok(a.acao.timeScale > 1.7, 'mais rápido → a corrida anima mais rápido');
+  a.pose('walk', 300); ok(a.acao.timeScale > 1.7, 'mais rápido → a corrida anima mais rápido');
   // walk → idle → walk rápido (bot hesitando, rede a 30 snapshots/s): a corrida continua de onde estava
   a.pose('walk', 170); a.avancar(0.4); const tCorrida = a.acao.time;
   a.pose('idle'); a.avancar(0.05); a.pose('walk', 170); a.avancar(0.05);
   ok(a.atual === 'Jog_Fwd_Loop' && a.acao.time > tCorrida, `troca rápida walk/idle não reinicia a corrida (t ${tCorrida.toFixed(2)} → ${a.acao.time.toFixed(2)})`);
+  // posturas novas
+  a.pose('pull'); ok(a.atual === 'Push_Loop' && a.acao.timeScale === -1, 'pull: Push_Loop tocado ao contrário (puxar)');
+  a.pose('arms'); ok(a.atual === 'Push_Loop' && a.acao.timeScale === 1, 'arms depois de pull: mesmo clipe, de novo para a frente');
+  a.pose('jump'); ok(a.atual === 'Jump_Start', 'jump começa com Jump_Start');
+  a.avancar(2); a.pose('jump'); a.avancar(0.1);
+  ok(a.atual === 'Jump_Loop' && a.acao.isRunning(), `jump: depois do impulso emenda no Jump_Loop sem reiniciar (${a.atual})`);
+  a.pose('jump'); ok(a.atual === 'Jump_Loop', 'jump mantido não volta ao impulso');
+  a.pose('land'); ok(a.atual === 'Jump_Land', 'land: Jump_Land');
+  a.pose('crouch', 100); ok(a.atual === 'Crouch_Fwd_Loop', 'crouch em movimento → Crouch_Fwd_Loop');
+  a.pose('crouch', 0); ok(a.atual === 'Crouch_Idle_Loop', 'crouch parado → Crouch_Idle_Loop');
+  a.pose('walk', 50); ok(a.atual === 'Walk_Loop', 'walk devagar (50 px/s) → Walk_Loop');
+  a.pose('walk', 170); ok(a.atual === 'Jog_Fwd_Loop', 'walk a 170 px/s → Jog_Fwd_Loop');
+  a.pose('walk', 400); ok(a.atual === 'Sprint_Loop' && a.acao.timeScale > 0.9, 'walk a 400 px/s → Sprint_Loop');
+  a.pose('shoot'); a.avancar(3);
+  ok(a.atual === 'Pistol_Shoot' && Math.abs(a.acao.time - m.clipes.get('Pistol_Shoot').duration) < 0.05, 'shoot toca uma vez e para no fim');
+  a.pose('aim'); ok(a.atual === 'Pistol_Aim_Neutral', 'aim: Pistol_Aim_Neutral (apontando)');
+  for (const [pose, clipe] of [['hold', 'Idle_Torch_Loop'], ['work', 'Interact'], ['statue', 'A_TPose'], ['dance', 'Dance_Loop'], ['swing', 'Sword_Attack'], ['gun', 'Pistol_Idle_Loop'], ['drive', 'Driving_Loop'], ['hit', 'Hit_Chest']]) { a.pose(pose); ok(a.atual === clipe, `pose ${pose} → ${clipe}`); }
   const b = D.criar(m, mats()); b.pose('sit');
   ok(b.atual === 'Sitting_Idle_Loop' && a.atual !== b.atual, 'duas instâncias com animações independentes');
   const semSentar = { ...m, clipes: new Map([...m.clipes].filter(([n]) => n !== 'Sitting_Idle_Loop')) };
