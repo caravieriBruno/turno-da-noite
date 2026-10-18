@@ -196,8 +196,22 @@ function secaoTragada() {
   ok(!/F[ÔO]LEGO|PULM/i.test(t), 'tragada: nenhum rótulo de fôlego/pulmão na tela');
 }
 
+// --- batata quente: segurar esquenta o pavio ---
+function secaoBatata() {
+  const def = TN.minigames.batata_quente, g = rodada('batata_quente');
+  segundos(g, 1.5);   // a batata sai do pedestal em 0,6 s e voa 0,75 s até o primeiro
+  const pot = g.data.pot, dono = pot && pot.holder;
+  ok(pot && pot.state === 'held' && dono, 'batata: alguém segura a batata');
+  pot.fuse = 10; pot.heldT = 0; solta();
+  segundos(g, 2);
+  ok(pot.holder === dono && pot.fuse < 7.3, `batata: 2 s na mão queimam mais que 2 s de pavio (restou ${pot.fuse.toFixed(2)})`);
+  ok(g._popups.some((pp) => pp.text === 'QUEIMANDO!'), 'batata: aviso QUEIMANDO! depois de 1,5 s');
+  const i = dono.id; aperta(i, { a: true }); passo(g); solta();
+  ok(pot.state === 'flight' && pot.heldT === 0, 'batata: passar zera o tempo na mão');
+}
+
 // SEÇÕES (uma por jogo; cada tarefa define a sua função acima deste bloco e acrescenta o nome no array)
-const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato, secaoMemoria, secaoPisoFalso, secaoTragada];
+const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato, secaoMemoria, secaoPisoFalso, secaoTragada, secaoBatata];
 for (const s of secoes) { try { s(); } catch (e) { ok(false, `${s.name}: exceção ${e.message}`); } }
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

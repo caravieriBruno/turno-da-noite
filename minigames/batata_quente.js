@@ -24,6 +24,8 @@ TN.registerMinigame({
   CATCH_LOCK: 0.3,     // quem recebe não pode devolver na hora
   LAUNCH: 0.75,        // voo do pedestal até a primeira vítima
   FUSE_MIN: 4, FUSE_MAX: 12,
+  AQUECE: 0.6, AQUECE_MAX: 3,   // a batata esquenta na mão: o pavio queima 1 + 0,6×s (até 3×) com o tempo seguro
+  QUEIMA_AVISO: 1.5,            // segundos na mão até o aviso QUEIMANDO!
   DROP_TIME: 0.7,      // tempo para juntar a batata do chão depois de derrubar
   RESPAWN: 1.8,        // pausa entre uma explosão e a próxima batata
 
@@ -65,6 +67,7 @@ TN.registerMinigame({
       fuse: U.rand(this.FUSE_MIN, this.FUSE_MAX),
       mood: U.rand(0.7, 1.35),       // deixa o tique-taque menos legível de batata para batata
       tickT: 0.4, interval: 0.6, blink: 0, x: this.CX, y: this.CY, z: 0, spin: 0,
+      heldT: 0, avisou: false,        // tempo na mão do portador atual
     };
     g.data.pedGlow = 1;
     g.sfx('shoot');
@@ -98,7 +101,7 @@ TN.registerMinigame({
       return;
     }
     pot.state = 'flight'; pot.from = p; pot.to = to; pot.holder = null;
-    pot.t = 0; pot.dur = this.TRAVEL; pot.arc = 34;
+    pot.t = 0; pot.dur = this.TRAVEL; pot.arc = 34; pot.heldT = 0; pot.avisou = false;
     g.sfx('whoosh');
   },
 
@@ -153,12 +156,18 @@ TN.registerMinigame({
     if (!pot) return;
     pot.spin += dt * 6;
     pot.blink = Math.max(0, pot.blink - dt);
-    // pavio secreto
-    pot.fuse -= dt;
+    // pavio secreto; na mão de alguém queima mais rápido quanto mais tempo ele segura
+    if (pot.state === 'held') {
+      pot.heldT += dt;
+      pot.fuse -= dt * Math.min(this.AQUECE_MAX, 1 + this.AQUECE * pot.heldT);
+      if (pot.heldT >= this.QUEIMA_AVISO && !pot.avisou && pot.holder) {
+        pot.avisou = true; g.popup('QUEIMANDO!', pot.holder.x, pot.holder.y - 40, '#ff6a10'); g.sfx('hit');
+      }
+    } else pot.fuse -= dt;
     // tique-taque: acelera com o fim chegando, mas com humor variável e um pouco de ruído
     pot.tickT -= dt;
     if (pot.tickT <= 0) {
-      pot.interval = U.clamp(pot.fuse * 0.12 * pot.mood + U.rand(-0.05, 0.07), 0.07, 0.8);
+      pot.interval = U.clamp(pot.fuse * 0.12 * pot.mood + U.rand(-0.05, 0.07), 0.07, 0.8) * (pot.avisou ? 0.6 : 1);
       pot.tickT = pot.interval; pot.blink = 0.09;
       g.sfx('tick');
     }
@@ -166,7 +175,7 @@ TN.registerMinigame({
     if (pot.state === 'flight') {
       pot.t += dt;
       if (pot.t >= pot.dur) {
-        pot.state = 'held'; pot.holder = pot.to; pot.t = 0;
+        pot.state = 'held'; pot.holder = pot.to; pot.t = 0; pot.heldT = 0; pot.avisou = false;
         pot.holder.data.lock = this.CATCH_LOCK;
         g.sfx('blip');
       }
@@ -197,7 +206,7 @@ TN.registerMinigame({
     }
     if (d.botWait == null) {
       const urgency = U.clamp(pot.interval / 0.5, 0.3, 1);
-      d.botWait = this.CATCH_LOCK + U.rand(0.08, 0.9) * urgency;
+      d.botWait = this.CATCH_LOCK + U.rand(0.08, 0.9) * urgency;   // o bot nunca chega perto do QUEIMANDO! (1,5 s)
       d.botSense = U.chance(0.5) ? 1 : -1;
       d.botMash = U.chance(0.06);
     }
