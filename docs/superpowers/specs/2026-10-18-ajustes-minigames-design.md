@@ -61,7 +61,7 @@ O objetivo é que cada jogo premie jogar bem, dê a informação certa no moment
 **Hoje:** a prévia acende uma esfera de raio 7 no alto de cada porta, verde (segura) ou vermelha (errada); 42 lâmpadas minúsculas; a porta que já explodiu fica num vermelho parecido.
 
 **Muda:**
-- Cor **e forma**: segura = **✓ azul** (`#2aa7ff`), errada = **✗ laranja** (`#ff8a2a`), num painel de ~26×26 sobre a porta, virado para a câmera (`r.label` ou `r.box` + letra).
+- **Forma, mantendo as cores**: segura = **✓ verde** (`#46e27b`), errada = **✗ vermelho** (`#ff3b3b`), num painel de ~26×26 sobre a porta, virado para a câmera (`r.label` ou `r.box` + letra). *(Correção do usuário em 2026-10-18: o verde e o vermelho ficam; o que melhora é o destaque.)*
 - Durante a prévia o **chão da porta** também é pintado na cor (plano com `glow`, opacidade ~0,35), para ficar óbvio qual painel pertence a qual porta.
 - Porta que explodiu: fuligem preta com ✗ cinza, para não confundir com a prévia.
 - A prévia continua única (segura e erradas acesas ao mesmo tempo, como hoje). O pisca ao atravessar passa para as mesmas cores novas. O 2D (`draw`) segue a mesma regra.

@@ -129,9 +129,9 @@ function secaoCarrapato() {
 // --- caminho da memória: ✓ azul e ✗ laranja nas portas ---
 function secaoMemoria() {
   const def = TN.minigames.caminho_da_memoria, g = rodada('caminho_da_memoria');
-  ok(def.COR_SEGURA === '#2aa7ff' && def.COR_ERRADA === '#ff8a2a', 'memória: cores azul (segura) e laranja (errada)');
+  ok(def.COR_SEGURA === '#46e27b' && def.COR_ERRADA === '#ff3b3b', 'memória: verde (segura) e vermelho (errada) continuam; o destaque vem dos painéis e símbolos');
   const prev = estilos((c) => def.draw(g, c));
-  ok(prev.includes('#2aa7ff') && prev.includes('#ff8a2a') && !prev.includes('#ff3b3b') && !prev.includes('#a02020'), 'memória: a prévia 2D usa as cores novas nas portas e não o vermelho antigo');
+  ok(prev.includes('#46e27b') && prev.includes('#ff3b3b') && !prev.includes('#a02020'), 'memória: a prévia 2D pinta as portas de verde/vermelho (porta explodida não usa mais o vermelho escuro)');
   const t = textos((c) => def.draw(g, c));
   ok(/✓/.test(t) && /✗/.test(t), 'memória: a prévia desenha ✓ e ✗');
 }
@@ -167,9 +167,10 @@ function secaoPisoFalso() {
   const gone = e.tiles[0], longe = e.tiles[e.tiles.length - 1]; gone.state = 'gone';
   for (const t of e.tiles) if (t !== gone && t !== longe) t.state = 'down';
   longe.state = 'up'; longe.sym = (e.safe + 1) % 3;
+  gone.sym = -1;   // um ladrilho removido não tem símbolo; a garantia não pode mexer nele
   const cg = def.center(h, gone); for (const q of h.players) { q.x = cg.x + 50; q.y = cg.y; }   // o gone é o candidato mais perto
   def.garantir(h);
-  ok(gone.state === 'gone' && gone.sym !== e.safe && longe.sym === e.safe, 'piso falso: a garantia não ressuscita ladrilho removido (converte o piso de pé mais perto)');
+  ok(gone.state === 'gone' && gone.sym === -1 && longe.sym === e.safe, 'piso falso: a garantia não ressuscita ladrilho removido (converte o piso de pé mais perto)');
   // quem fica parado precisa se mexer: o piso garantido nunca é o que está sob o jogador
   for (const t of e.tiles) t.state = 'up';
   const q0 = h.players[0]; const meu = e.tiles[40]; const cm = def.center(h, meu); q0.x = cm.x; q0.y = cm.y;

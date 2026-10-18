@@ -18,8 +18,9 @@ TN.registerMinigame({
   SPEED: 165, R: 13, LIVES: 2, FUSE: 2, ZONE_W: 84, WALL_T: 14, MAX_ROWS: 7, MAX_DOORS: 6, MAX_SUBS: 8,
   BOT_RECALL: 0.8,
 
-  // cores das portas: azul/laranja com ✓/✗ (verde/vermelho em esferas minúsculas confundia, inclusive daltônicos)
-  COR_SEGURA: '#2aa7ff', COR_ERRADA: '#ff8a2a', COR_EXPLODIDA: '#444',
+  // cores das portas: verde/vermelho (como sempre), mas em painéis grandes com ✓/✗ e o chão pintado na prévia,
+  // porque as esferas minúsculas confundiam
+  COR_SEGURA: '#46e27b', COR_ERRADA: '#ff3b3b', COR_EXPLODIDA: '#444',
 
   init(g) {
     const d = g.data;
