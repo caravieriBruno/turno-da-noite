@@ -124,7 +124,7 @@
       else if (m.t === 'peer-join') { this.peers[m.id] = { id: m.id }; TN.audio.play('select'); this.toast(`Jogador da rede #${m.id} conectou`); }
       else if (m.t === 'peer-leave') { delete this.peers[m.id]; this._dropPeer(m.id); this.toast(`Jogador da rede #${m.id} saiu (virou BOT)`); }
       else if (m.t === 'input') { for (const dev in m.devices || {}) TN.input.setRemote(`n${m.from}:${dev}`, m.devices[dev] || {}); }
-      else if (m.t === 'nomes') { for (const dev in m.nomes || {}) if (typeof m.nomes[dev] === 'string') this.nomesRemotos[`n${m.from}:${dev}`] = m.nomes[dev].toUpperCase().slice(0, 8); }
+      else if (m.t === 'nomes') { for (const dev in m.nomes || {}) { const nome = TN._internal.limparNome(m.nomes[dev]); if (nome) this.nomesRemotos[`n${m.from}:${dev}`] = nome; } }
     },
     _dropPeer(id) {
       const pref = 'n' + id + ':';
@@ -279,9 +279,16 @@
 
   // CLIENTE: mostra a tela do host e envia a entrada local
   class ClientView {
-    constructor() { this.escAt = -10; }
+    constructor() { this.escAt = -10; this._salvos = {}; }
     update() {
       net.sendInput();
+      // o nome confirmado nas minhas celas fica salvo neste computador (na próxima partida já vem preenchido)
+      const pref = 'n' + net.myId + ':';
+      for (const s of (net.view && net.view.slots) || []) {
+        if (!s || !String(s.device).startsWith(pref) || s.editando || !s.nome) continue;
+        const dev = String(s.device).slice(pref.length);
+        if (this._salvos[dev] !== s.nome) { this._salvos[dev] = s.nome; TN._internal.salvarNome(dev, s.nome); }
+      }
       if (TN.input.keyPressed('Escape')) {
         if (this.t - this.escAt < 2) { net.close(); TN.go(TN.TitleScene); return; }
         this.escAt = this.t;
@@ -294,11 +301,11 @@
       // quem sou eu?
       const pref = 'n' + net.myId + ':';
       const mine = [];
-      const roster = (v.slots ? v.slots.map((s, i) => s && { id: i, device: s.device }) : (TN.session && TN.session.roster)) || [];
-      for (const r of roster) if (r && r.device && String(r.device).startsWith(pref)) mine.push(r.id);
+      const roster = (v.slots ? v.slots.map((s, i) => s && { id: i, device: s.device, name: s.nome }) : (TN.session && TN.session.roster)) || [];
+      for (const r of roster) if (r && r.device && String(r.device).startsWith(pref)) mine.push(r);
       const lag = performance.now() - net.lastStateAt;
       c.fillStyle = 'rgba(0,0,0,0.6)'; c.fillRect(0, TN.H - 22, 330, 22);
-      D.text(c, `REDE · SALA ${net.room}` + (mine.length ? ` · VOCÊ: ${mine.map((i) => 'P' + (i + 1)).join(', ')}` : ' · aperte AÇÃO no lobby'), 8, TN.H - 11, { size: 12, color: mine.length ? TN.PLAYER_COLORS[mine[0]] : '#cdd' });
+      D.text(c, `REDE · SALA ${net.room}` + (mine.length ? ` · VOCÊ: ${mine.map((r) => r.name || 'CELA ' + (r.id + 1)).join(', ')}` : ' · aperte AÇÃO no lobby'), 8, TN.H - 11, { size: 12, color: mine.length ? TN.PLAYER_COLORS[mine[0].id] : '#cdd', maxWidth: 320 });
       if (lag > 1500) D.text(c, 'sem sinal do host…', TN.W - 10, TN.H - 11, { size: 12, color: '#f55', align: 'right' });
       if (this.t - this.escAt < 2) D.text(c, 'ESC de novo para sair da sala', TN.W / 2, TN.H / 2, { size: 22, color: '#ff0', align: 'center' });
       net.drawToast(c);

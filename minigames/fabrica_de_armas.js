@@ -394,7 +394,7 @@ TN.registerMinigame({
       c.fillStyle = 'rgba(8,10,13,0.82)'; c.fillRect(x, y, W, H);
       c.fillStyle = p.alive ? p.color : '#555'; c.fillRect(x, y, 4, H);
       c.strokeStyle = 'rgba(255,255,255,0.12)'; c.lineWidth = 1; c.strokeRect(x + 0.5, y + 0.5, W - 1, H - 1);
-      D.text(c, p.label, x + 18, y + 13, { size: 11, color: p.alive ? p.color : '#777', align: 'center' });
+      D.text(c, p.label, x + 8, y + 13, { size: 10, color: p.alive ? p.color : '#777', maxWidth: 58 });   // nome à esquerda, antes dos ícones
       if (s.gunReady) {
         D.text(c, 'ARMA PRONTA!', x + W / 2 + 10, y + 15, { size: 13, color: '#ffb02e', align: 'center' });
         D.text(c, 'PEGUE (AÇÃO)', x + W / 2 + 10, y + 32, { size: 10, color: '#ffd28a', align: 'center' });

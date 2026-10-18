@@ -24,8 +24,13 @@
   const ALFABETO = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -', NOME_MAX = 8;
   function nomesSalvos() { try { return JSON.parse(localStorage.getItem(NOMES_KEY) || '{}') || {}; } catch (e) { return {}; } }
   function salvarNome(device, nome) { try { const n = nomesSalvos(); n[device] = nome; localStorage.setItem(NOMES_KEY, JSON.stringify(n)); } catch (e) { /* sem storage */ } }
+  // só A-Z, 0-9, espaço e '-', maiúsculas, até 8, sem espaço nas pontas; qualquer coisa que não seja string vira ''
+  function limparNome(v) {
+    if (typeof v !== 'string') return '';
+    return v.toUpperCase().split('').filter((ch) => ALFABETO.includes(ch)).join('').replace(/ +/g, ' ').trim().slice(0, NOME_MAX).trimEnd();
+  }
   function nomePadrao(device, emUso) {
-    const salvo = device ? nomesSalvos()[device] : null;
+    const salvo = limparNome(device ? nomesSalvos()[device] : '');
     if (salvo && !emUso.includes(salvo)) return salvo;
     const livres = APELIDOS.filter((a) => !emUso.includes(a));
     return U.pick(livres.length ? livres : APELIDOS);
@@ -38,9 +43,10 @@
       for (let i = 0; i < 4 && roster.length < 4; i++) if (!roster.find((r) => r.slot === i)) roster.push({ device: null, isBot: true, slot: i });
     }
     roster.sort((a, b) => a.slot - b.slot);
-    const usados = [];
+    // os nomes escolhidos entram primeiro na lista de usados: um bot numa cela anterior não pode repetir o humano
+    const usados = roster.filter((r) => limparNome(r.nome)).map((r) => limparNome(r.nome));
     return roster.map((r) => {
-      const name = r.nome || nomePadrao(r.device, usados);
+      const name = limparNome(r.nome) || nomePadrao(r.device, usados);
       usados.push(name);
       return { id: r.slot, name, color: TN.PLAYER_COLORS[r.slot], device: r.device, isBot: r.isBot };
     });
@@ -198,10 +204,11 @@
       }
     }
     confirmarNome(slot) {
-      let nome = slot.nome.trim();
+      const base = limparNome(slot.nome);
+      let nome = base;
       if (!nome) { slot.nome = ''; slot.cursor = 0; TN.audio.play('back'); return; }
       const outros = this.nomesEmUso(slot);
-      for (let k = 2; outros.includes(nome) && k < 10; k++) nome = (slot.nome.trim().length > NOME_MAX - 2 ? slot.nome.trim().slice(0, NOME_MAX - 2) : slot.nome.trim()) + ' ' + k;
+      for (let k = 2; outros.includes(nome) && k < 10; k++) nome = base.slice(0, NOME_MAX - 2).trimEnd() + ' ' + k;
       slot.nome = nome; slot.cursor = nome.length; slot.editando = false;
       if (TN.input.ehLocal(slot.device)) salvarNome(slot.device, nome);
       TN.audio.play('confirm');
@@ -663,7 +670,7 @@
       TN.go(Title);
     }
   };
-  TN._internal = { buildRoster, newSession, Picker, APELIDOS, nomesSalvos, salvarNome, nomePadrao };  // usado por tools/simular.js --sessao e pelos testes
+  TN._internal = { buildRoster, newSession, Picker, APELIDOS, nomesSalvos, salvarNome, nomePadrao, limparNome };  // usado por tools/simular.js --sessao e pelos testes
   TN.LobbyScene = Lobby;
   // cenas que a rede precisa recriar no cliente (engine/net.js)
   TN.sceneClasses = { Title, Controls, TestList, Lobby, Setup, Picker, Brief, RoundIntro, Play, Pause, RoundOver, ScoreScreen, Final };

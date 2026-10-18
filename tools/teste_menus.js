@@ -292,6 +292,40 @@ function secaoMenusComNome() {
   ok(nome && bot && !ft.some((e) => /CHAVEIRO BOT/.test(e[1])) && nome[3] !== bot[3], 'HUD: nome e BOT em linhas separadas, sem "NOME BOT" numa linha só');
 }
 
+// --- 10. correções da revisão final: nomes limpos, bots sem repetir humanos, cliente salva e mostra o nome ---
+function secaoNomesRevisao() {
+  const I = TN._internal, N = TN.NetScenes;
+  ok(I.limparNome('joão😀çé') === 'JOO' && I.limparNome(123) === '' && I.limparNome('abcdefghijklmn') === 'ABCDEFGH' && I.limparNome(' bru no  ') === 'BRU NO', 'nomes: limparNome deixa só A-Z 0-9 espaço e -, até 8, sem espaço nas pontas');
+  localStorage.setItem('turno-da-noite-nomes', JSON.stringify({ kb2: 'bruno!!' }));
+  ok(I.nomePadrao('kb2', []) === 'BRUNO', 'nomes: nome salvo sujo é limpo ao virar padrão');
+  TN.net.mode = 'host'; TN.net.nomesRemotos = {};
+  TN.net._hostMessage({ t: 'nomes', from: 9, nomes: { kb1: 'zé do ôlho', kb2: 123 } });
+  ok(TN.net.nomesRemotos['n9:kb1'] === 'Z DO LHO' && !('n9:kb2' in TN.net.nomesRemotos), `nomes: o host limpa o que vem da rede (${JSON.stringify(TN.net.nomesRemotos)})`);
+  TN.net.mode = 'off'; TN.net.nomesRemotos = {};
+  // bots nunca repetem o nome de um humano, mesmo com a cela 1 vazia
+  let repetiu = 0;
+  for (let k = 0; k < 200; k++) { const r = I.buildRoster([null, { device: 'kb1', nome: 'SOMBRA' }, null, null], true); if (new Set(r.map((x) => x.name)).size < 4) repetiu++; }
+  ok(repetiu === 0, `nomes: bots não repetem o nome de um humano (${repetiu}/200 repetidos)`);
+  // o cliente de rede salva o nome confirmado no próprio computador e mostra o nome no rodapé
+  localStorage.setItem('turno-da-noite-nomes', JSON.stringify({}));
+  TN.net.mode = 'client'; TN.net.myId = 7; TN.net.room = 'ABCD'; TN.net.lastStateAt = performance.now();
+  TN.net.view = { slots: [{ device: 'n7:kb1', nome: 'ZEZINHO', editando: false, ready: false, cursor: 7 }, null, null, null], draw() {} };
+  const cv = new N.ClientView(); TN.go(cv); cv.update();
+  ok(I.nomesSalvos().kb1 === 'ZEZINHO', `nomes: cliente salva o nome confirmado (${JSON.stringify(I.nomesSalvos())})`);
+  const t = textos(cv);
+  ok(/VOCÊ: ZEZINHO/.test(t) && !/\bP1\b/.test(t), `nomes: rodapé do cliente mostra o nome (${t.slice(-60)})`);
+  TN.net.view.slots[0].editando = true; TN.net.view.slots[0].nome = 'ZEZ'; cv.update();
+  ok(I.nomesSalvos().kb1 === 'ZEZINHO', 'nomes: enquanto edita, o cliente não salva');
+  TN.net.mode = 'off'; TN.net.view = null; TN.net.myId = null;
+  // linha de montagem: o nome no painel da estação tem largura limitada e começa à esquerda
+  const g = new TN.Round(TN.minigames.fabrica_de_armas, I.buildRoster([null, null, null, null], true), 1, 1);
+  g.players[0].label = 'CHAVEIRO'; const c = gravador();
+  g.uses3d = () => true; const proj = TN.R3.project; TN.R3.project = () => ({ x: 480, y: 300, visible: true });   // o overlay só desenha com WebGL
+  try { g.def.drawOverlay(g, c); } finally { TN.R3.project = proj; }
+  const ft = c.log.find((e) => e[0] === 'fillText' && e[1] === 'CHAVEIRO');
+  ok(ft && typeof ft[4] === 'number' && ft[4] <= 70, `fábrica: nome do painel com maxWidth (${ft && ft[4]})`);
+}
+
 secaoDono();
 secaoGiz();
 secaoCenas();
@@ -301,6 +335,7 @@ secaoInstrucoes();
 secaoNomes();
 secaoRoda();
 secaoMenusComNome();
+secaoNomesRevisao();
 // CHAMADAS EXTRAS (as tarefas seguintes acrescentam aqui)
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
