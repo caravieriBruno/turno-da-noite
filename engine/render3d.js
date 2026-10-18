@@ -51,9 +51,26 @@
     }
     for (const k of KIT) api[k] = viaCenarios(api, k);
     api.W = TN.W; api.H = TN.H; api.time = 0;
-    api.project = () => ({ x: 0, y: 0, visible: true });
-    api.unproject = (sx, sy, py = 0) => ({ x: sx, y: py, z: sy });
+    api.project = (x, y, z, vista = 0) => ({ x: 0, y: 0, visible: true });
+    api.unproject = (sx, sy, py = 0, vista = 0) => ({ x: sx, y: py, z: sy });
     return { api, errs, counts, calls };
+  }
+
+  // def.viewports(g) (opcional): lista de vistas { rect: [x, y, w, h], camera: { pos, target, fov } } em
+  // coordenadas virtuais (TN.W × TN.H). Devolve { vistas, erro }; usado pelo validador e pelo backend.
+  function conferirViewports(def, round) {
+    if (!def.viewports) return { vistas: null, erro: null };
+    const fin = (v, n) => Array.isArray(v) && v.length === n && v.every((k) => Number.isFinite(k));
+    let vistas;
+    try { vistas = def.viewports(round); } catch (e) { return { vistas: null, erro: 'viewports: lançou ' + e.message }; }
+    if (!Array.isArray(vistas) || vistas.length < 1) return { vistas: null, erro: 'viewports: deve devolver uma lista com ao menos 1 vista' };
+    for (let i = 0; i < vistas.length; i++) {
+      const v = vistas[i] || {};
+      if (!fin(v.rect, 4)) return { vistas: null, erro: `viewports: vista ${i} sem rect [x, y, w, h] finito` };
+      if (!v.camera || !fin(v.camera.pos, 3) || !fin(v.camera.target, 3)) return { vistas: null, erro: `viewports: vista ${i} sem camera.pos/target de 3 números` };
+      if (v.camera.fov !== undefined && !Number.isFinite(v.camera.fov)) return { vistas: null, erro: `viewports: vista ${i} com fov inválido` };
+    }
+    return { vistas, erro: null };
   }
 
   TN.R3 = {
@@ -66,6 +83,8 @@
     validate(round) {
       const { api, errs } = makeValidator();
       round.def.draw3d(round, api);
+      const vp = conferirViewports(round.def, round);
+      if (vp.erro) errs.push(vp.erro);
       return errs;
     },
     // usado pelo tools/teste_cenarios.js: roda fn(api) no validador com r.time = time e devolve o rastro
@@ -80,6 +99,8 @@
 
   // ====================== BACKEND THREE.JS ======================
   let renderer, scene, camera, sun, hemi, ambient, canvas3d, spot;
+  // várias vistas (def.viewports): uma câmera por vista, com o aspecto do próprio rect; null = uma vista (camera)
+  let vistaCams = [], vistasAtuais = null, avisouViewports = false;
   let rt = null, postScene = null, postCam = null;   // passo de pós-processo (visual retrô)
   const RW = 640, RH = 360;                           // resolução interna do visual retrô
   const tmpV = new THREE.Vector3();
@@ -399,15 +420,29 @@
 
   // ponto da tela (coordenadas 960x540) → ponto no plano horizontal y = planeY
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), hit = new THREE.Vector3();
-  function unproject(sx, sy, planeY = 0) {
-    ndc.set((sx / TN.W) * 2 - 1, 1 - (sy / TN.H) * 2);
-    ray.setFromCamera(ndc, camera);
+  // câmera e retângulo (coordenadas virtuais) da vista `i`; sem viewports, a câmera principal e a tela inteira
+  const vista = (i) => (vistasAtuais && vistasAtuais[i] ? { cam: vistaCams[i], rect: vistasAtuais[i].rect } : { cam: camera, rect: [0, 0, TN.W, TN.H] });
+  function unproject(sx, sy, planeY = 0, i = 0) {
+    const { cam, rect } = vista(i);
+    ndc.set(((sx - rect[0]) / rect[2]) * 2 - 1, 1 - ((sy - rect[1]) / rect[3]) * 2);
+    ray.setFromCamera(ndc, cam);
     const pl = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
     return ray.ray.intersectPlane(pl, hit) ? { x: hit.x, y: planeY, z: hit.z } : { x: sx, y: planeY, z: sy };
   }
-  function project(x, y, z) {
-    tmpV.set(x, y, z).project(camera);
-    return { x: (tmpV.x + 1) / 2 * TN.W, y: (1 - tmpV.y) / 2 * TN.H, visible: tmpV.z < 1 };
+  function project(x, y, z, i = 0) {
+    const { cam, rect } = vista(i);
+    tmpV.set(x, y, z).project(cam);
+    return { x: rect[0] + (tmpV.x + 1) / 2 * rect[2], y: rect[1] + (1 - tmpV.y) / 2 * rect[3], visible: tmpV.z < 1 };
+  }
+  // cria/ajusta a câmera da vista i (aspecto do rect, pos/target/fov da vista)
+  function camParaVista(i, v) {
+    const c = vistaCams[i] || (vistaCams[i] = new THREE.PerspectiveCamera(38, 1, 5, 6000));
+    c.aspect = v.rect[2] / v.rect[3];
+    c.fov = v.camera.fov || 38;
+    c.updateProjectionMatrix();
+    c.position.set(v.camera.pos[0], v.camera.pos[1], v.camera.pos[2]);
+    c.lookAt(v.camera.target[0], v.camera.target[1], v.camera.target[2]);
+    return c;
   }
 
   // ====================== API passada ao draw3d ======================
@@ -698,20 +733,52 @@
       for (const c of charPool.list) if (c.quadro !== charPool.quadro) c.root.visible = false;
       for (let i = lightPool.n; i < lightPool.list.length; i++) lightPool.list[i].visible = false;
       // tremor de tela
-      if (round._shake > 0) camera.position.add(new THREE.Vector3((Math.random() - 0.5) * round._shake * 2, (Math.random() - 0.5) * round._shake * 2, 0));
-      if (rt) {
-        renderer.setRenderTarget(rt); renderer.render(scene, camera);
-        renderer.setRenderTarget(null); renderer.render(postScene, postCam);
-      } else renderer.render(scene, camera);
+      const tremor = () => new THREE.Vector3((Math.random() - 0.5) * round._shake * 2, (Math.random() - 0.5) * round._shake * 2, 0);
+      // várias vistas: a mesma cena, uma vez por vista, recortada com scissor (no canvas ou dentro do rt retrô)
+      const vp = conferirViewports(def, round);
+      if (vp.erro && !avisouViewports) { avisouViewports = true; console.warn(vp.erro); }
+      vistasAtuais = vp.vistas;
+      if (vistasAtuais) {
+        const tam = rt ? { width: RW, height: RH } : renderer.getDrawingBufferSize(new THREE.Vector2());
+        const sx = tam.width / TN.W, sy = tam.height / TN.H;
+        renderer.setRenderTarget(rt || null);
+        renderer.setScissorTest(true);
+        vistasAtuais.forEach((v, i) => {
+          const cam = camParaVista(i, v);
+          if (round._shake > 0) cam.position.add(tremor());
+          const px = Math.round(v.rect[0] * sx), py = Math.round(tam.height - (v.rect[1] + v.rect[3]) * sy), pw = Math.round(v.rect[2] * sx), ph = Math.round(v.rect[3] * sy);
+          renderer.setViewport(px, py, pw, ph); renderer.setScissor(px, py, pw, ph);
+          renderer.render(scene, cam);
+        });
+        renderer.setScissorTest(false);
+        renderer.setViewport(0, 0, tam.width, tam.height);
+        if (rt) { renderer.setRenderTarget(null); renderer.render(postScene, postCam); }
+      } else {
+        if (round._shake > 0) camera.position.add(tremor());
+        if (rt) {
+          renderer.setRenderTarget(rt); renderer.render(scene, camera);
+          renderer.setRenderTarget(null); renderer.render(postScene, postCam);
+        } else renderer.render(scene, camera);
+      }
       this.used = true;
       // camada 2D: vinheta + grão + rótulos
       const g = c.createRadialGradient(TN.W / 2, TN.H / 2, TN.H * 0.42, TN.W / 2, TN.H / 2, TN.W * 0.66);
       g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.55)');
       c.fillStyle = g; c.fillRect(0, 0, TN.W, TN.H);
       if (grain) { c.save(); c.globalAlpha = 0.5; c.fillStyle = c.createPattern(grain, 'repeat'); c.translate(Math.random() * 128, Math.random() * 128); c.fillRect(-128, -128, TN.W + 256, TN.H + 256); c.restore(); }
+      // rótulos: projetados por vista e desenhados só dentro do rect da vista em que caem
+      const nV = vistasAtuais ? vistasAtuais.length : 1;
       for (const l of labels) {
-        const s = project(l.x, l.y, l.z);
-        if (s.visible) TN.draw.text(c, l.text, s.x, s.y, { size: l.size, color: l.color, align: 'center' });
+        for (let i = 0; i < nV; i++) {
+          const s = project(l.x, l.y, l.z, i);
+          if (!s.visible) continue;
+          if (!vistasAtuais) { TN.draw.text(c, l.text, s.x, s.y, { size: l.size, color: l.color, align: 'center' }); continue; }
+          const r = vistasAtuais[i].rect;
+          if (s.x < r[0] - 20 || s.x > r[0] + r[2] + 20 || s.y < r[1] - 10 || s.y > r[1] + r[3] + 10) continue;
+          c.save(); c.beginPath(); c.rect(r[0], r[1], r[2], r[3]); c.clip();
+          TN.draw.text(c, l.text, s.x, s.y, { size: l.size, color: l.color, align: 'center' });
+          c.restore();
+        }
       }
     },
     _textura: (nome) => texOf(nome),   // para testes (tools/teste_render.js)
@@ -720,8 +787,8 @@
     _recarregarDetento: (b64) => carregarDetento(b64),   // para testes: força uma nova carga do modelo
     // para testes (tools/teste_render.js): o que o último quadro acendeu
     stats() { return { luzes: lightPool.list.slice(0, lightPool.n).map((l) => ({ x: l.position.x, y: l.position.y, z: l.position.z })) }; },
-    project: (x, y, z) => project(x, y, z),
-    unproject: (sx, sy, py) => unproject(sx, sy, py),
+    project: (x, y, z, v) => project(x, y, z, v),
+    unproject: (sx, sy, py, v) => unproject(sx, sy, py, v),
     setVisible(v) { if (canvas3d) canvas3d.style.visibility = v ? 'visible' : 'hidden'; },
   });
 })();

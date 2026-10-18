@@ -147,6 +147,42 @@
     ok(pronto === false && TN.R3.estadoDetento() === 'desligado' && !TN.R3._personagens()[0].gltf, 'visual antigo: boneco de caixas, sem carregar o modelo');
   }
 
+  // viewports: a mesma cena em duas vistas lado a lado; cada metade mostra outra coisa, é determinística e não custa mais que 2×
+  try {
+    const metade = (x0) => {   // FNV-1a só da faixa horizontal [x0, x0 + metade)
+      const t = document.createElement('canvas'); t.width = c3.width; t.height = c3.height;
+      const x = t.getContext('2d'); x.drawImage(c3, 0, 0);
+      const w = Math.floor(t.width / 2), d = x.getImageData(x0 * w, 0, w, t.height).data;
+      let h = 2166136261;
+      for (let i = 0; i < d.length; i += 4) { h ^= d[i] | (d[i + 1] << 8) | (d[i + 2] << 16); h = Math.imul(h, 16777619); }
+      return h >>> 0;
+    };
+    const cena = (g, r) => { r.room(40, 20, 920, 520); r.box(200, 0, 300, 60, 60, 60, '#ff2020', { glow: true }); r.box(760, 0, 300, 60, 60, 60, '#2020ff', { glow: true }); };
+    const duas = () => [
+      { rect: [0, 0, 480, 540], camera: { pos: [200, 300, 700], target: [200, 0, 300], fov: 40 } },
+      { rect: [480, 0, 480, 540], camera: { pos: [760, 300, 700], target: [760, 0, 300], fov: 40 } },
+    ];
+    const rodadaV = (time) => ({ def: { draw3d: cena, viewports: duas }, time, _particles: [], _shake: 0 });
+    TN.R3.renderRound(rodadaV(1), ctx); const e1 = metade(0), d1 = metade(1);
+    TN.R3.renderRound(rodadaV(1), ctx); const e2 = metade(0), d2 = metade(1);
+    ok(e1 !== d1, 'viewports: as duas metades mostram coisas diferentes');
+    ok(e1 === e2 && d1 === d2, 'viewports: determinístico (mesmo time = mesmos pixels nas duas vistas)');
+    const s = TN.R3.project(760, 0, 300, 1);
+    ok(s.x >= 480 && s.x <= 960 && s.visible, `viewports: project(..., 1) cai dentro do rect da vista 1 (x ${s.x.toFixed(0)})`);
+    const s0 = TN.R3.project(200, 0, 300, 0);
+    ok(s0.x >= 0 && s0.x < 480, `viewports: project(..., 0) cai na vista 0 (x ${s0.x.toFixed(0)})`);
+    const u = TN.R3.unproject(s.x, s.y, 0, 1);
+    ok(Math.abs(u.x - 760) < 2 && Math.abs(u.z - 300) < 2, 'viewports: unproject desfaz o project na vista 1');
+    const rodada1 = (time) => ({ def: { draw3d: cena, camera: duas()[0].camera }, time, _particles: [], _shake: 0 });
+    for (let i = 0; i < 5; i++) { TN.R3.renderRound(rodada1(i / 60), ctx); TN.R3.renderRound(rodadaV(i / 60), ctx); }
+    hash();
+    let t0 = performance.now(); for (let i = 0; i < 30; i++) TN.R3.renderRound(rodada1(i / 60), ctx); hash(); const t1v = (performance.now() - t0) / 30;
+    t0 = performance.now(); for (let i = 0; i < 30; i++) TN.R3.renderRound(rodadaV(i / 60), ctx); hash(); const t2v = (performance.now() - t0) / 30;
+    // duas vistas = a cena desenhada duas vezes (o pós-processo retrô uma): o teto honesto é 2×
+    ok(t2v <= t1v * 2 + 2, `viewports: duas vistas custam ${t2v.toFixed(1)} ms contra ${t1v.toFixed(1)} ms de uma (teto 2× + 2 ms)`);
+    TN.R3.renderRound(rodada1(1), ctx);   // volta ao modo de uma vista para os blocos seguintes
+  } catch (e) { ok(false, 'viewports: exceção ' + e.message); }
+
   // tempo médio de quadro: cela + piso em ladrilhos + 8 personagens andando (pior caso de um minigame real)
   const tipico = (g, r) => {
     r.room(40, 20, 920, 520);

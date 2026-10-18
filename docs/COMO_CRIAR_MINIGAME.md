@@ -35,6 +35,7 @@ O motor cuida do resto: lobby, bots, roleta, briefing, rodadas, contagem 3-2-1, 
 | `draw(g, c)` | | alternativa 2D (Canvas 960×540); *é obrigatório ter `draw3d` ou `draw` |
 | `drawOverlay(g, c)` | | camada 2D por cima (placares, barras e textos fixos na tela) |
 | `camera`, `env` | | câmera fixa e iluminação do 3D |
+| `viewports(g)` | | (opcional) várias vistas da mesma cena: lista de `{ rect, camera }` (veja "Várias vistas" abaixo) |
 | `worldPos(g, p)` | | posição 3D `{x,y,z}` do jogador quando `p.x/p.y` não são o chão (jogos de visão lateral); usado nos rótulos do motor |
 | `screenSpace` | | `true` quando a lógica é em coordenadas de TELA (ex.: mira 2D); partículas e popups ficam em 2D e o jogo usa `r.unproject` |
 | `bot(g, p, dt)` | | IA do bot; retorna `{x, y, a, b}`. Sem ela o bot anda à toa |
@@ -118,6 +119,7 @@ Os minigames são desenhados em **3D com câmera fixa**, como no Machine Party. 
 
 - **X** = `p.x` (direita), **Z** = `p.y` (em direção à câmera), **Y** = altura. 1 unidade = 1 pixel da lógica. O chão fica em `y = 0`.
 - Defina `camera: { pos: [x,y,z], target: [x,y,z], fov }`. O padrão é `{ pos: [480, 640, 860], target: [480, 0, 300], fov: 38 }`, que mostra a `g.arena` inteira em ângulo de cima.
+- **Várias vistas (opcional):** `viewports(g)` devolve uma lista de vistas `{ rect: [x, y, w, h], camera: { pos, target, fov } }`, com `rect` em coordenadas virtuais (`TN.W` × `TN.H`, como o HUD 2D). O motor monta a cena uma vez (`draw3d`) e a desenha uma vez por vista, recortada no seu `rect` (também no visual retrô), cada uma com a própria câmera e o aspecto do próprio retângulo. Os rótulos (`r.label`, nomes dos personagens) são projetados por vista e aparecem só dentro da vista em que caem. `TN.R3.project(x, y, z, vista)` e `TN.R3.unproject(sx, sy, alturaY, vista)` recebem o índice da vista (padrão 0). Entre as vistas o motor não desenha nada: a moldura é do `drawOverlay`. Com `viewports`, `def.camera` só serve de reserva. O `tools/simular.js` confere o formato (erro `viewports: ...`). Exemplo: `minigames/temporada_de_caca.js`.
 - Ajuste a luz com `env: { bg, fog: [perto, longe], ambient, sun, sunDir: [x,y,z], sunColor, envMap, spot, spotColor, spotPos: [x,y,z], spotTarget: [x,y,z], spotAngle }`. `spot` é o holofote de teto (intensidade; `0` desliga) que deixa o centro claro e as bordas escuras. Use `envMap: 0` para desligar os reflexos do ambiente e deixar a cena escura de verdade (ex.: apagão); `r.env({...})` dentro do `draw3d` muda a luz por fase. O padrão é a cadeia: pouca luz ambiente, tom quente e holofote no centro.
 - `draw3d` é chamado **a cada quadro** e descreve a cena inteira, como o `draw` 2D. O motor reaproveita os objetos 3D, então não há nada para criar ou destruir.
 
@@ -143,8 +145,8 @@ Os minigames são desenhados em **3D com câmera fixa**, como no Machine Party. 
 | `r.yard(x1, z1, x2, z2, o)` | pátio de cadeia à noite (muros com arame farpado, postes de vapor de sódio, guarita com holofote que varre); opções: `h`, `floor` (cor, ou `false` para sem chão nem quadra), `wall`, `quadra: false`, `guarita: false \| 'esquerda' \| 'direita'`, `holofote: false`, `postes`, `frente`. Acende até 2 luzes de fundo |
 | `r.prop(nome, x, z, o)` | objeto de cenário: `beliche`, `vaso`, `banco`, `mesa`, `tambor`, `pneu`, `colchao`, `grade` (`o.w`, `o.h`), `poste` (`o.luz`), `arquivo`; `o: { rotY, scale, y, color }` |
 | `r.camera(pos, target, fov)` | muda a câmera neste quadro (ex.: tremor, foco); normalmente use `def.camera` |
-| `r.project(x, y, z)` | converte para a posição na tela 2D: `{x, y}` |
-| `r.unproject(sx, sy, alturaY=0)` | ponto da tela → ponto no plano horizontal do mundo `{x, y, z}` |
+| `r.project(x, y, z, vista=0)` | converte para a posição na tela 2D: `{x, y, visible}`; `vista` é o índice em `viewports` |
+| `r.unproject(sx, sy, alturaY=0, vista=0)` | ponto da tela → ponto no plano horizontal do mundo `{x, y, z}` |
 
 **Opções `o`** das primitivas:
 - `rotY`, `rotX`, `rotZ` (rotação em rad; caixa, cilindro e cone giram em torno da **base**);
