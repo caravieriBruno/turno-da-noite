@@ -16,6 +16,7 @@ TN.registerMinigame({
 
   // ---- constantes (originais: turno 15 s, −1 s por turno, mín. 10; erro trava 0,2 s; 500 itens) ----
   FIRST_TIME: 15, MIN_TIME: 10, LOCK: 0.2, SEQ_LEN: 500, MAX_SUBS: 8,
+  PAUSA: 1.5,              // pausa com contagem 3-2-1 entre os turnos
   SLOT_X: 178, SLOT_GAP: 68, VISIBLE: 10,
   // 8 tipos: 0–3 arte (queimar), 4–7 tecnologia (reciclar)
   ITEMS: [
@@ -62,10 +63,19 @@ TN.registerMinigame({
       d.timer -= dt;
       if (d.timer <= 3 && d.timer > 0 && Math.ceil(d.timer) !== Math.ceil(d.timer + dt)) g.sfx('tick');
       if (d.timer <= 0) this.endSub(g);
+    } else if (d.phase === 'pause') {
+      d.pauseT -= dt;
+      const n = Math.ceil(d.pauseT / (this.PAUSA / 3));   // 3 → 2 → 1 → 0
+      if (n !== d.contagem && n > 0) g.sfx('tick');
+      d.contagem = Math.max(0, n);
+      if (d.pauseT <= 0) {
+        d.phase = 'play'; d.timer = d.subTime;
+        g.sfx('go'); g.flash('#fff', 0.1); g.message('JÁ!', 0.6, '#ff5a3c');
+      }
     }
     for (const p of g.players) {
       const pd = p.data;
-      pd.lock -= dt; pd.wrong -= dt; pd.shift = Math.max(0, pd.shift - dt * 9);
+      pd.lock -= dt; pd.wrong -= dt; pd.shift = Math.max(0, pd.shift - dt * 9); pd.subFlash = Math.max(0, (pd.subFlash || 0) - dt);
       if (pd.crush > 0) pd.crush = Math.min(1, pd.crush + dt * 4);
       if (!p.alive) pd.deadT = (pd.deadT || 0) + dt;   // só para a animação 3D da prensa subindo
       if (!p.alive || d.phase !== 'play' || pd.lock > 0) continue;
@@ -107,9 +117,10 @@ TN.registerMinigame({
         d.banner = null;
         d.sub++;
         d.subTime = Math.max(this.MIN_TIME, this.FIRST_TIME - (d.sub - 1));
-        d.timer = d.subTime; d.phase = 'play';
-        for (const p of g.players) p.data.sub = 0;
-        g.message(`TURNO ${d.sub}`, 1.0, '#ff5a3c'); g.sfx('go');
+        // pausa com contagem 3-2-1 antes do turno: sem ela o turno novo começava seco e ninguém percebia
+        d.phase = 'pause'; d.pauseT = this.PAUSA; d.contagem = 3;
+        for (const p of g.players) { p.data.sub = 0; p.data.subFlash = 0.5; }
+        g.sfx('tick');
       });
     });
   },
@@ -268,7 +279,7 @@ TN.registerMinigame({
       const pd = p.data, dead = !p.alive;
       const s = TN.R3.project(a.x + a.w - 46, 30, p.y);
       D.panel(c, s.x - 34, s.y - 26, 68, 44, { stroke: dead ? '#444' : p.color, fill: 'rgba(0,0,0,0.7)' });
-      D.text(c, dead ? '✖' : String(pd.sub), s.x, s.y - 4, { size: 28, color: dead ? '#f55' : '#fff', align: 'center' });
+      D.text(c, dead ? '✖' : String(pd.sub), s.x, s.y - 4, { size: 28, color: dead ? '#f55' : pd.subFlash > 0 && Math.floor(g.time * 10) % 2 ? '#ff5a3c' : '#fff', align: 'center' });
     }
     const t = d.phase === 'play' ? d.timer : 0;
     c.fillStyle = 'rgba(8,10,13,0.7)'; c.fillRect(a.x, 37, a.w, 30);
@@ -276,6 +287,10 @@ TN.registerMinigame({
     D.text(c, U.formatTime(t), g.W / 2, 52, { size: 24, color: t < 4 && d.phase === 'play' ? '#f55' : '#fff', align: 'center' });
     D.text(c, 'AÇÃO: QUEIMAR ARTE', a.x + a.w - 250, 45, { size: 12, color: '#ff7a5a', align: 'left' });
     D.text(c, 'EXTRA: RECICLAR TECNOLOGIA', a.x + a.w - 250, 59, { size: 12, color: '#46e27b', align: 'left' });
+    if (d.phase === 'pause') {
+      D.text(c, `TURNO ${d.sub}`, g.W / 2, g.H / 2 - 40, { size: 40, color: '#ff5a3c', align: 'center' });
+      D.text(c, String(d.contagem || 'JÁ!'), g.W / 2, g.H / 2 + 30, { size: 64, color: '#fff', align: 'center' });
+    }
     if (d.banner) {
       D.panel(c, g.W / 2 - 250, g.H / 2 - 26, 500, 52, { stroke: d.banner.color });
       D.text(c, d.banner.text, g.W / 2, g.H / 2, { size: 20, color: d.banner.color, align: 'center' });
@@ -405,6 +420,10 @@ TN.registerMinigame({
     D.text(c, U.formatTime(t), g.W / 2, 52, { size: 24, color: t < 4 && d.phase === 'play' ? '#f55' : '#fff', align: 'center' });
     D.text(c, 'AÇÃO: QUEIMAR ARTE', a.x + a.w - 250, 46, { size: 12, color: '#ff7a5a', align: 'left' });
     D.text(c, 'EXTRA: RECICLAR TECNOLOGIA', a.x + a.w - 250, 60, { size: 12, color: '#46e27b', align: 'left' });
+    if (d.phase === 'pause') {
+      D.text(c, `TURNO ${d.sub}`, g.W / 2, g.H / 2 - 40, { size: 40, color: '#ff5a3c', align: 'center' });
+      D.text(c, String(d.contagem || 'JÁ!'), g.W / 2, g.H / 2 + 30, { size: 64, color: '#fff', align: 'center' });
+    }
     if (d.banner) {
       D.panel(c, g.W / 2 - 250, g.H / 2 - 26, 500, 52, { stroke: d.banner.color });
       D.text(c, d.banner.text, g.W / 2, g.H / 2, { size: 20, color: d.banner.color, align: 'center' });

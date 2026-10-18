@@ -80,8 +80,22 @@ function secaoServicoInterno() {
   ok(def.SPAWNS.every(([x, y]) => dentro(x, y)) && g.players.every((p) => dentro(p.x, p.y)), 'serviço interno: nascimentos dentro da arena nova');
 }
 
+// --- triagem: pausa com contagem 3-2-1 entre os turnos ---
+function secaoTriagem() {
+  const g = rodada('triagem'), d = g.data;
+  d.timer = 0.01; passo(g);
+  ok(d.phase === 'judge', 'triagem: fim do turno entra em judge');
+  segundos(g, 3.05);
+  ok(d.phase === 'pause' && d.contagem >= 1, `triagem: depois do julgamento vem a pausa com contagem (fase ${d.phase}, contagem ${d.contagem})`);
+  const antes = g.players[1].data.sub;
+  aperta(1, { a: true }); passo(g); solta();
+  ok(g.players[1].data.sub === antes, 'triagem: durante a pausa a entrada é ignorada');
+  segundos(g, 1.6);
+  ok(d.phase === 'play' && d.sub === 2, 'triagem: ~1,5 s depois começa o turno 2');
+}
+
 // SEÇÕES (uma por jogo; cada tarefa define a sua função acima deste bloco e acrescenta o nome no array)
-const secoes = [secaoContramao, secaoServicoInterno];
+const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem];
 for (const s of secoes) { try { s(); } catch (e) { ok(false, `${s.name}: exceção ${e.message}`); } }
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
