@@ -15,6 +15,7 @@
   // posições (em "unidades de hexágono") de todos os nós do cursor
   const NODES = CELLS.map((c) => ({ x: c.x, y: c.y })).concat([{ x: 6.6, y: -0.9 }, { x: 6.6, y: 0.9 }]);
   const DIRV = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  let camBlend = 0;                       // 0 = câmera do telão, 1 = câmera dos painéis (só visual, não entra no estado)
 
   // Próximo nó na direção pedida (o mais alinhado e próximo, até ~50° de desvio).
   function nav(from, dir) {
@@ -71,6 +72,17 @@
     REVEAL: 2.6, ELIM_AT: 1.1, MAX_CYCLES: 12,
 
     quad(i) { return { x: (i % 2) * 480, y: 34 + Math.floor(i / 2) * 253, w: 480, h: 253 }; },
+    // quem tem painel no 3D: os vivos e, só durante o reveal, quem acabou de cair (mostra o erro até o fim da fase)
+    comPainel(g) { return g.players.filter((p) => p.alive || (g.data.phase === 'reveal' && p.data.result && p.data.result !== 'ok')).sort((a, b) => a.id - b.id); },
+    // painel de `p` por cima do 3D (420×220, escala 17): 4 → grade 2×2 com margens de 20 px; 3 → dois em cima e um embaixo; ≤2 → lado a lado
+    painel(g, p) {
+      const lista = this.comPainel(g), n = lista.length, i = Math.max(0, lista.indexOf(p));
+      const w = 420, h = 220, xs = [20, 520], ys = [92, 316];
+      let x, y;
+      if (n <= 2) { x = xs[i]; y = 200; }
+      else { x = xs[i % 2]; y = ys[Math.floor(i / 2)]; if (n === 3 && i === 2) x = 480 - w / 2; }
+      return { x, y, w, h, S: 17, overlay: true };
+    },
     cuts(cycle) { return Math.min(this.CUT_START + cycle - 1, this.CUT_MAX); },
     carveTime(cycle) { return Math.max(this.CARVE_START - (cycle - 1), this.CARVE_MIN); },
 
@@ -217,7 +229,11 @@
     // ------------------------------------------------------------------ desenho 3D
     // Oficina: telão holográfico ao fundo; 4 bancadas de frente para a câmera, cada uma com o bloco
     // de 19 prismas hexagonais. O escultor fica atrás da própria bancada.
-    camera: { pos: [480, 400, 1010], target: [480, 70, 270], fov: 40 },
+    // duas câmeras: na memorização, de frente para o telão; esculpindo, mais alta e aberta atrás dos painéis
+    camera: { pos: [480, 420, 1010], target: [480, 130, 270], fov: 40 },
+    CAM_PAINEIS: { pos: [480, 520, 1080], target: [480, 60, 270] },
+    // posição 3D de cada escultor (atrás da própria bancada): rótulos e partículas do motor
+    worldPos(g, p) { return { x: this.tableX(p.id), y: 14, z: this.TABLE_Z - 92 }; },
     env: { bg: '#0c0a09', fog: [1000, 2400], sunDir: [-0.35, 1, 0.75], sunColor: '#ffe2bd' },
     S3D: 12, TABLE_Z: 380,
     tableX(i) { return 135 + i * 230; },
@@ -238,6 +254,10 @@
 
     draw3d(g, r) {
       const d = g.data, S = this.S3D;
+      // câmera: desliza do telão (memo) para a vista aberta (esculpir/reveal) e volta
+      camBlend += ((d.phase === 'memo' ? 0 : 1) - camBlend) * 0.06;
+      const L = (a, b) => a.map((v, i) => v + (b[i] - v) * camBlend);
+      r.camera(L(this.camera.pos, this.CAM_PAINEIS.pos), L(this.camera.target, this.CAM_PAINEIS.target), this.camera.fov);
       // oficina de artesanato (parede de tijolo ao fundo, atrás do telão)
       r.room(-140, 75, 1100, 560, { estilo: 'oficina', h: 460, props: false });
       // telão com o bloco-alvo (prismas virados para a câmera)
@@ -284,27 +304,24 @@
     },
 
     drawOverlay(g, c) {
-      if (!TN.R3.available || !g.uses3d()) return;
+      if (!g.uses3d()) return;   // (uses3d já confere TN.R3.available)
       const D = TN.draw, d = g.data;
-      // relógio / ciclo no topo
-      D.panel(c, 380, 42, 200, 40, { fill: 'rgba(10,8,6,0.85)', stroke: '#d9b77e' });
-      if (d.phase === 'memo') D.text(c, d.phaseT < this.SHOW_FULL ? 'O BLOCO...' : 'MEMORIZE!', 480, 62, { size: 20, color: '#ffd9a0', align: 'center' });
+      // relógio / ciclo no canto (fora do telão e dos painéis)
+      D.panel(c, 20, 38, 200, 46, { fill: 'rgba(10,8,6,0.85)', stroke: '#d9b77e' });
+      if (d.phase === 'memo') D.text(c, d.phaseT < this.SHOW_FULL ? 'O BLOCO...' : 'MEMORIZE!', 120, 54, { size: 17, color: '#ffd9a0', align: 'center' });
       else if (d.phase === 'carve') {
         const left = Math.max(0, d.carveTime - d.phaseT);
-        D.text(c, `ESCULPA: ${Math.ceil(left)} s`, 480, 62, { size: 20, color: left < 3 ? '#ff6b6b' : '#fff', align: 'center' });
-      } else D.text(c, `CICLO ${d.cycle}`, 480, 62, { size: 20, color: '#d9b77e', align: 'center' });
-      D.text(c, `${d.order.length} cortes · ${d.carveTime} s`, 480, 94, { size: 12, color: '#a08a66', align: 'center' });
-      // estado de cada escultor acima da cabeça
-      g.players.forEach((p, i) => {
-        const s = p.data, q = TN.R3.project(this.tableX(i), 110, this.TABLE_Z - 92);
-        let st = '', sc = '#aaa';
-        if (d.phase === 'reveal' && s.result) { st = s.result === 'ok' ? 'APROVADO' : s.result === 'late' ? 'NÃO ENVIOU' : 'REPROVADO'; sc = s.result === 'ok' ? '#46e27b' : '#ff4d4d'; }
-        else if (!p.alive) { st = 'ELIMINADO'; sc = '#f55'; }
-        else if (d.phase === 'carve') { st = s.sent ? 'ENVIADO ✔' : 'esculpindo…'; sc = s.sent ? '#46e27b' : '#d9b77e'; }
-        D.text(c, p.label + (p.isBot ? ' BOT' : ''), q.x, q.y - 16, { size: 13, color: p.alive ? p.color : '#777', align: 'center' });
-        if (st) D.text(c, st, q.x, q.y + 2, { size: 13, color: sc, align: 'center' });
-      });
-      if (d.phase === 'reveal') D.text(c, 'vermelho = cortou errado · laranja = faltou cortar', 480, TN.H - 14, { size: 12, color: '#a08a66', align: 'center' });
+        D.text(c, `ESCULPA: ${Math.ceil(left)} s`, 120, 54, { size: 17, color: left < 3 ? '#ff6b6b' : '#fff', align: 'center' });
+      } else D.text(c, `CICLO ${d.cycle}`, 120, 54, { size: 17, color: '#d9b77e', align: 'center' });
+      D.text(c, `${d.order.length} cortes · ${d.carveTime} s`, 120, 73, { size: 10, color: '#a08a66', align: 'center' });
+      if (d.phase === 'memo') return;   // na memorização só o telão 3D importa
+      // o bloco de cada um, grande, em painéis por cima do cenário
+      for (const p of this.comPainel(g)) {
+        const q = this.painel(g, p);
+        c.fillStyle = 'rgba(10,8,6,0.85)'; c.fillRect(q.x, q.y, q.w, q.h);
+        this.drawQuadrant(g, c, p, q);
+      }
+      if (d.phase === 'reveal') D.text(c, 'vermelho = cortou errado · laranja = faltou cortar', 480, TN.H - 4, { size: 11, color: '#a08a66', align: 'center' });
     },
 
     // ------------------------------------------------------------------ desenho 2D (alternativa)
@@ -385,15 +402,15 @@
       });
     },
 
-    drawQuadrant(g, c, p) {
-      const D = TN.draw, d = g.data, s = p.data, q = this.quad(p.id);
-      const bx = q.x + 175, by = q.y + 138, S = 19;
-      c.fillStyle = (p.id + Math.floor(p.id / 2)) % 2 ? '#171413' : '#1b1816';
-      c.fillRect(q.x, q.y, q.w, q.h);
+    // o bloco de `p` num retângulo: o quadrante 2D (padrão) ou um painel por cima do 3D (rect.overlay, com rect.S)
+    drawQuadrant(g, c, p, rect = this.quad(p.id)) {
+      const D = TN.draw, d = g.data, s = p.data, q = rect;
+      const bx = q.x + q.w / 2 - 65, by = q.y + q.h / 2 + 10, S = q.S || 19;
+      if (!q.overlay) { c.fillStyle = (p.id + Math.floor(p.id / 2)) % 2 ? '#171413' : '#1b1816'; c.fillRect(q.x, q.y, q.w, q.h); }
       c.strokeStyle = p.alive ? p.color : '#333'; c.lineWidth = 2; c.strokeRect(q.x + 3, q.y + 3, q.w - 6, q.h - 6);
-      // margens maiores do lado do relógio central
-      const padL = p.id % 2 ? 46 : 14, padR = p.id % 2 ? 16 : 46;
-      D.text(c, p.label + (p.isBot ? ' BOT' : ''), q.x + padL, q.y + 18, { size: 14, color: p.alive ? p.color : '#666' });
+      // no 2D, margens maiores do lado do relógio central
+      const padL = !q.overlay && p.id % 2 ? 46 : 14, padR = !q.overlay && !(p.id % 2) ? 46 : 16;
+      D.text(c, p.label + (p.isBot ? ' BOT' : ''), q.x + padL, q.y + 18, { size: 14, color: p.alive ? p.color : '#666', maxWidth: 150 });
       // estado
       let st = '', sc = '#aaa';
       if (!p.alive && !(d.phase === 'reveal' && s.result && s.result !== 'ok')) { st = 'ELIMINADO'; sc = '#f55'; }
@@ -406,7 +423,7 @@
       if (!p.alive && !(d.phase === 'reveal' && s.result)) {
         this.drawBoard(c, bx, by, S, s.cells);
         c.fillStyle = 'rgba(0,0,0,0.6)'; c.fillRect(q.x + 4, q.y + 30, q.w - 8, q.h - 34);
-        g.drawPlayer(c, p);
+        if (!q.overlay) g.drawPlayer(c, p);
         return;
       }
       const compare = d.phase === 'reveal' ? d.target : null;
@@ -443,7 +460,7 @@
         c.restore(); c.globalAlpha = 1;
         if (!ok) D.lines(c, 'vermelho = cortou errado\nlaranja = faltou cortar', bx + NODES[SEND].x * S - 38, by + 40, { size: 10, color: '#a08a66', lineHeight: 13 });
       }
-      g.drawPlayer(c, p);
+      if (!q.overlay) g.drawPlayer(c, p);   // no 3D o escultor já está atrás da bancada
     },
   });
 })();

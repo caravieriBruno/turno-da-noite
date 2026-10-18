@@ -173,4 +173,22 @@ function secaoCorteExato() {
   ok(/ÚLTIMO LUGAR SAI/.test(t2) && /ÚLTIMO LUGAR SAI/.test(t3), 'corte: HUD 2D e 3D têm o cabeçalho da rodada');
 }
 
-fim([secaoPularCorda, secaoBonsModos, secaoEmpilhadeira, secaoCorteExato]);
+// --- escultor: visão individual em painéis ---
+function secaoEscultor() {
+  const def = TN.minigames.cinzel;
+  const g = rodada('cinzel'); segundos(g, def.MEMO + 0.5);   // fase de esculpir
+  const ps = g.players.map((p) => def.painel(g, p));
+  ok(ps.every((q) => q.w === 420 && q.h === 220) && new Set(ps.map((q) => q.x + ',' + q.y)).size === 4 && ps.every((q) => q.x >= 20 && q.x + q.w <= 940 && q.y >= 34 && q.y + q.h <= 540), 'escultor: 4 painéis de 420×220 com margens');
+  const c = gravador(); com3d(g, () => def.drawOverlay(g, c));
+  const fundos = c.log.filter((e) => e[0] === 'fillRect' && e[3] === 420 && e[4] === 220);
+  ok(fundos.length === 4, `escultor: o overlay 3D desenha os 4 painéis (${fundos.length})`);
+  ok(/esculpindo|ESCULPINDO/i.test(textos((x) => com3d(g, () => def.drawOverlay(g, x)))), 'escultor: os painéis mostram o estado de cada um');
+  // Review Focus 5: com 3 jogadores, dois em cima e um embaixo
+  g.players[3].alive = false;
+  const p3 = g.players.slice(0, 3).map((p) => def.painel(g, p));
+  ok(p3[0].y === p3[1].y && p3[2].y > p3[0].y && Math.abs(p3[2].x + p3[2].w / 2 - 480) < 1, 'escultor: 3 jogadores → dois em cima, um embaixo centralizado');
+  const c3 = gravador(); com3d(g, () => def.drawOverlay(g, c3));
+  ok(c3.log.filter((e) => e[0] === 'fillRect' && e[3] === 420 && e[4] === 220).length === 3, 'escultor: eliminado não ganha painel');
+}
+
+fim([secaoPularCorda, secaoBonsModos, secaoEmpilhadeira, secaoCorteExato, secaoEscultor]);
