@@ -38,4 +38,4 @@ Party game de navegador com minigames (1 a 4 jogadores locais/rede e bots), insp
 - Não altere o motor para um jogo específico. Se algo genérico faltar, adicione ao motor e documente em `docs/COMO_CRIAR_MINIGAME.md`.
 - Minigames usam só `p.input` (que é abstrato), nunca teclas diretamente.
 - Todo minigame precisa terminar sozinho, mesmo com um humano parado.
-- Depois de mexer no motor, rode `node tools/simular.js` (todos os minigames), `node tools/teste_cenarios.js`, `node tools/teste_detento.js`, `node tools/teste_menus.js` e `bash tools/teste_render.sh` (render 3D no Chrome headless, nos dois visuais).
+- Depois de mexer no motor, rode `node tools/simular.js` (todos os minigames), `node tools/teste_cenarios.js`, `node tools/teste_detento.js`, `node tools/teste_menus.js`, `node tools/teste_ajustes.js` (regras dos minigames) e `bash tools/teste_render.sh` (render 3D no Chrome headless, nos dois visuais).

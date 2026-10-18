@@ -239,7 +239,7 @@ TN.registerMinigame({
   bot(g, p) {
     const U = TN.util, q = p.data, d = g.data, tr = d.tranco;
     const b = q.bot || (q.bot = {
-      cad: U.rand(0.145, 0.205), err: U.rand(0.03, 0.1), next: U.rand(0.05, 0.4), trId: 0, trAt: 0, trBtn: 'a',
+      cad: U.rand(0.23, 0.30),   // dentro da janela boa (0,20–0,32 s); com o ±0,03 nunca fica afobado err: U.rand(0.03, 0.1), next: U.rand(0.05, 0.4), trId: 0, trAt: 0, trBtn: 'a',
     });
     if (d.phase !== 'pull' || q.slip > 0) { b.next = g.time + U.rand(0.05, 0.25); return {}; }
     // TRANCO: agenda a reação
@@ -443,9 +443,9 @@ TN.registerMinigame({
     this.drawTrancoText(g, c);
     if (g.time < 5) {   // metrônomo dos primeiros segundos: dois traços alternando no ritmo ideal
       const lado = Math.floor(g.time * this.RITMO_HZ) % 2;
-      D.text(c, 'RITMO', g.W / 2, 112, { size: 12, color: '#9ab', align: 'center' });
-      c.fillStyle = lado ? '#ff8a1e' : '#2a2f35'; c.fillRect(g.W / 2 - 30, 122, 24, 10);
-      c.fillStyle = lado ? '#2a2f35' : '#3fa9ff'; c.fillRect(g.W / 2 + 6, 122, 24, 10);
+      D.text(c, 'RITMO', g.W / 2, 158, { size: 12, color: '#9ab', align: 'center' });
+      c.fillStyle = lado ? '#ff8a1e' : '#2a2f35'; c.fillRect(g.W / 2 - 30, 168, 24, 10);
+      c.fillStyle = lado ? '#2a2f35' : '#3fa9ff'; c.fillRect(g.W / 2 + 6, 168, 24, 10);
     }
     for (const p of g.players) {
       const q = p.data;
@@ -455,8 +455,8 @@ TN.registerMinigame({
       const pulso = 1 + 0.25 * Math.sin(g.time * Math.PI * 2 * this.RITMO_HZ);
       const corQ = q.qualidade === 'bom' ? '#46e27b' : q.qualidade === 'afobado' ? '#ff3b3b' : q.qualidade ? '#777' : '#bbb';
       c.strokeStyle = corQ; c.lineWidth = 3; c.beginPath(); c.ellipse(s.x, s.y - 14, 14 * pulso, 6 * pulso, 0, 0, Math.PI * 2); c.stroke();
-      D.text(c, 'PEGADA', s.x - 60, s.y + 3, { size: 9, color: '#9ab', shadow: false });
       D.bar(c, s.x - 22, s.y, 60, 10, q.grip, q.grip > 0.5 ? '#3f6' : q.grip > 0.25 ? '#fc3' : '#f43');
+      D.text(c, 'PEGADA', s.x + 8, s.y + 5, { size: 8, color: '#111', align: 'center', shadow: false });
       const next = q.last === 'a' ? 'b' : q.last === 'b' ? 'a' : null;
       [['a', 'AÇÃO', -19], ['b', 'EXTRA', 19]].forEach(([k, txt, ox]) => {
         const on = next === null || next === k;

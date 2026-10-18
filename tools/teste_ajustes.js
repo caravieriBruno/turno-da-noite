@@ -228,6 +228,11 @@ function secaoCabo() {
   const t = textos((c) => def.drawOverlay(g, c));
   TN.R3.project = proj;
   ok(/PEGADA/.test(t), 'cabo: HUD tem o rótulo PEGADA');
+  // os bots seguem a regra nova: o ritmo deles fica dentro da janela (nunca afobado)
+  const b = rodada('cabo_de_guerra', { humanos: 0 }); let afobados = 0;
+  const popup = b.popup.bind(b); b.popup = (txt, ...r) => { if (txt === 'AFOBADO') afobados++; return popup(txt, ...r); };
+  segundos(b, 8);
+  ok(afobados === 0, `cabo: bots nunca são afobados (${afobados} avisos em 8 s)`);
 }
 
 // --- hora do trem: empurrão tira do nicho de verdade ---
