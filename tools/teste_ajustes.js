@@ -177,8 +177,27 @@ function secaoPisoFalso() {
   ok(meu.sym !== e.safe && e.tiles.some((t) => t.sym === e.safe), 'piso falso: a garantia não torna seguro o piso sob o jogador (parado tem que andar)');
 }
 
+// --- tragada certa: sem a barra de fôlego; lotar o pulmão só força a exalação ---
+function secaoTragada() {
+  const def = TN.minigames.tragada, g = rodada('tragada'), s = g.players[0].data;
+  ok(def.CHOKE_TIME === 1.2 && def.CIG_MULT >= 0.28 && def.CIG_MULT <= 0.32, 'tragada: tosse 1,2 s e cigarro gasta ~0,3 por tragada');
+  aperta(0, { a: true }); segundos(g, 2);   // o pulmão lota em ~1,8 s de tragada contínua
+  ok(s.coughs === 0 && s.choke === 0 && !s.inhaling && s.exhaling, `tragada: lotar o pulmão força a exalação sem tosse (tosses ${s.coughs}, exalando ${s.exhaling})`);
+  ok(s.stun > 0, `tragada: o atordoamento de 0,3 s está valendo (${s.stun.toFixed(2)} s)`);
+  segundos(g, 1); ok(s.coughs === 0, 'tragada: segurar AÇÃO depois de lotar não dá tosse');
+  solta(); segundos(g, 2);
+  aperta(0, { a: true }); segundos(g, 0.4); solta(); passo(g); aperta(0, { a: true }); passo(g);
+  ok(s.choke > 0 && s.choke <= 1.2, `tragada: apertar antes de esvaziar ainda tosse (${s.choke.toFixed(2)} s)`);
+  // Review Focus 4: o cigarro acaba no meio da tragada
+  const h = rodada('tragada'), q = h.players[0].data; q.cig = 0.001; q.lung = 0;
+  aperta(0, { a: true }); segundos(h, 3); solta(); segundos(h, 2);
+  ok(q.done, 'tragada: cigarro acabando no meio da tragada termina normalmente');
+  const t = textos((c) => def.drawOverlay(h, c)) + textos((c) => def.draw(h, c));
+  ok(!/F[ÔO]LEGO|PULM/i.test(t), 'tragada: nenhum rótulo de fôlego/pulmão na tela');
+}
+
 // SEÇÕES (uma por jogo; cada tarefa define a sua função acima deste bloco e acrescenta o nome no array)
-const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato, secaoMemoria, secaoPisoFalso];
+const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato, secaoMemoria, secaoPisoFalso, secaoTragada];
 for (const s of secoes) { try { s(); } catch (e) { ok(false, `${s.name}: exceção ${e.message}`); } }
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
