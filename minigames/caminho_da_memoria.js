@@ -18,6 +18,9 @@ TN.registerMinigame({
   SPEED: 165, R: 13, LIVES: 2, FUSE: 2, ZONE_W: 84, WALL_T: 14, MAX_ROWS: 7, MAX_DOORS: 6, MAX_SUBS: 8,
   BOT_RECALL: 0.8,
 
+  // cores das portas: azul/laranja com ✓/✗ (verde/vermelho em esferas minúsculas confundia, inclusive daltônicos)
+  COR_SEGURA: '#2aa7ff', COR_ERRADA: '#ff8a2a', COR_EXPLODIDA: '#444',
+
   init(g) {
     const d = g.data;
     d.rows = 3; d.doors = 3; d.sub = 0; d.leftToRight = false;
@@ -222,12 +225,15 @@ TN.registerMinigame({
         const len = dr.y1 - dr.y0, antes = dr.y0 - (j ? w.doors[j - 1].y1 : a.y), depois = (j < w.doors.length - 1 ? w.doors[j + 1].y0 : a.y + a.h) - dr.y1;
         const gl = Math.min(len, Math.max(antes, depois) - 2);
         if (gl > 12) r.prop('grade', w.x + T / 2 + 3, depois >= antes ? dr.y1 + gl / 2 : dr.y0 - gl / 2, { w: gl, h: WH - 8, rotY: Math.PI / 2 });
-        let col = null;
-        if (preview) col = j === w.safe ? '#46e27b' : '#ff3b3b';
-        else if (dr.flash > 0) col = dr.flashOk ? '#46e27b' : '#ff3b3b';
-        else if (dr.red) col = '#a02020';
+        let col = null, segura = j === w.safe;
+        if (preview) col = segura ? this.COR_SEGURA : this.COR_ERRADA;
+        else if (dr.flash > 0) { col = dr.flashOk ? this.COR_SEGURA : this.COR_ERRADA; segura = dr.flashOk; }
+        else if (dr.red) { col = this.COR_EXPLODIDA; segura = false; }
         r.box(w.x, WH - 6, dr.cy, T + 2, 6, dr.y1 - dr.y0, '#3a4048');                  // verga da porta
-        r.sphere(w.x, WH + 5, dr.cy, 7, col || '#222', { glow: !!col });
+        // painel sobre a porta com ✓ ou ✗ (apagado quando não há nada a mostrar)
+        r.box(w.x, WH + 14, dr.cy, T + 2, 26, 26, col || '#222', { glow: !!col && col !== this.COR_EXPLODIDA });
+        if (col) r.label(w.x, WH + 14, dr.cy, segura ? '✓' : '✗', col === this.COR_EXPLODIDA ? '#999' : '#fff', 22);
+        if (preview) r.plane(w.x, 0.5, dr.cy, T + 10, dr.y1 - dr.y0, col, { glow: true, opacity: 0.35 });   // chão da porta pintado
         if (col && dr.flash > 0 && lights < 6) { r.light(w.x, WH + 20, dr.cy, col, 0.8, 160); lights++; }
         if (dr.red && !preview) r.disc(w.x, 0.8, dr.cy, 16, '#000', { opacity: 0.5 });     // fuligem da explosão
       });
@@ -276,11 +282,15 @@ TN.registerMinigame({
       c.fillRect(w.x - T / 2, y, T, a.y + a.h - y);
       w.doors.forEach((dr, j) => {
         // estado da lâmpada: acesa no preview, marcada de vermelho se já explodiu, piscando ao atravessar
-        let col = '#222';
-        if (preview) col = j === w.safe ? '#46e27b' : '#ff3b3b';
-        else if (dr.flash > 0) col = dr.flashOk ? '#46e27b' : '#ff3b3b';
-        else if (dr.red) col = '#a02020';
+        let col = '#222', segura = j === w.safe;
+        if (preview) col = segura ? this.COR_SEGURA : this.COR_ERRADA;
+        else if (dr.flash > 0) { col = dr.flashOk ? this.COR_SEGURA : this.COR_ERRADA; segura = dr.flashOk; }
+        else if (dr.red) { col = this.COR_EXPLODIDA; segura = false; }
         c.fillStyle = 'rgba(255,255,255,0.03)'; c.fillRect(w.x - T / 2, dr.y0, T, dr.y1 - dr.y0);
+        if (col !== '#222') {   // porta pintada com o símbolo no meio
+          c.globalAlpha = preview ? 0.35 : 0.2; c.fillStyle = col; c.fillRect(w.x - T / 2 - 4, dr.y0, T + 8, dr.y1 - dr.y0); c.globalAlpha = 1;
+          TN.draw.text(c, segura ? '✓' : '✗', w.x, dr.cy, { size: 18, color: col === this.COR_EXPLODIDA ? '#999' : col, align: 'center' });
+        }
         for (const ly of [dr.y0, dr.y1]) {
           c.fillStyle = '#333'; c.fillRect(w.x - T / 2 - 2, ly - 3, T + 4, 6);
           c.fillStyle = col; c.beginPath(); c.arc(w.x, ly, 4.5, 0, Math.PI * 2); c.fill();

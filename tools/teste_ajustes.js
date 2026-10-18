@@ -126,8 +126,18 @@ function secaoCarrapato() {
   ok(/VAI DISPARAR/.test(t), 'carrapato: painel diz "O CARRAPATO VAI DISPARAR…"');
 }
 
+// --- caminho da memória: ✓ azul e ✗ laranja nas portas ---
+function secaoMemoria() {
+  const def = TN.minigames.caminho_da_memoria, g = rodada('caminho_da_memoria');
+  ok(def.COR_SEGURA === '#2aa7ff' && def.COR_ERRADA === '#ff8a2a', 'memória: cores azul (segura) e laranja (errada)');
+  const prev = estilos((c) => def.draw(g, c));
+  ok(prev.includes('#2aa7ff') && prev.includes('#ff8a2a') && !prev.includes('#ff3b3b') && !prev.includes('#a02020'), 'memória: a prévia 2D usa as cores novas nas portas e não o vermelho antigo');
+  const t = textos((c) => def.draw(g, c));
+  ok(/✓/.test(t) && /✗/.test(t), 'memória: a prévia desenha ✓ e ✗');
+}
+
 // SEÇÕES (uma por jogo; cada tarefa define a sua função acima deste bloco e acrescenta o nome no array)
-const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato];
+const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato, secaoMemoria];
 for (const s of secoes) { try { s(); } catch (e) { ok(false, `${s.name}: exceção ${e.message}`); } }
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
