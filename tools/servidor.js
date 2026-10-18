@@ -8,6 +8,7 @@
 //                     {t:'list'}                  → {t:'rooms', rooms:[{room,name,players}]}
 //                     {t:'join', room}            → {t:'joined', room, id}   (host recebe {t:'peer-join', id})
 //   cliente→host      {t:'input', devices:{...}}  → host recebe {t:'input', from:id, devices}
+//   cliente→host      {t:'nomes', nomes:{kb1:'BRUNO'}} → host recebe {t:'nomes', from:id, nomes}
 //   host→clientes     {t:'state', ...}            → repassado sem alteração para todos da sala
 //   saídas            host recebe {t:'peer-leave', id}; clientes recebem {t:'host-left'}
 const http = require('http');
@@ -130,6 +131,10 @@ function onMessage(client, text) {
   } else if (msg.t === 'input' && client.room && !client.isHost) {
     const room = rooms.get(client.room);
     if (room) wsSend(room.host.sock, JSON.stringify({ t: 'input', from: client.id, devices: msg.devices }));
+  } else if (msg.t === 'nomes' && client.room && !client.isHost) {
+    // nomes salvos no computador do cliente, para as celas dele já abrirem com eles
+    const room = rooms.get(client.room);
+    if (room) wsSend(room.host.sock, JSON.stringify({ t: 'nomes', from: client.id, nomes: msg.nomes || {} }));
   } else if (msg.t === 'leave') {
     leave(client);
   }

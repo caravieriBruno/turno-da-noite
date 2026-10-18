@@ -64,6 +64,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(500);
   if (!myId) fail('cliente não entrou na sala');
   ok(`cliente entrou como #${myId}`);
+  ws.send(JSON.stringify({ t: 'nomes', nomes: { kb1: 'REMOTAO' } }));
+  await sleep(300);
+  if (TN.net.nomesRemotos[`n${myId}:kb1`] !== 'REMOTAO') fail('o host não recebeu o nome do cliente (' + JSON.stringify(TN.net.nomesRemotos) + ')');
+  ok('host recebeu o nome salvo do cliente');
   const send = (a) => ws.send(JSON.stringify({ t: 'input', devices: { kb1: { x: 0, y: 0, a, b: 0 } } }));
   const tap = async () => { send(1); await sleep(40); send(0); await sleep(300); };
 
@@ -72,6 +76,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const slot = TN.scene.slots && TN.scene.slots.find((s) => s && s.device === `n${myId}:kb1`);
   if (!slot) fail('o host não colocou o jogador remoto numa vaga do lobby');
   ok('jogador remoto pegou a vaga P1 no lobby do host');
+  if (slot.nome !== 'REMOTAO' || !slot.editando) fail('a cela do remoto não abriu com o nome dele (' + slot.nome + ')');
+  ok('cela do remoto abre com o nome que ele mandou');
+  await tap(); // aceita o nome (o cursor já está no ✓)
   await tap(); // pronto (AÇÃO de novo alterna, então espera o lobby começar)
   await sleep(1500);
   if (TN.scene.constructor.name !== 'Setup') fail('lobby não avançou para a configuração (cena: ' + TN.scene.constructor.name + ')');
@@ -102,6 +109,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(500);
   if (!me.isBot) fail('após sair, o jogador remoto deveria virar BOT');
   ok('cliente saiu → o jogador virou BOT no host');
+  if (Object.keys(TN.net.nomesRemotos || {}).some((k) => k.startsWith('n' + myId + ':'))) fail('nomes do cliente que saiu ficaram no host');
+  ok('nomes do cliente que saiu foram esquecidos');
   clearInterval(hostLoop);
   TN.net.close();
   console.log('\nRede OK.');

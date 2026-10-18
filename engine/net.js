@@ -75,6 +75,7 @@
   const net = TN.net = {
     mode: 'off',      // 'off' | 'host' | 'client'
     ws: null, room: null, urls: [], myId: null, peers: {}, roomName: '',
+    nomesRemotos: {},   // host: 'n<cliente>:<dispositivo>' → nome salvo naquele computador (padrão da cela)
     status: '', sfx: [], frame: 0, lastStateAt: 0, bytes: 0,
     wsUrl() {
       const p = new URLSearchParams(location.search).get('servidor');
@@ -123,10 +124,12 @@
       else if (m.t === 'peer-join') { this.peers[m.id] = { id: m.id }; TN.audio.play('select'); this.toast(`Jogador da rede #${m.id} conectou`); }
       else if (m.t === 'peer-leave') { delete this.peers[m.id]; this._dropPeer(m.id); this.toast(`Jogador da rede #${m.id} saiu (virou BOT)`); }
       else if (m.t === 'input') { for (const dev in m.devices || {}) TN.input.setRemote(`n${m.from}:${dev}`, m.devices[dev] || {}); }
+      else if (m.t === 'nomes') { for (const dev in m.nomes || {}) if (typeof m.nomes[dev] === 'string') this.nomesRemotos[`n${m.from}:${dev}`] = m.nomes[dev].toUpperCase().slice(0, 8); }
     },
     _dropPeer(id) {
       const pref = 'n' + id + ':';
       TN.input.removeRemote(pref);
+      for (const k in this.nomesRemotos) if (k.startsWith(pref)) delete this.nomesRemotos[k];
       const toBot = (list) => { for (const r of list || []) if (r.device && String(r.device).startsWith(pref)) { r.isBot = true; r.device = null; } };
       if (TN.session) toBot(TN.session.roster);
       let sc = TN.scene;
@@ -152,7 +155,11 @@
     join(room) { this.send({ t: 'join', room }); },
     _clientMessage(m) {
       if (m.t === 'rooms') { this.rooms = m.rooms; }
-      else if (m.t === 'joined') { this.mode = 'client'; this.room = m.room; this.myId = m.id; this.roomName = m.name; this.view = null; TN.audio.play('confirm'); TN.go(new ClientView()); }
+      else if (m.t === 'joined') {
+        this.mode = 'client'; this.room = m.room; this.myId = m.id; this.roomName = m.name; this.view = null; TN.audio.play('confirm');
+        this.send({ t: 'nomes', nomes: (TN._internal && TN._internal.nomesSalvos && TN._internal.nomesSalvos()) || {} });   // os nomes salvos aqui viram o padrão das minhas celas no host
+        TN.go(new ClientView());
+      }
       else if (m.t === 'error') { this.status = m.msg; TN.audio.play('back'); }
       else if (m.t === 'host-left') { this.mode = 'off'; TN.go(new NetMessage('O host fechou a sala.', '')); }
       else if (m.t === 'state') {
