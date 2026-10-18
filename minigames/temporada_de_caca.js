@@ -216,7 +216,7 @@ TN.registerMinigame({
   viewports(g) {
     const d = g.data;
     return [
-      { rect: [0, 34, 960, 228], camera: { pos: [480, 260, 980], target: d.zoom ? [d.mira.x, 0, d.mira.y] : [480, 0, 400], fov: d.zoom ? 16 : 38 } },
+      { rect: [0, 34, 960, 228], camera: { pos: [480, 260, 980], target: d.zoom ? [d.mira.x, 0, d.mira.y] : [480, 0, 380], fov: d.zoom ? 14 : 30 } },
       { rect: [0, 262, 960, 278], camera: { pos: [480, 110, 950], target: [480, 20, 250], fov: 44 } },
     ];
   },
@@ -224,17 +224,33 @@ TN.registerMinigame({
   env: { bg: '#05060a', fog: [1300, 2800], ambient: 0.38, sun: 0.7, sunDir: [0.3, 1, 0.5], sunColor: '#9fb4ff', hemiSky: '#55648c', hemiGround: '#1a140c' },
 
   draw3d(g, r) {
-    const d = g.data, F = this.FIELD;
-    // pátio à noite: chão de cimento, muro ao fundo, largada
-    r.yard(F.x0 - 400, this.WALL_Y - 260, F.x1 + 400, this.START_Y + 500, { quadra: false, holofote: false, postes: 0 });
-    r.box(480, 0, this.WALL_Y - 30, 1400, 160, 40, '#5a5a56', { rough: 0.95, tex: 'concreto' });
-    r.plane(480, 0.5, this.WALL_Y, F.x1 - F.x0 + 80, 6, '#4dff7a', { glow: true, opacity: 0.5 });
-    r.plane(480, 0.5, this.START_Y, F.x1 - F.x0 + 80, 6, '#d8d8d8', { opacity: 0.6 });
+    const d = g.data, F = this.FIELD, SY = this.START_Y, WY = this.WALL_Y;
+    // pátio à noite: chão de cimento, muro alto com arame ao fundo, largada atrás
+    r.yard(F.x0 - 400, WY - 260, F.x1 + 400, SY + 500, { quadra: false, holofote: false, postes: 0, guarita: false });
+    r.box(480, 0, WY - 30, 1400, 160, 40, '#5a5a56', { rough: 0.95, tex: 'concreto' });
+    for (let x = -200; x <= 1160; x += 170) r.cyl(x, 160, WY - 30, 2, 26, '#3a3d40', { metal: 0.6 });
+    for (const hy of [172, 182]) r.beam(-200, hy, WY - 30, 1160, hy, WY - 30, 1.2, '#8a8f96', { metal: 0.7, shadow: false });
+    r.plane(480, 0.5, WY, F.x1 - F.x0 + 80, 6, '#4dff7a', { glow: true, opacity: 0.5 });
+    r.plane(480, 0.5, SY, F.x1 - F.x0 + 80, 6, '#d8d8d8', { opacity: 0.6 });
+    // holofotes nos cantos do muro
+    for (const x of [F.x0 - 60, F.x1 + 60]) { r.box(x, 150, WY - 6, 16, 10, 12, '#2a2d30', { metal: 0.5 }); r.box(x, 148, WY, 12, 4, 2, '#ffe2b0', { glow: true }); }
+    r.light(F.x0 - 40, 150, WY + 40, '#ffd9a8', 1.0, 700);
+    r.light(F.x1 + 40, 150, WY + 40, '#ffd9a8', 1.0, 700);
+    // torre atrás da largada (atrás das duas câmeras): o guarda em cima, e o facho do holofote dela varrendo o pátio
+    const TX = 480, TZ = SY + 280;
+    for (const [ox, oz] of [[-20, -20], [20, -20], [-20, 20], [20, 20]]) r.beam(TX + ox * 2, 0, TZ + oz * 2, TX + ox, 240, TZ + oz, 6, '#5a4128');
+    r.box(TX, 240, TZ, 60, 6, 60, '#6b4d2e');
+    const G = this.guarda(g);
+    r.character({ id: 'guarda', x: TX, y: TZ, alive: true, color: G ? G.color : '#999', label: false }, { key: 'guarda', y: 246, dir: -Math.PI / 2, pose: d.tiro ? 'aim' : 'gun', label: false });
+    const ang = Math.sin(g.time * 0.5) * 0.35;
+    r.plane(TX + Math.sin(ang) * 450, 0.8, TZ - 450, 60, 900, '#fff2c0', { glow: true, opacity: 0.1, rotY: -ang });
+    r.light(TX + Math.sin(ang) * 500, 60, TZ - 500, '#fff2c0', 0.9, 420);
     for (const cv of d.covers) this.drawCobertura3d(r, cv);
-    // ponto do laser (visível para todos) só enquanto o tiro está travado
+    // ponto do laser (visível para todos) só enquanto o tiro está travado; o feixe não aparece (ninguém vê a torre)
     if (d.tiro) {
       r.sphere(d.mira.x, 2, d.mira.y, 4, '#ff2020', { glow: true });
-      r.ring(d.mira.x, 1, d.mira.y, 10, 13, '#ff2020', { glow: true, opacity: 0.5 + 0.5 * Math.sin(g.time * 40) });
+      r.ring(d.mira.x, 1, d.mira.y, 10, 13, '#ff2020', { glow: true, opacity: Math.round((0.5 + 0.5 * Math.sin(g.time * 40)) * 10) / 10 });
+      r.light(d.mira.x, 20, d.mira.y, '#ff2020', 0.8, 160);
     }
     for (const p of this.fugitivos(g)) {
       if (p.data.out && !p.data.baleado) continue;   // quem escapou já passou do muro
@@ -243,9 +259,19 @@ TN.registerMinigame({
   },
 
   drawCobertura3d(r, cv) {
-    if (cv.kind === 'caixote') { r.box(cv.x, 0, cv.y, cv.w, cv.h / 2, cv.d, '#8a6438', { rough: 0.9, tex: 'madeira' }); r.box(cv.x, cv.h / 2, cv.y, cv.w * 0.85, cv.h / 2, cv.d * 0.85, '#94703f', { rough: 0.9, tex: 'madeira' }); }
-    else if (cv.kind === 'barril') { r.cyl(cv.x, 0, cv.y, cv.w / 2, cv.h, '#3b5a8a', { metal: 0.5, rough: 0.5 }); for (const hy of [cv.h * 0.25, cv.h * 0.75]) r.cyl(cv.x, hy, cv.y, cv.w / 2 + 1, 3, '#2a2e35', { metal: 0.8 }); }
-    else r.cone(cv.x, 0, cv.y, cv.w / 2, cv.h, '#5a4330', { rough: 1 });
+    if (cv.kind === 'caixote') {
+      r.box(cv.x, 0, cv.y, cv.w, cv.h / 2, cv.d, '#8a6438', { rough: 0.9, tex: 'madeira' });
+      r.box(cv.x + 4, cv.h / 2, cv.y - 2, cv.w * 0.8, cv.h / 2, cv.d * 0.8, '#94703f', { rough: 0.9, tex: 'madeira', rotY: 0.2 });
+      for (const sx of [-1, 1]) r.box(cv.x + sx * cv.w * 0.3, 0, cv.y, 3, cv.h / 2 + 0.5, cv.d + 1, '#4a3420', { shadow: false });
+    } else if (cv.kind === 'barril') {
+      r.cyl(cv.x, 0, cv.y, cv.w / 2, cv.h, '#3b5a8a', { metal: 0.5, rough: 0.5 });
+      for (const hy of [cv.h * 0.2, cv.h * 0.75]) r.cyl(cv.x, hy, cv.y, cv.w / 2 + 1, 3, '#2a2e35', { metal: 0.8 });
+      r.cyl(cv.x + 10, cv.h, cv.y + 4, 4, 2, '#1a1d22', { metal: 0.8 });
+    } else {
+      r.cone(cv.x, 0, cv.y, cv.w / 2, cv.h, '#5a4330', { rough: 1 });
+      r.cone(cv.x - cv.w * 0.22, 0, cv.y + 8, cv.w * 0.28, cv.h * 0.6, '#4e3a2a', { rough: 1 });
+      r.cone(cv.x + cv.w * 0.25, 0, cv.y - 6, cv.w * 0.24, cv.h * 0.5, '#63493a', { rough: 1 });
+    }
   },
 
   // ---------- HUD por cima das vistas ----------

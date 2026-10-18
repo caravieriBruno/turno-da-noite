@@ -116,7 +116,7 @@ function secaoTemporada() {
   ok(G === g.players[0] && F.length === 3 && F.every((p) => p.y === def.START_Y && !p.data.out), 'temporada: rodada 1 → P1 é o guarda; fugitivos na largada');
   const vp = def.viewports(g);
   ok(vp.length === 2 && vp[0].rect[1] === 34 && vp[0].rect[3] === 228 && vp[1].rect[1] === 262 && vp[1].rect[1] + vp[1].rect[3] === 540 && TN.R3.validate(g).length === 0, 'temporada: duas vistas empilhadas (45 % / 55 %) válidas');
-  ok(vp[0].camera.fov === 38 && (d.zoom = true, def.viewports(g)[0].camera.fov === 16) && (d.zoom = false, true), 'temporada: zoom fecha a luneta (fov 38 → 16)');
+  ok(vp[0].camera.fov === 30 && (d.zoom = true, def.viewports(g)[0].camera.fov === 14) && (d.zoom = false, true), 'temporada: zoom fecha a luneta (fov 30 → 14)');
   // mira travada nos 2 s iniciais
   const m0 = { ...d.mira }; aperta(0, { x: 1 }); passo(g, 1 / 60, 10); solta();
   ok(d.mira.x === m0.x, 'temporada: mira travada na largada');
@@ -165,6 +165,15 @@ function secaoTemporada() {
   const t3 = com3d(z, () => textos((c) => def.drawOverlay(z, c)));
   ok(/GUARDA/.test(t3) && /MURO|EXTRA/.test(t3), `temporada: overlay tem o painel do guarda e a dica dos fugitivos`);
   ok(/GUARDA/.test(textos((c) => def.draw(z, c))), 'temporada: 2D desenha');
+  // 3D: coberturas de 3 tipos, ponto do laser só com tiro, torre atrás das câmeras
+  z.data.tiro = null;   // o guarda bot pode estar com o laser aceso aos 3 s
+  const tr0 = TN.R3.trace((r) => def.draw3d(z, r));
+  z.data.tiro = { t: 0.4 };
+  const tr1 = TN.R3.trace((r) => def.draw3d(z, r));
+  ok((tr1.counts.sphere || 0) > (tr0.counts.sphere || 0), 'temporada 3D: o ponto do laser só aparece com o tiro travado');
+  ok(z.data.covers.every((cv) => ['caixote', 'barril', 'terra'].includes(cv.kind)), 'temporada 3D: coberturas são caixote, barril ou monte de terra');
+  const torre = tr1.calls.find(([k, a]) => k === 'character' && a[1] && a[1].key === 'guarda');
+  ok(torre && torre[1][0].y > def.viewports(z)[0].camera.pos[2], 'temporada 3D: o guarda fica na torre atrás das duas câmeras (fora de vista)');
 }
 
 fim([secaoMotor, secaoPisaLeve, secaoTrem, secaoTemporada]);
