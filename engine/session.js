@@ -327,7 +327,7 @@
       G.texto(c, 'Detentos:', 640, 95, { size: 16, color: G.CORES.apagadoForte });
       this.roster.forEach((p, i) => {
         G.detento(c, 660, 140 + i * 56, 13, p.color);
-        G.texto(c, `P${p.id + 1} ${p.isBot ? '(BOT)' : TN.input.deviceLabel(p.device).split(' · ')[0]}`, 690, 140 + i * 56, { size: 15, color: G.desbotar(p.color), maxWidth: 250 });
+        G.texto(c, `${p.name} ${p.isBot ? '(BOT)' : TN.input.deviceLabel(p.device).split(' · ')[0]}`, 690, 140 + i * 56, { size: 15, color: G.desbotar(p.color), maxWidth: 250 });
       });
       rodape(c, 'As etapas sorteadas são embaralhadas · só o P1 mexe no menu · ESC volta ao lobby');
     }
@@ -413,7 +413,7 @@
       sorted.forEach((p, i) => {
         const y = 110 + i * 85;
         G.detento(c, 690, y, 16, p.color);
-        G.texto(c, `P${p.id + 1}${p.isBot ? ' BOT' : ''}`, 720, y - 10, { size: 16, color: G.desbotar(p.color) });
+        G.texto(c, `${p.name}${p.isBot ? ' BOT' : ''}`, 720, y - 10, { size: 16, color: G.desbotar(p.color), maxWidth: 160 });
         G.texto(c, `${s.totals[p.id]} m`, 720, y + 14, { size: 18 });
         G.texto(c, this.ready[p.id] ? '✔' : '…', 905, y, { size: 24, color: this.ready[p.id] ? G.CORES.destaque : G.CORES.apagadoForte, align: 'right' });
       });
@@ -452,7 +452,7 @@
       // lembrete de quem é quem
       const r3 = this.round.uses3d() && !this.def.screenSpace;
       this.round.players.forEach((p) => { const w = r3 && this.def.worldPos ? this.def.worldPos(this.round, p) : { x: p.x, y: 0, z: p.y };
-        const q = r3 ? TN.R3.project(w.x, w.y + 95, w.z) : { x: p.x, y: p.y - 40 }; D.text(c, `P${p.id + 1}`, q.x, q.y, { size: 16, color: p.color, align: 'center' }); });
+        const q = r3 ? TN.R3.project(w.x, w.y + 95, w.z) : { x: p.x, y: p.y - 40 }; D.text(c, p.label, q.x, q.y, { size: 16, color: p.color, align: 'center' }); });
     }
   }
 
@@ -517,7 +517,7 @@
       ps.forEach((p, i) => {
         const y = 190 + i * 64;
         G.detento(c, TN.W / 2 - 150, y, 18, p.color, { caido: !p.alive });
-        G.texto(c, `P${p.id + 1}${p.isBot ? ' BOT' : ''}`, TN.W / 2 - 115, y, { size: 22, color: G.desbotar(p.color) });
+        G.texto(c, `${p.name}${p.isBot ? ' BOT' : ''}`, TN.W / 2 - 115, y, { size: 22, color: G.desbotar(p.color), maxWidth: 170 });
         G.texto(c, `+${this.pts[p.id]} m`, TN.W / 2 + 170, y, { size: 28, color: G.CORES.destaque, align: 'right' });
       });
     }
@@ -545,7 +545,7 @@
       s.roster.forEach((p, i) => {
         const x = TN.W / 2 + (i - (n - 1) / 2) * 200, val = this.before[p.id] + s.gameScores[p.id] * k;
         const L = Math.max(6, (FUNDO - CHAO - 30) * (val / this.max)), cor = G.desbotar(p.color);
-        G.texto(c, `P${p.id + 1}${p.isBot ? ' BOT' : ''}`, x, CHAO - 82, { size: 16, color: cor, align: 'center' });
+        G.texto(c, `${p.name}${p.isBot ? ' BOT' : ''}`, x, CHAO - 82, { size: 16, color: cor, align: 'center', maxWidth: 180 });
         G.detento(c, x, CHAO - 34, 18, p.color);
         G.linha(c, x - 16, CHAO, x - 16, CHAO + L, { color: cor }); G.linha(c, x + 16, CHAO, x + 16, CHAO + L, { color: cor });
         for (let yy = CHAO + 10; yy < CHAO + L - 4; yy += 14) G.linha(c, x - 14, yy, x + 14, yy + 8, { color: cor, lw: 1, alpha: 0.5 });
@@ -581,7 +581,7 @@
       G.parede(c);
       const sorted = s.roster.slice().sort((a, b) => s.totals[b.id] - s.totals[a.id]), w = sorted[0];
       G.titulo(c, 'O APITO TOCOU', TN.W / 2, 50, 40);
-      G.texto(c, `P${w.id + 1} ${w.isBot ? '(BOT) ' : ''}FUGIU!`, TN.W / 2, 100, { size: 26, color: G.desbotar(w.color), align: 'center' });
+      G.texto(c, `${w.name} ${w.isBot ? '(BOT) ' : ''}FUGIU!`, TN.W / 2, 100, { size: 26, color: G.desbotar(w.color), align: 'center', maxWidth: 400 });
       // o muro: o 1º desenhado do lado de fora, os outros dentro; o último vai para a solitária
       const MX = 600, CHAO = 380;
       G.linha(c, 40, CHAO, TN.W - 40, CHAO, { lw: 2.5 });
@@ -614,7 +614,8 @@
   // inventado). Só para testes e screenshots (tools/menus.sh, tools/teste_menus.js); não muda o fluxo normal.
   const CENAS_DE_TESTE = ['Title', 'Controls', 'TestList', 'Lobby', 'Setup', 'Picker', 'Brief', 'Pause', 'RoundOver', 'ScoreScreen', 'Final', 'HostCreate', 'JoinList', 'NetMessage'];
   function cenaDeTeste(nome) {
-    const roster = buildRoster([{ device: 'kb1' }, null, null, null], true);
+    const roster = buildRoster([{ device: 'kb1', nome: 'BRUNO' }, null, null, null], true);
+    ['SOMBRA', 'PIOLHO', 'MUDO'].forEach((n, k) => { roster[k + 1].name = n; });
     const ids = TN.minigameOrder.slice(0, 6);
     newSession(roster, ids.map((id) => ({ id, rounds: 3 })));
     const s = TN.session;
