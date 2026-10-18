@@ -157,7 +157,7 @@ Os minigames são desenhados em **3D com câmera fixa**, como no Machine Party. 
 - `r.beam` calcula a própria rotação, então ignora `rotX`, `rotY` e `rotZ`.
 
 **Personagem `r.character(p, o)`:**
-- Aceita o jogador `p`, que já tem `x, y, dir, alive, color, label`, ou qualquer objeto com `x, y`.
+- Aceita o jogador `p`, que já tem `x, y, dir, alive, color, label`, ou qualquer objeto com `x, y`. `p.label` (igual a `p.name`) é o **nome que o jogador escolheu no lobby**, com até 8 caracteres; textos que concatenam `p.label` precisam prever 8 letras, não "P1".
 - Por padrão a pose é automática: anda quando o jogador se move, fica parado ou cai morto quando `p.alive` é falso.
 - `o.pose` força uma pose: `'idle' | 'walk' | 'dead' | 'lie' | 'sit' | 'crouch' | 'fall' | 'arms' | 'aim'`, em que `lie` é deitar de propósito (vivo), `arms` são braços para frente (carregar, empurrar) e `aim` é mirar.
 - Outras opções: `o.y` (elevação: pulo, cadeira, queda), `o.dir` (direção em rad), `o.lean` (inclinação do corpo em rad; positivo = para trás), `o.scale`, `o.flash`, `o.label` (texto ou `false`) `o.key` (id para a animação, quando não é um jogador) e `o.number` (número de prontuário nas costas; padrão: 171, 155, 157 e 180 para os jogadores).

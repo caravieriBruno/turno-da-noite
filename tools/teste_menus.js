@@ -161,7 +161,7 @@ function secaoTelasSemSessao() {
   ok(['PLANEJAR A FUGA', 'CHAMAR COMPARSAS (REDE LOCAL)', 'ENTRAR NO PLANO (REDE LOCAL)', 'ENSAIAR UMA ETAPA', 'CONTROLES'].every((x) => t.includes(x)), 'título: itens no tema de fuga');
   ok(t.includes('1 a 4 detentos · uma noite para cavar a saída') && !t.includes('unidades de teste'), 'título: subtítulo novo, sem "unidades de teste"');
   const lobby = TN.cenaDeTeste('Lobby'), l = textos(lobby);
-  ok(['ESCOLHA SUA CELA', 'PRONTO PRA FUGIR!', 'na cela…', 'Celas vazias com bots'].every((x) => l.includes(x)), 'lobby: celas no tema');
+  ok(['ESCOLHA SUA CELA', 'PRONTO PRA FUGIR!', 'AÇÃO ✓', 'Celas vazias com bots'].every((x) => l.includes(x)), 'lobby: celas no tema (uma editando o nome, outra pronta)');
   ok(textos(TN.cenaDeTeste('TestList')).includes('ENSAIAR UMA ETAPA'), 'ensaiar uma etapa: título novo');
   ok(textos(TN.cenaDeTeste('Controls')).includes('quem manda é o P1'), 'controles: avisa que só o P1 mexe no menu');
   const j = textos(TN.cenaDeTeste('JoinList'));
@@ -282,6 +282,14 @@ function secaoMenusComNome() {
   }
   TN.cenaDeTeste('Brief'); const ri = new S.RoundIntro(1); TN.go(ri);
   ok(/BRUNO/.test(textos(ri)) && !/\bP1\b/.test(textos(ri)), 'RoundIntro: lembrete usa o nome');
+  const tl = textos(TN.cenaDeTeste('Lobby')).replace(/([^|]+)( \| \1)+/g, '$1');   // o giz desenha cada texto em 3 passadas
+  ok(/B \| R \| U \| N \| O/.test(tl) && /SOMBRA/.test(tl) && !/undefined/.test(tl), 'Lobby (?cena=): cela editando mostra B R U N O na roda, a pronta mostra SOMBRA, nada de undefined');
+  // HUD do motor: nome de 8 letras + BOT não pode invadir o placar da vaga (104 px): BOT vai numa linha própria
+  const roster = TN._internal.buildRoster([null, null, null, null], true); roster[0].name = 'CHAVEIRO';
+  const g = new TN.Round(TN.minigames[TN.minigameOrder[0]], roster, 1, 1), c = gravador(); g._drawHud(c);
+  const ft = c.log.filter((e) => e[0] === 'fillText');
+  const nome = ft.find((e) => e[1] === 'CHAVEIRO'), bot = ft.find((e) => e[1] === 'BOT');
+  ok(nome && bot && !ft.some((e) => /CHAVEIRO BOT/.test(e[1])) && nome[3] !== bot[3], 'HUD: nome e BOT em linhas separadas, sem "NOME BOT" numa linha só');
 }
 
 secaoDono();

@@ -634,7 +634,7 @@
       case 'Title': TN.session = null; return abrir(Title);
       case 'Controls': TN.session = null; return abrir(Controls);
       case 'TestList': TN.session = null; return abrir(new TestList());
-      case 'Lobby': { TN.session = null; const l = abrir(new Lobby({})); l.slots[0] = { device: 'kb1', ready: false }; l.slots[1] = { device: 'kb2', ready: true }; return l; }
+      case 'Lobby': { TN.session = null; const l = abrir(new Lobby({})); l.slots[0] = { device: 'kb1', ready: false, nome: 'BRUNO', editando: true, cursor: 5 }; l.slots[1] = { device: 'kb2', ready: true, nome: 'SOMBRA', editando: false, cursor: 6 }; return l; }
       case 'Setup': return abrir(new Setup(roster));
       case 'Picker': return abrir(new Picker());
       case 'Brief': return abrir(new Brief());

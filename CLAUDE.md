@@ -20,7 +20,7 @@ Party game de navegador com minigames (1 a 4 jogadores locais/rede e bots), insp
   - Os **clientes** só enviam a entrada e desenham a cópia recebida com o mesmo `draw`.
   - Cada jogador remoto vira o dispositivo `n<cliente>:<kb1|gp0>` no `TN.input` do host.
 - Consequência: minigames não precisam de netcode, mas o estado deles precisa ficar em `g.data`/`p.data` como dado simples (detalhes em `docs/COMO_CRIAR_MINIGAME.md`).
-- Menus: só o host navega (`TN.donoDoMenu`): no mesmo computador, o P1; jogador remoto nunca. No lobby e no briefing cada um ainda age pela própria vaga.
+- Menus: só o host navega (`TN.donoDoMenu`): no mesmo computador, o P1; jogador remoto nunca. No lobby e no briefing cada um ainda age pela própria vaga. No lobby cada jogador escolhe o nome por uma roda de letras (salvo por dispositivo em `localStorage`; o cliente de rede manda os seus em `{ t: 'nomes' }`, que o servidor repassa ao host).
 - Testes de rede:
   - `node tools/teste_rede.js` faz o teste de ponta a ponta e precisa do servidor rodando.
   - Na URL: `?rede=host` cria a sala e `?rede=entrar[&sala=ABCD]` entra nela.

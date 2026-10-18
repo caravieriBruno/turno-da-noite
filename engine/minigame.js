@@ -215,7 +215,9 @@
       this.players.forEach((p, i) => {
         const x = TN.W - 4 * 104 + i * 104;  // slots à direita; o tempo fica em x=495
         c.fillStyle = p.alive ? p.color : '#444'; c.fillRect(x, 6, 8, 22);
-        D.text(c, p.label + (p.isBot ? ' BOT' : ''), x + 13, 17, { size: 12, color: p.alive ? '#fff' : '#777' });
+        // nome (até 8 letras) numa linha e BOT pequeno embaixo: juntos invadiam o placar da vaga
+        D.text(c, p.label, x + 13, p.isBot ? 12 : 17, { size: 12, color: p.alive ? '#fff' : '#777', maxWidth: 64 });
+        if (p.isBot) D.text(c, 'BOT', x + 13, 25, { size: 8, color: p.alive ? '#9ab' : '#666' });
         if (showScore) D.text(c, String(this.def.hudValue ? this.def.hudValue(this, p) : p.score), x + 96, 17, { size: 15, color: '#ff0', align: 'right' });
         else if (!p.alive) D.text(c, '✖', x + 96, 17, { size: 15, color: '#f55', align: 'right' });
       });
