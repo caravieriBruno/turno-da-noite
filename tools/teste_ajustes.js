@@ -111,8 +111,23 @@ function secaoFabrica() {
   ok(!erro && def.TYPES.includes(def.tipoParaRepor(g)), 'fábrica: sem demanda, a reposição sorteia e não quebra');
 }
 
+// --- carrapato: sem contagem na tela, ativação sorteada, mais pilares ---
+function secaoCarrapato() {
+  const def = TN.minigames.carrapato, g = rodada('carrapato'), d = g.data, dev = d.dev;
+  ok(d.pillars.length >= 8 && d.pillars.length <= 10 && d.pillars.every((p) => p.r >= 22 && p.r <= 34), `carrapato: ${d.pillars.length} pilares de raio 22–34`);
+  ok(d.pillars.every((a, i) => d.pillars.every((b, j) => i === j || Math.hypot(a.x - b.x, a.y - b.y) > a.r + b.r + 40)), 'carrapato: há passagem (≥ 40 px) entre os pilares');
+  const durs = new Set();
+  let dentro = true;
+  for (let k = 0; k < 12; k++) { def.armarTimer(g); durs.add(dev.dur); if (!(dev.dur >= 11 && dev.dur <= 17 && dev.timer === dev.dur)) dentro = false; }
+  ok(dentro && durs.size > 1, `carrapato: ativação sorteada entre 11 e 17 s e variável (${[...durs].slice(0, 3).map((v) => v.toFixed(1)).join(', ')}…)`);
+  dev.timer = 7.3;
+  const t = textos((c) => def.draw(g, c)), tO = textos((c) => def.drawOverlay(g, c));
+  ok(!/\d\.\d s/.test(t + tO) && !/\|\s*8\s*\|/.test(' | ' + t + ' | '), 'carrapato: nenhuma contagem numérica na tela');
+  ok(/VAI DISPARAR/.test(t), 'carrapato: painel diz "O CARRAPATO VAI DISPARAR…"');
+}
+
 // SEÇÕES (uma por jogo; cada tarefa define a sua função acima deste bloco e acrescenta o nome no array)
-const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica];
+const secoes = [secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato];
 for (const s of secoes) { try { s(); } catch (e) { ok(false, `${s.name}: exceção ${e.message}`); } }
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

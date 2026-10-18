@@ -18,16 +18,17 @@ TN.registerMinigame({
   //      atrito 50/s, imunidade 0,5 s, 0,4 s grudado antes de poder arremessar, 3 s até o próximo alvo) ----
   SPEED: 175, CARRY_MULT: 0.92,
   CHASE_SPEED: 250, NEAR_SPEED: 200, RAMP: 45, RAMP_T: 10,
-  ATTACH_R: 30, PROX_R: 120, ACTIVATION: 15, RESTART: 3, START: 1.5,
+  ATTACH_R: 30, PROX_R: 120, RESTART: 3, START: 1.5,
+  ATIVACAO_MIN: 11, ATIVACAO_MAX: 17,   // a ativação é sorteada a cada vez (e a contagem não aparece na tela)
   THROW_V: 900, FRICTION: 2000, IMMUNE: 0.5, ATTACH_DELAY: 0.4, DEV_R: 13,
 
   init(g) {
     const a = g.arena, d = g.data;
-    d.pillars = [[0.27, 0.3], [0.73, 0.3], [0.27, 0.72], [0.73, 0.72]].map(([fx, fy]) => ({ x: a.x + a.w * fx, y: a.y + a.h * fy, r: 30 }));
+    d.pillars = this.gerarPilares(a);
     d.dev = {
       x: a.x + a.w / 2, y: a.y + a.h / 2, vx: 0, vy: 0, ang: 0, walk: 0,
       state: 'idle', idleT: this.START, target: -1, carrier: -1, attachT: 0,
-      timer: this.ACTIVATION, timerOn: false, armed: false,
+      timer: 0, dur: 0, timerOn: false, armed: false,
       base: this.CHASE_SPEED, followT: 0, immune: -1, immuneT: 0, side: 1, sideT: 0,
     };
     g.placeInCircle(a.x + a.w / 2, a.y + a.h / 2 + 10, 165);
@@ -54,6 +55,27 @@ TN.registerMinigame({
     }
     return best;
   },
+  // arma o cronômetro com uma duração sorteada (11 a 17 s): quem carrega não sabe quanto falta
+  armarTimer(g) {
+    const dev = g.data.dev;
+    dev.dur = TN.util.rand(this.ATIVACAO_MIN, this.ATIVACAO_MAX);
+    dev.timer = dev.dur; dev.timerOn = true; dev.armed = false;
+  },
+  // 8 a 10 pilares numa grade 3×3 irregular, com passagem de ao menos 40 px entre eles
+  gerarPilares(a) {
+    const U = TN.util;
+    for (let tent = 0; tent < 50; tent++) {
+      const lista = [];
+      for (const fx of [0.2, 0.5, 0.8]) for (const fy of [0.25, 0.5, 0.75]) {
+        lista.push({ x: a.x + a.w * (fx + U.rand(-0.06, 0.06)), y: a.y + a.h * (fy + U.rand(-0.06, 0.06)), r: U.rand(22, 34) });
+      }
+      if (U.chance(0.5)) lista.push({ x: a.x + a.w * U.rand(0.33, 0.67), y: a.y + a.h * U.rand(0.1, 0.14), r: U.rand(22, 30) });
+      else if (U.chance(0.5)) lista.splice(4, 1);   // sem o pilar central: um salão no meio
+      const ok = lista.every((p, i) => lista.every((q, j) => i === j || Math.hypot(p.x - q.x, p.y - q.y) > p.r + q.r + 40));
+      if (ok && lista.length >= 8 && lista.length <= 10) return lista;
+    }
+    return [[0.2, 0.25], [0.5, 0.25], [0.8, 0.25], [0.2, 0.5], [0.8, 0.5], [0.2, 0.75], [0.5, 0.75], [0.8, 0.75]].map(([fx, fy]) => ({ x: a.x + a.w * fx, y: a.y + a.h * fy, r: 26 }));
+  },
   follow(g, target, speed) {
     const dev = g.data.dev;
     dev.state = 'follow'; dev.target = target ? target.id : -1; dev.base = speed; dev.followT = 0;
@@ -70,7 +92,7 @@ TN.registerMinigame({
     g.eliminate(p, { sound: 'boom', msg: 'COLUNA QUEBRADA!' });
     g.particles(p.x, p.y, '#ff3b5c', 30, 260); g.shake(10); g.flash('#f00', 0.15);
     dev.state = 'idle'; dev.idleT = this.RESTART; dev.carrier = -1; dev.target = -1;
-    dev.timerOn = false; dev.armed = false; dev.timer = this.ACTIVATION;
+    dev.timerOn = false; dev.armed = false; dev.timer = 0;
     dev.x = p.x; dev.y = p.y + 4;
   },
 
@@ -89,7 +111,7 @@ TN.registerMinigame({
     if (dev.timerOn && !dev.armed) {
       const before = dev.timer;
       dev.timer -= dt;
-      const per = 0.12 + 0.88 * Math.max(0, dev.timer) / this.ACTIVATION;   // período do bipe
+      const per = 0.12 + 0.88 * Math.max(0, dev.timer) / dev.dur;   // período do bipe
       if (Math.floor(before / per) !== Math.floor(dev.timer / per)) g.sfx('tick');
       if (dev.timer <= 0) {
         dev.timer = 0;
@@ -106,7 +128,7 @@ TN.registerMinigame({
       dev.idleT -= dt;
       if (dev.idleT <= 0 && g.alive().length > 1) {
         this.follow(g, U.pick(g.alive()), this.CHASE_SPEED);
-        dev.timer = this.ACTIVATION; dev.timerOn = true; dev.armed = false;
+        this.armarTimer(g);
         g.sfx('go');
       }
     } else if (dev.state === 'follow') {
@@ -222,7 +244,8 @@ TN.registerMinigame({
 
   // a luz do carrapato está acesa neste quadro? (mesma regra do 2D: pisca mais rápido perto do fim)
   devLit(g, dev) {
-    if (dev.timerOn && !dev.armed) return (g.time % (0.12 + 0.88 * dev.timer / this.ACTIVATION)) < 0.07 + 0.05 * dev.timer / this.ACTIVATION;
+    if (dev.timerOn && !dev.armed && dev.timer < 3) return true;   // últimos 3 s: luz vermelha contínua
+    if (dev.timerOn && !dev.armed) return (g.time % (0.12 + 0.88 * dev.timer / dev.dur)) < 0.07 + 0.05 * dev.timer / dev.dur;
     return dev.armed ? Math.floor(g.time * 12) % 2 === 0 : false;
   },
 
@@ -308,10 +331,7 @@ TN.registerMinigame({
       r.disc(dev.x, 0.5, dev.y, 18, '#000', { opacity: 0.35 });
       this.drawDevice3d(g, r, dev, dev.x, dev.y, 4 + hop, dev.ang, hop, lit);
     }
-    if (dev.timerOn || dev.armed) {
-      const txt = dev.armed ? '!!' : String(Math.ceil(dev.timer));
-      r.label(dev.x, dev.state === 'attached' ? 98 : 50, dev.y, txt, dev.armed || dev.timer < 4 ? '#ff3b5c' : '#fff', 18);
-    }
+    if (dev.armed) r.label(dev.x, dev.state === 'attached' ? 98 : 50, dev.y, '!!', '#ff3b5c', 18);
   },
 
   // painel do timer (fixo na tela, por cima do 3D)
@@ -320,7 +340,7 @@ TN.registerMinigame({
     const D = TN.draw, dev = g.data.dev;
     let label, col = '#fff';
     if (dev.armed) { label = 'ARMADO! QUEM FOR PEGO MORRE'; col = '#ff3b5c'; }
-    else if (dev.timerOn) { label = `ATIVAÇÃO EM ${dev.timer.toFixed(1)} s`; if (dev.timer < 4) col = '#ff3b5c'; }
+    else if (dev.timerOn) { label = 'O CARRAPATO VAI DISPARAR…'; if (dev.timer < 3) col = '#ff3b5c'; }
     else label = 'O CARRAPATO ESTÁ ESCOLHENDO...';
     D.panel(c, g.W / 2 - 170, 40, 340, 24, { stroke: '#ff3b5c' });
     D.text(c, label, g.W / 2, 52, { size: 14, color: col, align: 'center' });
@@ -328,9 +348,7 @@ TN.registerMinigame({
 
   // ---------- desenho 2D (alternativa sem WebGL) ----------
   drawDevice(g, c, dev) {
-    const lit = dev.timerOn && !dev.armed
-      ? (g.time % (0.12 + 0.88 * dev.timer / this.ACTIVATION)) < 0.07 + 0.05 * dev.timer / this.ACTIVATION
-      : dev.armed ? Math.floor(g.time * 12) % 2 === 0 : false;
+    const lit = this.devLit(g, dev);
     c.save(); c.translate(dev.x, dev.y); c.rotate(dev.ang);
     // patas
     c.strokeStyle = '#15171b'; c.lineWidth = 3;
@@ -383,14 +401,11 @@ TN.registerMinigame({
       if (carrying) this.drawDevice(g, c, dev);
     }
     // contador sobre o carrapato
-    if (dev.timerOn || dev.armed) {
-      const txt = dev.armed ? '!!' : String(Math.ceil(dev.timer));
-      D.text(c, txt, dev.x + 30, dev.y - 20, { size: 16, color: dev.armed || dev.timer < 4 ? '#ff3b5c' : '#fff', align: 'center' });
-    }
+    if (dev.armed) D.text(c, '!!', dev.x + 30, dev.y - 20, { size: 16, color: '#ff3b5c', align: 'center' });
     // painel do timer logo abaixo do HUD
     let label, col = '#fff';
     if (dev.armed) { label = 'ARMADO! QUEM FOR PEGO MORRE'; col = '#ff3b5c'; }
-    else if (dev.timerOn) { label = `ATIVAÇÃO EM ${dev.timer.toFixed(1)} s`; if (dev.timer < 4) col = '#ff3b5c'; }
+    else if (dev.timerOn) { label = 'O CARRAPATO VAI DISPARAR…'; if (dev.timer < 3) col = '#ff3b5c'; }
     else label = 'O CARRAPATO ESTÁ ESCOLHENDO...';
     D.panel(c, g.W / 2 - 170, 40, 340, 24, { stroke: '#ff3b5c' });
     D.text(c, label, g.W / 2, 52, { size: 14, color: col, align: 'center' });
