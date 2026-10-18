@@ -133,7 +133,8 @@ TN.registerMinigame({
       if (fast) q.grip -= this.GRIP_COST;
       // qualidade do toque, para o medidor de cadência do HUD (antes o jogador não via o ritmo, só o resultado)
       const qual = q.last === btn ? 'mesmo' : fast ? 'afobado' : gap > this.SLOW ? 'devagar' : 'bom';
-      if (qual !== q.qualidade) {
+      const ehTranco = tr.state === 'go' && !q.trancoDone;   // o TRANCO é um evento à parte: não entra na cadência
+      if (qual !== q.qualidade && !ehTranco) {
         q.qualidade = qual; q.qualidadeT = 0;
         if (qual === 'afobado') g.popup('AFOBADO', p.x, p.y - 80, '#f55');
         else if (qual === 'devagar' && q.lastT >= 0) g.popup('DEVAGAR', p.x, p.y - 80, '#aaa');

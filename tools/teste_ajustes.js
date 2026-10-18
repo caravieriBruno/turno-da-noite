@@ -226,6 +226,10 @@ function secaoCabo() {
   ok(q.qualidade === 'afobado', `cabo: 0,1 s = afobado (${q.qualidade})`);
   toque('b', 0.6);
   ok(q.qualidade === 'devagar', `cabo: 0,6 s = devagar (${q.qualidade})`);
+  // o toque do TRANCO é um evento à parte: não conta como afobado mesmo vindo logo depois de um puxão
+  g.data.tranco.state = 'go'; g.data.tranco.t = 0; q.trancoDone = false;
+  toque('a', 0.05);
+  ok(q.trancoDone && q.qualidade !== 'afobado', `cabo: o toque do TRANCO não é avaliado como afobado (${q.qualidade})`);
   ok(def.brief.some((b) => /4 toques/.test(b)), 'cabo: brief fala em 4 toques por segundo');
   // o HUD 3D só desenha com WebGL: finge o 3D para ler os rótulos
   g.uses3d = () => true; const proj = TN.R3.project; TN.R3.project = () => ({ x: 480, y: 300, visible: true });
