@@ -1,13 +1,13 @@
 // BONS MODOS — inspirado em "TABLE MANNERS" (green_pea) de Machine Party.
-// Jantar visto de lado. O Anfitrião lê o jornal no meio da mesa. AÇÃO espeta uma ervilha no
-// garfo, EXTRA come o que estiver no garfo. Se o Anfitrião baixar o jornal e pegar alguém
-// mexendo (mesmo sem efeito), atira. Coma todas as ervilhas sem ser visto.
+// Jantar visto de lado. O guarda anda de costas atrás da mesa. AÇÃO espeta uma ervilha no
+// garfo, EXTRA come o que estiver no garfo. Se o guarda virar e pegar alguém mexendo (mesmo
+// sem efeito), atira. Ele vira sem padrão de tempo. Coma todas as ervilhas sem ser visto.
 TN.registerMinigame({
   id: 'bons_modos',
   title: 'BONS MODOS',
   inspiredBy: 'Table Manners (green_pea)',
   tagline: 'O JANTAR ESTÁ SERVIDO.',
-  brief: ['Seja um bom convidado.', 'Não coma na frente do Anfitrião.', 'Termine o seu prato.'],
+  brief: ['Seja um bom convidado.', 'Não mexa um dedo com o guarda olhando para a mesa.', 'Termine o seu prato.'],
   controls: { a: 'espetar ervilha', b: 'comer o garfo' },
   icon: '●',
   color: '#7bd84a',
@@ -17,25 +17,31 @@ TN.registerMinigame({
   timeLimit: 90,              // segurança: quem não terminou fica com o que já ganhou
 
   // ---- constantes (original: 100 ervilhas, máx. 15 no garfo, comer 0,23 s + 0,67 s travado,
-  //      lê 3–6 s, 20% de finta, 0,4 s de reação, olha 1–4 s). Aqui 60 ervilhas e 9 no garfo. ----
+  //      20% de finta). Aqui 60 ervilhas e 9 no garfo. ----
   GOAL: 60, FORK_MAX: 9, EAT_ANIM: 0.23, EAT_LOCK: 0.67, STAB_ANIM: 0.1,
-  READ_MIN: 3, READ_MAX: 6, FAKE_CHANCE: 0.2, LOWER: 0.35, GRACE: 0.4, WATCH_MIN: 1, WATCH_MAX: 4, RAISE: 0.35,
+  // o guarda: anda de costas a 60–140 px/s entre X_MIN e X_MAX; a cada quadro pode virar (risco
+  // HAZARD por segundo, nunca antes de MIN_WALK nem depois de MAX_WALK), leva TURN s virando e
+  // olha por LOOK_MIN–LOOK_MAX s; 20% das vezes é só uma finta de FAKE s.
+  WALK_MIN: 60, WALK_MAX: 140, X_MIN: 160, X_MAX: 800, TURN: 0.3, LOOK_MIN: 0.7, LOOK_MAX: 2.5,
+  HAZARD: 0.4, MIN_WALK: 0.6, MAX_WALK: 8, FAKE_CHANCE: 0.2, FAKE: 0.4,
   AIM: 0.4, SHOT_FREEZE: 1.4,
   SEATS: [130, 290, 670, 830], TABLE_Y: 384,
 
   init(g) {
     const U = TN.util, d = g.data;
-    d.host = { state: 'read', t: 0, dur: U.rand(this.READ_MIN, this.READ_MAX), k: 0, shake: 0 };
+    d.host = { state: 'walk', t: 0, dur: 0, x: 480, vx: U.pick([-1, 1]) * U.rand(this.WALK_MIN, this.WALK_MAX), face: 0 };
     d.shot = null; d.queue = []; d.firstDone = false; d.flashT = 0;
     g.players.forEach((p, i) => {
       p.x = this.SEATS[i]; p.y = this.TABLE_Y; p.dir = p.x < g.W / 2 ? 0 : Math.PI;
       Object.assign(p.data, { eaten: 0, fork: 0, stabT: 0, eatT: 0, lock: 0, done: false, half: false,
-        botT: U.rand(0.3, 0.8), botPress: null, forkTarget: U.randInt(4, 9), stopAt: -1, resumeAt: 0, lastHost: 'read' });
+        botT: U.rand(0.3, 0.8), botPress: null, forkTarget: U.randInt(4, 9), stopAt: -1, resumeAt: 0, lastHost: 'walk' });
     });
   },
 
-  // muda o estado do Anfitrião
+  // muda o estado do guarda
   setHost(g, state, dur) { const h = g.data.host; h.state = state; h.t = 0; h.dur = dur; },
+  // volta a andar, num sentido e numa velocidade novos
+  andar(g) { const U = TN.util, h = g.data.host; this.setHost(g, 'walk', 0); h.vx = U.pick([-1, 1]) * U.rand(this.WALK_MIN, this.WALK_MAX); },
 
   shoot(g, p) {
     const d = g.data;
@@ -47,7 +53,7 @@ TN.registerMinigame({
     const U = TN.util, d = g.data, h = d.host;
     d.flashT -= dt;
     // ---------- sequência de tiro: congela todo mundo ----------
-    if (!d.shot && d.queue.length) { d.shot = { id: d.queue.shift(), t: 0, fired: false }; g.sfx('cough'); }
+    if (!d.shot && d.queue.length) { d.shot = { id: d.queue.shift(), t: 0, fired: false }; h.face = 1; g.sfx('cough'); }
     if (d.shot) {
       const s = d.shot, p = g.players[s.id];
       s.t += dt;
@@ -56,24 +62,34 @@ TN.registerMinigame({
         g.eliminate(p, { sound: 'shoot', particles: false, msg: 'MAL-EDUCADO!' });
         g.particles(p.x, p.y - 50, '#a00', 26, 220); g.flash('#fff', 0.1);
       }
-      if (s.t >= this.SHOT_FREEZE) d.shot = null;
+      if (s.t >= this.SHOT_FREEZE) { d.shot = null; this.andar(g); }   // depois do tiro volta a andar (e MIN_WALK dá fôlego)
       this.checkEnd(g);
       return;
     }
-    // ---------- Anfitrião ----------
+    // ---------- guarda: walk → (fake | turn → look) → walk ----------
+    // face: 0 = de costas, 1 = de frente para a mesa
     h.t += dt;
-    if (h.state === 'read' && h.t >= h.dur) {
-      if (U.chance(this.FAKE_CHANCE)) { this.setHost(g, 'fake', 0.6); g.sfx('step'); }
-      else { this.setHost(g, 'lower', this.LOWER); g.sfx('whoosh'); }
-    } else if (h.state === 'fake' && h.t >= h.dur) this.setHost(g, 'read', U.rand(1.5, 3.5));
-    else if (h.state === 'lower' && h.t >= h.dur) this.setHost(g, 'grace', this.GRACE);
-    else if (h.state === 'grace' && h.t >= h.dur) { this.setHost(g, 'watch', U.rand(this.WATCH_MIN, this.WATCH_MAX)); g.sfx('tick'); }
-    else if (h.state === 'watch' && h.t >= h.dur) this.setHost(g, 'raise', this.RAISE);
-    else if (h.state === 'raise' && h.t >= h.dur) this.setHost(g, 'read', U.rand(this.READ_MIN, this.READ_MAX));
-    // posição do jornal (0 = cobrindo o rosto, 1 = abaixado)
-    const tk = h.state === 'lower' ? h.t / this.LOWER : h.state === 'raise' ? 1 - h.t / this.RAISE
-      : (h.state === 'grace' || h.state === 'watch') ? 1 : h.state === 'fake' ? Math.sin((h.t / 0.6) * Math.PI) * 0.22 : 0;
-    h.k = U.clamp(tk, 0, 1);
+    if (h.state === 'walk') {
+      h.x += h.vx * dt;
+      if (h.x < this.X_MIN) { h.x = this.X_MIN; h.vx = Math.abs(h.vx); }
+      else if (h.x > this.X_MAX) { h.x = this.X_MAX; h.vx = -Math.abs(h.vx); }
+      h.face = Math.max(0, h.face - dt / this.TURN);
+      // sem padrão: a chance de virar é a mesma a cada instante (depois de MIN_WALK), com teto em MAX_WALK
+      if (h.t >= this.MIN_WALK && (h.t >= this.MAX_WALK || U.chance(1 - Math.exp(-this.HAZARD * dt)))) {
+        if (U.chance(this.FAKE_CHANCE)) this.setHost(g, 'fake', this.FAKE);
+        else this.setHost(g, 'turn', this.TURN);
+        g.sfx('step');
+      }
+    } else if (h.state === 'fake') {
+      h.face = 0.4 * Math.sin(Math.PI * Math.min(1, h.t / this.FAKE));
+      if (h.t >= h.dur) this.andar(g);
+    } else if (h.state === 'turn') {
+      h.face = Math.min(1, h.t / this.TURN);
+      if (h.t >= h.dur) { this.setHost(g, 'look', U.rand(this.LOOK_MIN, this.LOOK_MAX)); g.sfx('tick'); }
+    } else if (h.state === 'look') {
+      h.face = 1;
+      if (h.t >= h.dur) this.andar(g);
+    }
 
     // ---------- convidados ----------
     for (const p of g.alive()) {
@@ -86,8 +102,8 @@ TN.registerMinigame({
       if (b.done) continue;
       const acted = p.input.aPressed || p.input.bPressed;
       if (!acted) continue;
-      // qualquer gesto com o Anfitrião olhando = tiro (mesmo sem efeito)
-      if (h.state === 'watch') { this.shoot(g, p); continue; }
+      // qualquer gesto com o guarda olhando = tiro (mesmo sem efeito); enquanto ele vira, ainda não
+      if (h.state === 'look') { this.shoot(g, p); continue; }
       if (b.lock > 0 || b.eatT > 0) continue;
       if (p.input.aPressed && b.fork < this.FORK_MAX && b.eaten + b.fork < this.GOAL) { b.fork++; b.stabT = this.STAB_ANIM; g.sfx('blip'); }
       else if (p.input.bPressed && b.fork > 0) { b.eatT = this.EAT_ANIM; b.lock = this.EAT_ANIM + this.EAT_LOCK; g.sfx('pickup'); }
@@ -111,18 +127,18 @@ TN.registerMinigame({
     if (g.players.every((p) => !p.alive || p.data.done)) g.finish(1.8);
   },
 
-  // Bot: espeta/come num ritmo aleatório enquanto o jornal está levantado; para quando o
-  // jornal se mexe (com tempo de reação — às vezes tarde demais) e volta depois que ele sobe.
+  // Bot: espeta/come num ritmo aleatório enquanto o guarda anda de costas; para quando ele
+  // começa a virar (com tempo de reação — às vezes tarde demais) e volta depois que ele anda.
   bot(g, p, dt) {
     const U = TN.util, d = g.data, h = d.host, b = p.data;
     if (b.done || d.shot) return {};
-    // reage às mudanças do Anfitrião
+    // reage às mudanças do guarda
     if (h.state !== b.lastHost) {
-      if (b.lastHost === 'read' && h.state !== 'read') b.stopAt = g.time + (U.chance(0.07) ? U.rand(0.8, 1.3) : U.rand(0.05, 0.3));
-      if (h.state === 'read') { b.stopAt = -1; b.resumeAt = g.time + U.rand(0.2, 0.6); }
+      if (b.lastHost === 'walk' && h.state !== 'walk') b.stopAt = g.time + (U.chance(0.07) ? U.rand(0.8, 1.3) : U.rand(0.05, 0.3));
+      if (h.state === 'walk') { b.stopAt = -1; b.resumeAt = g.time + U.rand(0.2, 0.6); }
       b.lastHost = h.state;
     }
-    const calm = h.state === 'read' ? g.time >= b.resumeAt : (b.stopAt > 0 && g.time < b.stopAt);
+    const calm = h.state === 'walk' ? g.time >= b.resumeAt : (b.stopAt > 0 && g.time < b.stopAt);
     if (!calm) return {};
     // um aperto dura um quadro; depois solta e espera o próximo
     if (b.botPress) { b.botPress = null; return {}; }
@@ -137,10 +153,10 @@ TN.registerMinigame({
 
   // ---------------- 3D (câmera fixa) ----------------
   // Palco de frente: X = lógica x, Y = altura, Z = profundidade. Convidados sentados atrás da mesa
-  // (Z ≈ 320), Anfitrião em pé no meio, ainda mais atrás, com o jornal na frente do rosto.
+  // (Z ≈ 320), o guarda em pé ainda mais atrás, andando de um lado para o outro.
   camera: { pos: [480, 290, 1080], target: [480, 98, 400], fov: 36 },
   env: { bg: '#0b0709', fog: [1000, 2400], ambient: 0.7, sun: 1.3, sunDir: [-0.2, 1, 0.9], sunColor: '#ffe0bf' },
-  S3: 1.6, TH3: 58, GZ3: 300, HZ3: 270, TZ3: 440, SEAT3: 28,
+  S3: 1.6, TH3: 58, GZ3: 300, HZ3: 215, HY3: 44, TZ3: 440, SEAT3: 28,   // o guarda anda numa passarela elevada atrás das cadeiras, para não sumir atrás delas
 
   // posição 3D do convidado (sentado atrás da mesa) — usada pelos rótulos do motor
   worldPos(g, p) { return { x: p.x, y: this.TH3 - this.SEAT3, z: this.GZ3 }; },
@@ -163,7 +179,12 @@ TN.registerMinigame({
     r.light(HX, 236, 400, '#e8f4dc', 2.4, 900);
     r.light(140, 220, 260, '#ff9a5a', 0.8, 420);
     r.light(820, 220, 260, '#ff9a5a', 0.8, 420);
-    // ---- Anfitrião (em pé atrás da mesa) ----
+    // ---- passarela de vigia atrás das cadeiras, com grade ----
+    r.box(480, 0, HZ, 1040, this.HY3, 70, '#4a4f58', { metal: 0.5, rough: 0.5 });
+    r.box(480, this.HY3, HZ, 1040, 2, 70, '#5a6068', { metal: 0.6, rough: 0.4 });
+    r.beam(-40, this.HY3 + 38, HZ + 34, 1000, this.HY3 + 38, HZ + 34, 1.6, '#2e3238', { metal: 0.8 });
+    for (let x = -40; x <= 1000; x += 130) r.beam(x, this.HY3, HZ + 34, x, this.HY3 + 38, HZ + 34, 1.4, '#2e3238', { metal: 0.8 });
+    // ---- guarda (na passarela) ----
     this.drawHost3d(g, r);
     // ---- convidados nas cadeiras ----
     for (const p of g.players) {
@@ -209,50 +230,41 @@ TN.registerMinigame({
     }
   },
 
-  // posição do revólver do Anfitrião apontando para o alvo
+  // posição do revólver do guarda apontando para o alvo (sai de onde ele parou)
   gunPose(g, tgt) {
-    const S2 = 2.05, side = tgt.x < 480 ? -1 : 1;
-    const hx = 480 + side * 104, hy = 100, hz = this.HZ3 + 30;
+    const S2 = 2.05, h = g.data.host, side = tgt.x < h.x ? -1 : 1;
+    const hx = h.x + side * 26, hy = this.HY3 + 100, hz = this.HZ3 + 30;
     const tx = tgt.x, ty = this.TH3 + 40, tz = this.GZ3 + 14;
     const dx = tx - hx, dy = ty - hy, dz = tz - hz, L = Math.hypot(dx, dy, dz) || 1;
     return { hx, hy, hz, mx: hx + dx / L * 30, my: hy + dy / L * 30, mz: hz + dz / L * 30, S2 };
   },
 
   drawHost3d(g, r) {
-    const d = g.data, h = d.host, t = g.time, HX = 480, HZ = this.HZ3, HS = 2.05;
-    const watching = h.state === 'watch' || !!d.shot;
-    // o diretor da cadeia: terno cinza, camisa, gravata e a placa na mesa
-    r.character({ id: 'host', x: HX, y: HZ, alive: true, color: '#3a3d42', label: false }, { pose: 'arms', dir: Math.PI / 2, scale: HS, key: 'host' });
-    r.box(HX, 62, HZ + 11.5, 8, 22, 1.5, '#eeeeee', { shadow: false });
-    r.box(HX, 66, HZ + 12.5, 3, 16, 1, '#a01818', { shadow: false });
-    // olhos (vermelhos quando vigia)
-    for (const ex of [-6, 6]) r.sphere(HX + ex, 52 * HS + 1, HZ + 14.5, 3, watching ? '#ff2a2a' : '#5fe8e8', { glow: true });
-    if (watching) r.light(HX, 52 * HS, HZ + 40, '#ff2a2a', 1.4, 260);
-    // revólver no tiro (o jornal já está abaixado)
+    const d = g.data, h = d.host, HZ = this.HZ3, HS = 2.05, HX = h.x, HY = this.HY3;
+    const looking = h.state === 'look' || !!d.shot;
+    const face = d.shot ? 1 : h.face;
+    // de costas anda ao longo da mesa (0 ou π); ao virar interpola até ficar de frente (π/2)
+    const walkDir = h.vx > 0 ? 0 : Math.PI;
+    const dir = walkDir + (Math.PI / 2 - walkDir) * face;
+    const fx = Math.cos(dir), fz = Math.sin(dir), rx = -fz, rz = fx;   // frente e lado direito
+    const pose = d.shot ? 'aim' : h.state === 'walk' ? 'auto' : 'idle';
+    // o guarda: uniforme azul-escuro, quepe e cassetete
+    r.character({ id: 'host', x: HX, y: HZ, alive: true, color: '#2b3a6b', label: false }, { pose, dir, scale: HS, key: 'host', y: HY });
+    r.box(HX, HY + 59 * HS, HZ, 11 * HS, 2.5 * HS, 10 * HS, '#1d2a52', { rotY: -dir });
+    r.box(HX + fx * 7 * HS, HY + 58 * HS, HZ + fz * 7 * HS, 4 * HS, 1 * HS, 8 * HS, '#111318', { rotY: -dir, shadow: false });   // pala
+    r.beam(HX + rx * 12 * HS, HY + 34 * HS, HZ + rz * 12 * HS, HX + rx * 12 * HS, HY + 12 * HS, HZ + rz * 12 * HS, 1.8 * HS, '#1a1a1a', { rough: 0.6 });
+    // olhos (vermelhos quando olha para a mesa)
+    for (const ex of [-6, 6]) r.sphere(HX + fx * 7 * HS + rx * ex, HY + 52 * HS + 1, HZ + fz * 7 * HS + rz * ex, 3, looking ? '#ff2a2a' : '#5fe8e8', { glow: true });
+    if (looking) r.light(HX, HY + 52 * HS, HZ + 40, '#ff2a2a', 1.4, 260);
+    // revólver no tiro
     if (d.shot) {
       const gp = this.gunPose(g, g.players[d.shot.id]);
       r.beam(gp.hx, gp.hy, gp.hz, gp.mx, gp.my, gp.mz, 6, '#2a2c30', { metal: 0.8, rough: 0.3 });
       r.sphere(gp.hx, gp.hy, gp.hz, 4.5, '#d8d2c8');
-      const sx = 480 + Math.sign(gp.hx - 480) * 26;
-      r.beam(sx, 84, HZ, gp.hx, gp.hy, gp.hz, 9, '#16181c');
+      const sx = HX + Math.sign(gp.hx - HX) * 26;
+      r.beam(sx, HY + 84, HZ, gp.hx, gp.hy, gp.hz, 9, '#16181c');
       if (!d.shot.fired) { const tg = g.players[d.shot.id]; r.beam(gp.mx, gp.my, gp.mz, tg.x, this.TH3 + 44, this.GZ3 + 8, 0.8, '#ff2020', { glow: true }); r.sphere(tg.x, this.TH3 + 44, this.GZ3 + 10, 2.2, '#ff2020', { glow: true }); }
     }
-    // jornal: sobe/desce com h.k (tremendo na finta); 0 = cobrindo o rosto
-    const k = d.shot ? 1 : h.k;
-    const shake = h.state === 'fake' ? Math.sin(t * 60) * 3 : 0;
-    // a caixa gira em torno da borda de baixo: ao abaixar, o jornal tomba para a frente sobre a mesa
-    const a = k * 0.22, PW = 172, PH = 96;
-    const by = 46 - 60 * k + shake, bz = HZ + 44;
-    const ca = Math.cos(a), sa = Math.sin(a);
-    // ponto da página (lx = lado, ly = altura a partir da borda de baixo, lz = espessura) → mundo
-    const pt = (lx, ly, lz) => ({ x: 480 + lx, y: by + ly * ca - lz * sa, z: bz + ly * sa + lz * ca });
-    r.box(480, by, bz, PW, PH, 2, '#e8e2cf', { rotX: a, rough: 0.95 });
-    const line = (lx, ly, w, hh, col) => { const q = pt(lx, ly, 1.4); r.box(q.x, q.y, q.z, w, hh, 0.8, col, { rotX: a, shadow: false }); };
-    line(-44, 70, 74, 16, '#2a2a2a');
-    for (let i = 0; i < 5; i++) { line(-44, 54 - i * 11, 76, 3.5, '#9a968a'); line(44, 80 - i * 14, 76, 4, '#9a968a'); }
-    line(0, 3, 1, PH - 6, '#a9a395');
-    // mãos segurando o jornal
-    for (const sx of [-1, 1]) { const q = pt(sx * (PW / 2 + 2), PH * 0.8, 0); r.sphere(q.x, q.y, q.z, 6, '#c9c3b8'); }
   },
 
   drawPlate3d(g, r, p) {
@@ -302,7 +314,7 @@ TN.registerMinigame({
       c.fillStyle = '#333'; c.fillRect(s.x - 1, s.y + 2, 2, 13);
       D.text(c, p.alive ? (b.done ? 'LIMPOU O PRATO' : `garfo ${b.fork}`) : 'MAL-EDUCADO', s.x, s.y + 26, { size: 11, color: p.alive ? '#555' : '#a33', align: 'center', shadow: false });
     }
-    if (h.state === 'watch') D.text(c, 'ELE ESTÁ OLHANDO', g.W / 2, 52, { size: 15, color: '#f55', align: 'center' });
+    if (h.state === 'look') D.text(c, 'O GUARDA VIROU', g.W / 2, 52, { size: 15, color: '#f55', align: 'center' });
   },
 
   draw(g, c) {
@@ -329,28 +341,32 @@ TN.registerMinigame({
     for (const p of g.players) this.drawPlate(g, c, p);
     if (d.flashT > 0 && d.shot) {
       const tgt = g.players[d.shot.id];
-      c.strokeStyle = '#fff6a0'; c.lineWidth = 3; c.beginPath(); c.moveTo(g.W / 2 + (tgt.x < g.W / 2 ? -70 : 70), 260); c.lineTo(tgt.x, tgt.y - 55); c.stroke();
+      c.strokeStyle = '#fff6a0'; c.lineWidth = 3; c.beginPath(); c.moveTo(h.x + (tgt.x < h.x ? -60 : 60), 260); c.lineTo(tgt.x, tgt.y - 55); c.stroke();
     }
     // aviso sutil do estado
-    if (h.state === 'watch') D.text(c, 'ELE ESTÁ OLHANDO', g.W / 2, 50, { size: 14, color: '#f55', align: 'center' });
+    if (h.state === 'look') D.text(c, 'O GUARDA VIROU', g.W / 2, 50, { size: 14, color: '#f55', align: 'center' });
   },
 
   drawHost(g, c) {
-    const d = g.data, h = d.host, x = g.W / 2, TY = this.TABLE_Y;
-    const watching = h.state === 'watch' || (d.shot && true);
-    // corpo de terno
-    c.fillStyle = '#16181c'; c.strokeStyle = '#000'; c.lineWidth = 3;
-    c.beginPath(); c.roundRect(x - 70, TY - 150, 140, 160, 24); c.fill(); c.stroke();
-    c.fillStyle = '#eee'; c.beginPath(); c.moveTo(x - 16, TY - 150); c.lineTo(x + 16, TY - 150); c.lineTo(x, TY - 110); c.fill();
-    c.fillStyle = '#a01818'; c.beginPath(); c.moveTo(x - 8, TY - 146); c.lineTo(x + 8, TY - 146); c.lineTo(x, TY - 120); c.fill();
-    // cabeça
-    c.fillStyle = '#8a8f99'; c.beginPath(); c.roundRect(x - 44, TY - 232, 88, 78, 16); c.fill(); c.stroke();
-    c.fillStyle = '#111'; c.fillRect(x - 46, TY - 246, 92, 18); c.fillRect(x - 30, TY - 290, 60, 48);   // cartola
-    c.fillStyle = '#a01818'; c.fillRect(x - 30, TY - 256, 60, 8);
-    // olhos (vermelhos quando está vigiando)
-    c.fillStyle = watching ? '#ff2a2a' : '#7ff';
-    c.fillRect(x - 28, TY - 205, 18, 10); c.fillRect(x + 10, TY - 205, 18, 10);
-    if (watching) { c.fillStyle = 'rgba(255,40,40,0.25)'; c.beginPath(); c.arc(x - 19, TY - 200, 16, 0, Math.PI * 2); c.arc(x + 19, TY - 200, 16, 0, Math.PI * 2); c.fill(); }
+    const d = g.data, h = d.host, x = h.x, TY = this.TABLE_Y;
+    const watching = h.state === 'look' || !!d.shot, face = d.shot ? 1 : h.face;
+    const walkDir = h.vx > 0 ? 1 : -1, bob = h.state === 'walk' ? Math.sin(g.time * 9) * 3 : 0;
+    // corpo de uniforme (estreito de perfil, largo de frente)
+    const hw = 34 + 36 * face;
+    c.fillStyle = '#2b3a6b'; c.strokeStyle = '#000'; c.lineWidth = 3;
+    c.beginPath(); c.roundRect(x - hw, TY - 150 + bob, hw * 2, 160, 20); c.fill(); c.stroke();
+    c.fillStyle = '#1a1a1a'; c.fillRect(x + walkDir * (hw - 10) - 4, TY - 100 + bob, 8, 50);   // cassetete
+    // cabeça e quepe
+    const hh = 24 + 20 * face;
+    c.fillStyle = '#8a8f99'; c.beginPath(); c.roundRect(x - hh, TY - 232 + bob, hh * 2, 78, 16); c.fill(); c.stroke();
+    c.fillStyle = '#1d2a52'; c.fillRect(x - hh - 4, TY - 246 + bob, hh * 2 + 8, 18); c.fillRect(x - hh + 2, TY - 268 + bob, hh * 2 - 4, 26);
+    c.fillStyle = '#111318'; c.fillRect(x - hh - 4 + (face < 0.5 ? (walkDir > 0 ? hh * 2 : -18) : 0), TY - 236 + bob, face < 0.5 ? 26 : hh * 2 + 8, 6);   // pala
+    // olhos só aparecem quando ele vira (vermelhos quando está vigiando)
+    if (face > 0.3) {
+      c.fillStyle = watching ? '#ff2a2a' : '#7ff';
+      c.fillRect(x - 28 * face, TY - 205 + bob, 18, 10); c.fillRect(x + 10 * face, TY - 205 + bob, 18, 10);
+      if (watching) { c.fillStyle = 'rgba(255,40,40,0.25)'; c.beginPath(); c.arc(x - 19, TY - 200, 16, 0, Math.PI * 2); c.arc(x + 19, TY - 200, 16, 0, Math.PI * 2); c.fill(); }
+    }
     // revólver apontando no tiro
     if (d.shot) {
       const tgt = g.players[d.shot.id];
@@ -362,20 +378,6 @@ TN.registerMinigame({
       if (d.flashT > 0) { c.fillStyle = '#fff3a0'; c.beginPath(); c.arc(60, -2, 14, 0, Math.PI * 2); c.fill(); }
       c.restore();
     }
-    // jornal: sobe/desce conforme h.k (com tremida na finta)
-    const k = d.shot ? 1 : h.k;
-    const shake = h.state === 'fake' ? Math.sin(g.time * 60) * 3 : 0;
-    const py = TY - 270 + k * 170 + shake;
-    c.fillStyle = '#e8e2cf'; c.strokeStyle = '#555'; c.lineWidth = 2;
-    c.beginPath(); c.moveTo(x - 110, py); c.lineTo(x + 110, py); c.lineTo(x + 104, py + 130); c.lineTo(x - 104, py + 130); c.closePath(); c.fill(); c.stroke();
-    c.strokeStyle = '#999'; c.beginPath(); c.moveTo(x, py); c.lineTo(x, py + 130); c.stroke();
-    TN.draw.text(c, 'DIÁRIO DA', x - 54, py + 18, { size: 11, color: '#222', align: 'center', shadow: false });
-    TN.draw.text(c, 'NOITE', x - 54, py + 34, { size: 16, color: '#222', align: 'center', shadow: false });
-    c.fillStyle = '#bbb';
-    for (let i = 0; i < 6; i++) { c.fillRect(x - 96, py + 50 + i * 12, 82, 4); c.fillRect(x + 12, py + 14 + i * 16, 84, 5); }
-    c.fillStyle = '#888'; c.fillRect(x - 96, py + 50 + 6 * 12, 40, 4);
-    // mãos segurando o jornal
-    c.fillStyle = '#8a8f99'; c.beginPath(); c.arc(x - 108, py + 60, 10, 0, Math.PI * 2); c.arc(x + 108, py + 60, 10, 0, Math.PI * 2); c.fill();
   },
 
   drawGuest(g, c, p) {

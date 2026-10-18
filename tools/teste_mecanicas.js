@@ -52,4 +52,38 @@ function secaoPularCorda() {
 }
 
 // SEÇÕES (uma por jogo)
-fim([secaoPularCorda]);
+// --- bons modos: o guarda que anda ---
+function secaoBonsModos() {
+  const def = TN.minigames.bons_modos;
+  ok(def.TURN === 0.3 && def.LOOK_MIN === 0.7 && def.LOOK_MAX === 2.5 && def.HAZARD === 0.4 && def.MIN_WALK === 0.6 && def.MAX_WALK === 8 && def.WALK_MIN === 60 && def.WALK_MAX === 140, 'bons modos: constantes do guarda');
+  const g = rodada('bons_modos'), d = g.data, h = d.host;
+  ok(h.state === 'walk' && typeof h.x === 'number' && typeof h.vx === 'number', 'bons modos: o guarda começa andando');
+  const x0 = h.x; segundos(g, 0.5);
+  ok(h.x !== x0 && h.x >= def.X_MIN && h.x <= def.X_MAX, 'bons modos: o guarda anda dentro dos limites');
+  // enquanto vira (0,3 s) ainda não pune; olhando, pune
+  def.setHost(g, 'turn', def.TURN); aperta(0, { a: true }); passo(g); solta(); passo(g);   // um quadro solto para o próximo aperto contar
+  ok(!d.shot && !d.queue.length, 'bons modos: agir durante o giro de 0,3 s não é tiro');
+  def.setHost(g, 'look', 1); aperta(0, { a: true }); passo(g); solta();
+  ok(d.shot || d.queue.length, 'bons modos: agir com o guarda olhando é tiro');
+  // depois do congelamento do tiro, o guarda volta a andar e respeita MIN_WALK (Review Focus 2)
+  segundos(g, def.SHOT_FREEZE + 0.05);
+  ok(h.state === 'walk' && h.t < 0.2, `bons modos: depois do tiro o guarda volta a andar (${h.state})`);
+  let virouCedo = false;
+  for (let i = 0; i < 30; i++) { passo(g); if (h.state !== 'walk' && h.state !== 'fake') virouCedo = true; }   // 0,5 s < MIN_WALK
+  ok(!virouCedo, 'bons modos: não vira antes de MIN_WALK');
+  // sem padrão: em 90 s com bots, várias olhadas, nenhuma caminhada acima de MAX_WALK
+  const k = rodada('bons_modos', { humanos: 0 }), kh = k.data.host; let olhadas = 0, maiorWalk = 0, prev = kh.state;
+  k.finish = () => {};   // os bots limpam o prato em ~40 s; aqui queremos observar o guarda os 90 s inteiros
+  for (let i = 0; i < 90 * 60; i++) {
+    passo(k);
+    if (kh.state === 'walk') maiorWalk = Math.max(maiorWalk, kh.t);
+    if (prev !== 'look' && kh.state === 'look') olhadas++;
+    prev = kh.state;
+  }
+  ok(olhadas >= 6 && maiorWalk <= def.MAX_WALK + 0.1, `bons modos: ${olhadas} olhadas em 90 s, caminhada máxima ${maiorWalk.toFixed(1)} s`);
+  const q = rodada('bons_modos'); def.setHost(q, 'look', 1);
+  const t = com3d(q, () => textos((c) => def.drawOverlay(q, c))) + textos((c) => def.draw(q, c)) + def.brief.join(' ');
+  ok(!/ELE ESTÁ OLHANDO/.test(t) && /O GUARDA VIROU/.test(t) && /guarda/i.test(def.brief.join(' ')), 'bons modos: textos falam do guarda');
+}
+
+fim([secaoPularCorda, secaoBonsModos]);
