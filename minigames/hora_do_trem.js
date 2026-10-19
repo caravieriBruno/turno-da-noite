@@ -406,8 +406,9 @@ TN.registerMinigame({
   draw(g, c) {
     const d = g.data, D = TN.draw, U = TN.util, Y0 = this.Y0, Y1 = this.Y1, fl = d.floorL, fr = d.floorR;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);
+    const k = 506 / (Y1 - Y0);
     c.save();
-    c.translate(0, 34); c.scale(1, 506 / (Y1 - Y0)); c.translate(0, -Y0);   // y do mundo → tela
+    c.translate(480 - 480 * k, 34); c.scale(k, k); c.translate(0, -Y0);   // y do mundo → tela, escala uniforme centrada em x
     // paredes de tijolo
     for (const [x0, w] of [[fl - this.NOOK_D - 58, 58], [fr + this.NOOK_D, 58]]) {
       c.fillStyle = '#3a3330'; c.fillRect(x0, Y0, w, Y1 - Y0);

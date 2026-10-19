@@ -128,12 +128,12 @@ function secaoTemporada() {
   segundos(g, def.AIM_LOCK); aperta(0, { x: 1 }); passo(g, 1 / 60, 10); solta();
   ok(d.mira.x > m0.x, 'temporada: depois de 2 s a mira anda');
   // laser 0,5 s antes do tiro; acerta quem está de pé na mira; recarga 1,5 s
-  const alvo = F[0]; alvo.x = 480; alvo.y = 500; d.mira = { x: 482, y: 505 };
+  const alvo = F[0]; alvo.x = 480; alvo.y = 660; d.mira = { x: 482, y: 665 };   // y=660: fora das fileiras de coberturas
   aperta(0, { a: true }); passo(g); solta();
   ok(d.tiro && d.tiro.t > 0.45 && alvo.alive, 'temporada: AÇÃO acende o laser e ainda não atira');
   aperta(0, { x: 1 }); const mx = d.mira.x; passo(g); solta();
   ok(d.mira.x - mx > 0 && d.mira.x - mx < def.AIM_SPEED * 0.5 / 60 + 0.01, 'temporada: com o laser aceso a mira anda a 40 %');
-  d.mira = { x: 482, y: 505 }; segundos(g, def.LASER);
+  d.mira = { x: 482, y: 665 }; segundos(g, def.LASER);
   ok(!alvo.alive && alvo.data.baleado && G.score === 1 && !d.tiro && d.recarga > 1.3, `temporada: tiro sai depois de 0,5 s (vivo ${alvo.alive}, guarda ${G.score}, recarga ${d.recarga.toFixed(2)})`);
   aperta(0, { a: true }); passo(g); solta();
   ok(!d.tiro, 'temporada: AÇÃO na recarga não acende outro laser');
@@ -144,7 +144,7 @@ function secaoTemporada() {
   ok(def.protegido(g, f1) && def.alvoNaMira(g) === null, 'temporada: agachado atrás da cobertura não é alvo');
   f1.data.agachado = false;
   ok(!def.protegido(g, f1) && def.alvoNaMira(g) === f1, 'temporada: de pé atrás da cobertura ainda é alvo');
-  f1.x = 300; f1.y = 400; f1.data.agachado = true; d.mira = { x: 300 + 14, y: 400 };
+  f1.x = 300; f1.y = 660; f1.data.agachado = true; d.mira = { x: 300 + 14, y: 660 };   // y=660: longe de qualquer fileira de coberturas (600 ± 18 + 25 + 12)
   ok(def.alvoNaMira(g) === null, 'temporada: agachado no aberto tem caixa menor (14 px ao lado escapa)');
   f1.data.agachado = false;
   ok(def.alvoNaMira(g) === f1, 'temporada: de pé, 14 px ao lado ainda acerta');

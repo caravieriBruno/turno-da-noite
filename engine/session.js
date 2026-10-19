@@ -464,7 +464,8 @@
       // lembrete de quem é quem
       const r3 = this.round.uses3d() && !this.def.screenSpace;
       this.round.players.forEach((p) => { const w = r3 && this.def.worldPos ? this.def.worldPos(this.round, p) : { x: p.x, y: 0, z: p.y };
-        const q = r3 ? TN.R3.project(w.x, w.y + 95, w.z) : { x: p.x, y: p.y - 40 }; D.text(c, p.label, q.x, q.y, { size: 16, color: p.color, align: 'center' }); });
+        const nome = (q) => D.text(c, p.label, q.x, q.y, { size: 16, color: p.color, align: 'center' });
+        if (r3) TN.R3.desenharProjetado(c, w.x, w.y + 95, w.z, nome); else nome({ x: p.x, y: p.y - 40 }); });
     }
   }
 

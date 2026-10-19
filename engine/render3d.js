@@ -87,6 +87,9 @@
       if (vp.erro) errs.push(vp.erro);
       return errs;
     },
+    // desenha algo 2D no ponto projetado de (x, y, z): com várias vistas, uma vez por vista em que o ponto
+    // cai, recortado ao rect dela (popups do motor, nomes do briefing); sem WebGL, só o projetado simples
+    desenharProjetado(c, x, y, z, fn) { fn(this.project(x, y, z)); },
     // usado pelo tools/teste_cenarios.js: roda fn(api) no validador com r.time = time e devolve o rastro
     trace(fn, time = 0) {
       const v = makeValidator();
@@ -768,10 +771,12 @@
         } else renderer.render(scene, camera);
       }
       this.used = true;
-      // camada 2D: vinheta + grão + rótulos
-      const g = c.createRadialGradient(TN.W / 2, TN.H / 2, TN.H * 0.42, TN.W / 2, TN.H / 2, TN.W * 0.66);
-      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.55)');
-      c.fillStyle = g; c.fillRect(0, 0, TN.W, TN.H);
+      // camada 2D: vinheta (uma por vista) + grão + rótulos
+      for (const rc of (vistasAtuais ? vistasAtuais.map((v) => v.rect) : [[0, 0, TN.W, TN.H]])) {
+        const g = c.createRadialGradient(rc[0] + rc[2] / 2, rc[1] + rc[3] / 2, rc[3] * 0.42, rc[0] + rc[2] / 2, rc[1] + rc[3] / 2, rc[2] * 0.66);
+        g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.55)');
+        c.fillStyle = g; c.fillRect(rc[0], rc[1], rc[2], rc[3]);
+      }
       if (grain) { c.save(); c.globalAlpha = 0.5; c.fillStyle = c.createPattern(grain, 'repeat'); c.translate(Math.random() * 128, Math.random() * 128); c.fillRect(-128, -128, TN.W + 256, TN.H + 256); c.restore(); }
       // rótulos: projetados por vista e desenhados só dentro do rect da vista em que caem
       const nV = vistasAtuais ? vistasAtuais.length : 1;
@@ -796,6 +801,14 @@
     stats() { return { luzes: lightPool.list.slice(0, lightPool.n).map((l) => ({ x: l.position.x, y: l.position.y, z: l.position.z })) }; },
     project: (x, y, z, v) => project(x, y, z, v),
     unproject: (sx, sy, py, v) => unproject(sx, sy, py, v),
+    desenharProjetado(c, x, y, z, fn) {
+      if (!vistasAtuais) { const s = project(x, y, z); if (s.visible) fn(s); return; }
+      vistasAtuais.forEach((v, i) => {
+        const s = project(x, y, z, i), r = v.rect;
+        if (!s.visible || s.x < r[0] - 20 || s.x > r[0] + r[2] + 20 || s.y < r[1] - 10 || s.y > r[1] + r[3] + 10) return;
+        c.save(); c.beginPath(); c.rect(r[0], r[1], r[2], r[3]); c.clip(); fn(s); c.restore();
+      });
+    },
     setVisible(v) { if (canvas3d) canvas3d.style.visibility = v ? 'visible' : 'hidden'; },
   });
 })();

@@ -80,7 +80,7 @@ TN.registerMinigame({
       alvo.data.out = true; alvo.data.baleado = true; alvo.data.baleadoT = g.time;
       g.eliminate(alvo, { sound: 'boom', msg: 'BALEADO!' });
       g.particles(alvo.x, alvo.y, '#c22', 26, 240);
-      g.addScore(G, 1);
+      g.addScore(G, 1, { popup: false }); g.popup('+1', d.mira.x + 70, d.mira.y + 30, '#ff0');   // ao lado do BALEADO!, não em cima
     } else g.particles(d.mira.x, d.mira.y, '#9a8a6a', 8, 110);
     d.recarga = this.RECARGA; d.tiro = null;
   },
@@ -118,24 +118,34 @@ TN.registerMinigame({
       const ox = p.x, oy = p.y;
       if (pd.agachado) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt, bounds); p.input = save; }
       else g.movePlayer(p, this.RUN_SPEED, dt, bounds);
-      // não atravessa a pegada das coberturas
-      for (const cv of d.covers) {
-        const r = { x: cv.x - cv.w / 2, y: cv.y - cv.d / 2, w: cv.w, h: cv.d };
-        if (U.circleRect(p, r, 6)) {
-          if (!U.circleRect({ x: ox, y: p.y }, r, 6)) p.x = ox;
-          else if (!U.circleRect({ x: p.x, y: oy }, r, 6)) p.y = oy;
-          else { p.x = ox; p.y = oy; }
-        }
-      }
+      this.foraDasCoberturas(g, p, ox, oy);
       if (p.y <= this.WALL_Y) {
         pd.out = true; pd.escapou = true; d.escapou = true;
         g.addScore(p, 1);
-        if (!d.firstOut) { d.firstOut = true; g.addScore(p, 1, { popup: false }); g.popup('PRIMEIRO! +2', p.x, p.y + 30, '#ff0'); }
+        if (!d.firstOut) { d.firstOut = true; g.addScore(p, 1, { popup: false }); g.popup('PRIMEIRO! +2', p.x - 60, p.y + 40, '#ff0'); }
         g.sfx('coin'); g.particles(p.x, p.y, p.color, 16, 160);
       }
     }
     U.separate(this.ativos(g));
+    for (const p of this.ativos(g)) this.foraDasCoberturas(g, p);   // o separate não pode empurrar ninguém para dentro de uma caixa
     if (this.ativos(g).length === 0 || g.time >= this.MAX_TIME) { this.endRound(g); g.finish(1.5); }
+  },
+
+  // não atravessa a pegada das coberturas: volta para a posição anterior (ox, oy) no eixo que entrou;
+  // sem posição anterior (depois do separate), sai pelo lado mais perto
+  foraDasCoberturas(g, p, ox, oy) {
+    const U = TN.util, R = 12;
+    for (const cv of g.data.covers) {
+      const r = { x: cv.x - cv.w / 2, y: cv.y - cv.d / 2, w: cv.w, h: cv.d };
+      if (!U.circleRect(p, r, R)) continue;
+      if (ox !== undefined) {
+        if (!U.circleRect({ x: ox, y: p.y }, r, R)) { p.x = ox; continue; }
+        if (!U.circleRect({ x: p.x, y: oy }, r, R)) { p.y = oy; continue; }
+        p.x = ox; p.y = oy; continue;
+      }
+      const dl = p.x - (r.x - R), dr = (r.x + r.w + R) - p.x, dt = p.y - (r.y - R), db = (r.y + r.h + R) - p.y, m = Math.min(dl, dr, dt, db);
+      if (m === dl) p.x = r.x - R; else if (m === dr) p.x = r.x + r.w + R; else if (m === dt) p.y = r.y - R; else p.y = r.y + r.h + R;
+    }
   },
 
   // ---------- bots ----------
@@ -315,10 +325,10 @@ TN.registerMinigame({
   // ---------- 2D (alternativa sem WebGL): o pátio de cima, muro em cima da tela ----------
   draw(g, c) {
     const D = TN.draw, d = g.data, F = this.FIELD, G = this.guarda(g);
-    const y0 = this.WALL_Y - 20, y1 = this.START_Y + 40;
+    const y0 = this.WALL_Y - 20, y1 = this.START_Y + 40, k = 506 / (y1 - y0);
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);
     c.save();
-    c.translate(0, 34); c.scale(1, 506 / (y1 - y0)); c.translate(0, -y0);
+    c.translate(480 - 480 * k, 34); c.scale(k, k); c.translate(0, -y0);   // escala uniforme, centrada em x
     c.fillStyle = '#4a4638'; c.fillRect(F.x0 - 40, y0, F.x1 - F.x0 + 80, y1 - y0);
     c.fillStyle = '#5a5a56'; c.fillRect(F.x0 - 40, y0, F.x1 - F.x0 + 80, 30);           // muro
     c.fillStyle = 'rgba(80,255,120,0.25)'; c.fillRect(F.x0 - 40, this.WALL_Y - 2, F.x1 - F.x0 + 80, 4);

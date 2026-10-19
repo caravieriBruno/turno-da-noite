@@ -147,6 +147,7 @@ Os minigames são desenhados em **3D com câmera fixa**, como no Machine Party. 
 | `r.camera(pos, target, fov)` | muda a câmera neste quadro (ex.: tremor, foco); normalmente use `def.camera` |
 | `r.project(x, y, z, vista=0)` | converte para a posição na tela 2D: `{x, y, visible}`; `vista` é o índice em `viewports` |
 | `r.unproject(sx, sy, alturaY=0, vista=0)` | ponto da tela → ponto no plano horizontal do mundo `{x, y, z}` |
+| `TN.R3.desenharProjetado(c, x, y, z, fn)` | no `drawOverlay`: chama `fn(s)` com o ponto projetado; com várias vistas, uma vez por vista em que ele cai, recortado ao `rect` (é o que o motor usa para popups e nomes do briefing) |
 
 **Opções `o`** das primitivas:
 - `rotY`, `rotX`, `rotZ` (rotação em rad; caixa, cilindro e cone giram em torno da **base**);

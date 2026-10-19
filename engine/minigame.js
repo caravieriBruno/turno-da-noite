@@ -180,8 +180,10 @@
           c.globalAlpha = 1;
         }
         for (const pp of this._popups) {
-          const s = this.def.screenSpace ? { x: pp.x, y: pp.y } : TN.R3.project(pp.x, 60 + (1 - pp.t) * 30, pp.y);
-          c.globalAlpha = Math.min(1, pp.t * 2); TN.draw.text(c, pp.text, s.x, s.y, { size: 18, color: pp.color, align: 'center' });
+          c.globalAlpha = Math.min(1, pp.t * 2);
+          const texto = (s) => TN.draw.text(c, pp.text, s.x, s.y, { size: 18, color: pp.color, align: 'center' });
+          if (this.def.screenSpace) texto({ x: pp.x, y: pp.y });
+          else TN.R3.desenharProjetado(c, pp.x, 60 + (1 - pp.t) * 30, pp.y, texto);   // em cada vista em que o ponto cai
         }
         c.globalAlpha = 1;
       } else if (this.def.draw) {

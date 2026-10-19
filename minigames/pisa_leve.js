@@ -376,10 +376,10 @@ TN.registerMinigame({
     for (const p of g.players) {
       const b = p.data;
       if (!b.active) continue;
-      const s = TN.R3.project(p.x, 0, p.y + p.r + 10);
+      const s = TN.R3.project(p.x, 0, p.y);   // logo abaixo dos pés, na tela (a câmera é pelas costas)
       for (let i = 0; i < this.LIVES; i++) {
         c.fillStyle = i < b.lives ? '#ff4d5e' : '#333';
-        c.fillRect(s.x - 9 + i * 12, s.y, 8, 5);
+        c.fillRect(s.x - 9 + i * 12, s.y + 10, 8, 5);
       }
     }
   },
