@@ -9,7 +9,7 @@ TN.registerMinigame({
   tagline: 'SIGA AS SETAS. MANTENHA O RITMO.',
   brief: [
     'Aperte a direção que aparece na sua seta para subir.',
-    'Errou a seta? Você perde quase metade da velocidade.',
+    'Errou a seta? Você perde 70% da velocidade (menos nos primeiros segundos).',
     'A escada desce na velocidade do mais rápido. Não fique para trás.',
     'Só a chegada conta: 4, 3, 2, 1. Cair é 0.',
   ],
@@ -25,6 +25,7 @@ TN.registerMinigame({
   STEP: 0.1,                  // ganho por acerto (multiplicado pelo fator de ritmo)
   MAX_SPEED: 2, ESC_MAX: 1, DECAY: 0.01,
   K: 0.11,                   // fração da escada percorrida por segundo por unidade de velocidade relativa
+  BUFFER: 0.3,                // folga depois de cada tecla antes de o fator de ritmo começar a cair (original)
   START: 0.45,                // posição inicial (0 = buraco, 1 = saída)
   CONSOLACAO: 1,              // pontos do último que sobra na escada (sobreviver nunca vale mais que chegar)
   DIRS: ['up', 'down', 'left', 'right'],
@@ -71,13 +72,14 @@ TN.registerMinigame({
         const since = g.time - s.last;
         s.last = g.time;
         if (pressed === s.arrow) {
-          const tf = U.clamp(1 - since, 0.5, 1);
+          const tf = U.clamp(1 - Math.max(0, since - this.BUFFER), 0.5, 1);
           s.speed = Math.min(s.speed + this.STEP * tf, this.MAX_SPEED);
           s.arrow = this.newArrow(s.arrow);
           s.good = 0.15;
           g.sfx('step');
         } else {
-          s.speed *= 0.3 + 0.3 * (1 - Math.min(since, 5) / 5);
+          // como no original, o perdão do erro depende do tempo de jogo (só vale nos primeiros 5 s)
+          s.speed *= 0.3 + 0.3 * (1 - Math.min(g.time, 5) / 5);
           s.wrong = 0.35;
           g.sfx('buzz');
         }

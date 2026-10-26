@@ -13,8 +13,8 @@ TN.registerMinigame({
   controls: { move: 'andar / mirar', a: 'travar o tiro (guarda)', b: 'mergulhar (fugitivo) / zoom (guarda)' },
   icon: '⌖',
   color: '#ff8c3a',
-  rounds: 4,                 // cada rodada tem um guarda diferente
-  fixedRounds: true,         // ignora o ajuste "rodadas por jogo" do lobby
+  rounds: 4,                 // referência; na sessão vale roundsPerPlayer
+  roundsPerPlayer: true,     // uma rodada por jogador: cada um é o guarda uma vez (como no original)
   scoring: 'points',
   endWhenOneLeft: false,
 

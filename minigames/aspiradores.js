@@ -13,9 +13,11 @@ TN.registerMinigame({
   rounds: 3,
   scoring: 'survival',       // ordem de eliminação vira pontos (padrão do motor)
 
-  // ---- constantes (originais: spawn 0,5 s, +1 a cada 5 s, máx. 5, vel. 2,5× a do jogador) ----
-  SPEED: 175, ROOMBA_SPEED: 330, WARMUP_SPEED: 160, ROOMBA_R: 22,
-  SPAWN_FIRST: 0.5, SPAWN_EVERY: 5, MAX_ROOMBAS: 5, SHOVE: 520, SHOVE_LOCK: 0.5,
+  // ---- constantes (originais, na proporção da velocidade do jogador: spawn 0,5 s, +1 a cada 5 s, máx. 5;
+  //      aspirador 2,5×, entrada 1,5×; quem empurra fica 0,5 s parado. O empurrão decai linear como no original,
+  //      mas menor: lá ele cruza 2/3 da arena; aqui ~180 px e ~0,8 s sem controle, para não arremessar longe) ----
+  SPEED: 175, ROOMBA_SPEED: 437, WARMUP_SPEED: 262, ROOMBA_R: 22,
+  SPAWN_FIRST: 0.5, SPAWN_EVERY: 5, MAX_ROOMBAS: 5, SHOVE: 400, SHOVE_DECAY: 444, SHOVE_LOCK: 0.5,
 
   init(g) {
     g.data.roombas = [];
@@ -46,10 +48,11 @@ TN.registerMinigame({
     for (const p of g.alive()) {
       p.data.lock -= dt;
       const stunned = Math.hypot(p.vx, p.vy) > 40;
-      if (stunned) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt); p.input = save; }
+      const shoving = p.data.lock > 0;   // quem empurra fica parado enquanto o braço volta
+      if (stunned || shoving) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt); p.input = save; }
       else g.movePlayer(p, this.SPEED, dt);
-      g.decayPush(p, dt, 6);
-      if (p.input.aPressed && p.data.lock <= 0 && !stunned) {
+      g.decayPushLinear(p, dt, this.SHOVE_DECAY);
+      if (p.input.aPressed && !shoving && !stunned) {
         p.data.lock = this.SHOVE_LOCK;
         g.sfx('whoosh');
         const fx = Math.cos(p.dir), fy = Math.sin(p.dir);

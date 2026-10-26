@@ -22,6 +22,8 @@ O motor cuida do resto: lobby, bots, roleta, briefing, rodadas, contagem 3-2-1, 
 | `controls` | | `{ move: 'andar', a: 'empurrar', b: 'agachar' }`; omita o que não for usado |
 | `icon`, `color` | | 1 caractere para o cartão da roleta e a cor de destaque |
 | `rounds` | | rodadas padrão (normalmente 1 a 3) |
+| `fixedRounds` | | `true` ignora o ajuste "tentativas por etapa" do lobby |
+| `roundsPerPlayer` | | `true` faz o número de rodadas ser igual ao de jogadores da sessão (papel rotativo: cada um tem a sua vez); implica `fixedRounds` |
 | `fixedRounds` | | `true` faz o jogo ignorar o ajuste "rodadas por jogo" do lobby (ex.: uma rodada por caçador) |
 | `timeLimit` | | segundos; ao acabar chama `onTimeUp(g)` (opcional) e termina a rodada. Pode ser uma função `(g) => n` |
 | `scoring` | | `'survival'` (padrão), `'rank'` ou `'points'` (veja abaixo) |
@@ -69,6 +71,7 @@ Dentro dos métodos, `this` é a própria definição. Isso permite guardar cons
 - `g.addScore(p, n)`: soma pontos e mostra um "+n" na tela.
 - `g.movePlayer(p, velocidade, dt, limites?)`: anda pelo input com a diagonal normalizada, presa em `g.arena` (ou em `limites`, ou `null` para ficar solto). Atualiza `p.dir` e aplica o impulso `p.vx/p.vy`.
 - `g.push(p, ix, iy)` e `g.decayPush(p, dt, taxa)`: impulsos que decaem, para empurrões e explosões.
+- `g.decayPushLinear(p, dt, taxa)`: decaimento linear (taxa em px/s²), como no Machine Party: um empurrão `v` dura `v/taxa` segundos e anda `v²/(2·taxa)` px. Use quando o empurrão precisa tirar o controle por um tempo previsível.
 - `g.placeInCircle(cx, cy, r)` e `g.placeInRow(y, x0, x1)`: posições iniciais.
 - `g.drawPlayer(c, p, {flash})`: desenha o robô padrão do jogador.
 

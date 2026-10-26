@@ -11,6 +11,7 @@
     for (const k of required) if (!def[k]) throw new Error(`Minigame sem campo obrigatório "${k}": ${def.id || '?'}`);
     if (TN.minigames[def.id]) console.warn('Minigame registrado duas vezes:', def.id);
     def.rounds = def.rounds || 1;
+    if (def.roundsPerPlayer) def.fixedRounds = true;
     def.scoring = def.scoring || 'survival';
     def.brief = def.brief || [];
     def.controls = def.controls || {};
@@ -101,6 +102,11 @@
     // impulso que decai (empurrões, explosões)
     push(p, ix, iy) { p.vx += ix; p.vy += iy; }
     decayPush(p, dt, rate = 8) { const k = Math.max(0, 1 - rate * dt); p.vx *= k; p.vy *= k; }
+    // decaimento linear (px/s por segundo), como o move_toward do original: o empurrão dura v/taxa segundos
+    decayPushLinear(p, dt, rate) {
+      const v = Math.hypot(p.vx, p.vy); if (!v) return;
+      const k = Math.max(0, v - rate * dt) / v; p.vx *= k; p.vy *= k;
+    }
     placeInCircle(cx, cy, r) {
       this.players.forEach((p, i) => {
         const a = -Math.PI / 2 + (i / this.players.length) * Math.PI * 2;

@@ -11,7 +11,7 @@ TN.registerMinigame({
   brief: [
     'Termine o cigarro antes do tempo acabar.',
     'Segure AÇÃO para tragar e solte para exalar.',
-    'Trague, solte, espere a fumaça sair. Tragar com a boca cheia dá tosse.',
+    'Trague, solte, espere a fumaça sair. Encher demais ou tragar com a boca cheia dá 3 s de tosse.',
     'Os 3 primeiros a terminar pontuam (1º ganha 2).',
   ],
   controls: { a: 'segurar = tragar / soltar = exalar' },
@@ -23,8 +23,7 @@ TN.registerMinigame({
   endWhenOneLeft: false,      // ninguém "morre" durante o jogo; só no fim do tempo
 
   // ---- constantes (originais: inhale 0,01, exhale 1,0, cigarro 0,15, tosse 3 s) ----
-  INHALE_MULT: 0.01, MAX_DRAG: 0.1, EXHALE_RATE: 1.0, CIG_MULT: 0.3, CHOKE_TIME: 1.2,
-  ATORDOA: 0.3,               // lotar o pulmão não dá mais tosse: força a exalação e trava AÇÃO por este tempo
+  INHALE_MULT: 0.01, MAX_DRAG: 0.1, EXHALE_RATE: 1.0, CIG_MULT: 0.15, CHOKE_TIME: 3,   // valores do original (~7 tragadas, ~20 s de cigarro)
   SEATS: [120, 310, 500, 690], FLOOR_Y: 440, INSPECTOR_X: 862,
   FINISH_POINTS: [2, 1, 1],   // 1º, 2º e 3º a terminar
 
@@ -37,17 +36,17 @@ TN.registerMinigame({
       p.x = this.SEATS[i]; p.y = this.FLOOR_Y - 70;
       p.data = {
         cig: 1, lung: 0, str: 0,              // cigarro restante, pulmão, força da tragada
-        inhaling: false, exhaling: false, choke: 0, stun: 0,
+        inhaling: false, exhaling: false, choke: 0,
         done: false, place: -1, drags: 0, coughs: 0,
         bot: { target: this.botTarget(), wait: TN.util.rand(0.1, 0.5), holding: false },
       };
     });
   },
 
-  // Alvo de enchimento do bot: solta antes de lotar ou deixa a exalação forçada soltar por ele.
+  // Alvo de enchimento do bot: quase sempre abaixo do limite; às vezes passa (e tosse).
   botTarget() {
     const U = TN.util;
-    return U.chance(0.5) ? 1.05 : U.rand(0.7, 0.98);   // 1,05 = deixa lotar e a exalação forçada soltar
+    return U.chance(0.08) ? 1.08 : U.rand(0.76, 0.96);
   },
 
   mouth(p) { return { x: p.x + 16, y: this.FLOOR_Y - 46 - 64 * 0.68 }; },
@@ -82,8 +81,7 @@ TN.registerMinigame({
         continue;
       }
       // entrada (igual ao original: apertar = começa a tragar, soltar = começa a exalar)
-      s.stun = Math.max(0, s.stun - dt);
-      if (p.input.aPressed && s.stun <= 0) { s.inhaling = true; s.drags++; g.sfx('blip'); }
+      if (p.input.aPressed) { s.inhaling = true; s.drags++; g.sfx('blip'); }
       else if (p.input.aReleased && s.inhaling) { s.inhaling = false; s.exhaling = true; }
       // tragar (fórmula por quadro de 60 Hz do original)
       if (s.inhaling) {
@@ -93,7 +91,7 @@ TN.registerMinigame({
           s.lung += s.str;
           s.cig = Math.max(s.cig - s.str * this.CIG_MULT, 0);
           if (s.cig <= 0) { s.inhaling = false; s.exhaling = true; }
-          else if (s.lung > 1.0) { s.lung = 1.0; s.inhaling = false; s.exhaling = true; s.stun = this.ATORDOA; g.sfx('whoosh'); }   // lotou: solta sozinho, sem tosse
+          else if (s.lung > 1.0) { this.choke(g, p); continue; }   // passou do limite: tosse (como no original)
         }
       }
       // exalar
@@ -294,10 +292,10 @@ TN.registerMinigame({
       const s = p.data, sp = TN.R3.project(p.x, 0, Z), w = 150, h = 92, x0 = TN.util.clamp(sp.x - w / 2, 6, g.W - w - 6), y0 = 42;
       D.panel(c, x0, y0, w, h, { fill: 'rgba(8,11,14,0.82)', stroke: p.alive ? p.color : '#444', lw: 2 });
       D.text(c, p.label + (p.isBot ? ' BOT' : ''), x0 + 8, y0 + 12, { size: 12, color: p.alive ? p.color : '#777' });
-      // brasa: acende enquanto traga, apaga ao soltar (sem linha vermelha: lotar não é punido)
+      // brasa: acende enquanto traga, apaga ao soltar; perto do topo fica vermelha (passar do topo dá tosse)
       const mx = x0 + 10, my = y0 + 24, mw = 24, mh = 60, k = TN.util.clamp(s.lung, 0, 1);
       c.fillStyle = '#1b2026'; c.fillRect(mx, my, mw, mh);
-      c.fillStyle = s.inhaling ? '#ff7a1a' : '#a8401a'; c.fillRect(mx, my + mh * (1 - k), mw, mh * k);
+      c.fillStyle = k > 0.85 ? '#ff2e2e' : s.inhaling ? '#ff7a1a' : '#a8401a'; c.fillRect(mx, my + mh * (1 - k), mw, mh * k);
       // estado
       let st = 'PRONTO', sc = '#8a939c';
       if (!p.alive) { st = 'ELETROCUTADO'; sc = '#f55'; }
@@ -410,10 +408,10 @@ TN.registerMinigame({
     const D = TN.draw, s = p.data, cx = p.x, x0 = cx - 82, y0 = 46, w = 164, h = 210;
     D.panel(c, x0, y0, w, h, { fill: 'rgba(8,11,14,0.88)', stroke: p.alive ? p.color : '#444', lw: 2 });
     D.text(c, p.label + (p.isBot ? ' BOT' : ''), x0 + 10, y0 + 15, { size: 13, color: p.alive ? p.color : '#777' });
-    // brasa (vertical): acende enquanto traga, apaga ao soltar
+    // brasa (vertical): acende enquanto traga, apaga ao soltar; vermelha perto do topo
     const mx = x0 + 12, my = y0 + 32, mw = 34, mh = 112, t = TN.util.clamp(s.lung, 0, 1);
     c.fillStyle = '#1b2026'; c.fillRect(mx, my, mw, mh);
-    c.fillStyle = s.inhaling ? '#ff7a1a' : '#a8401a'; c.fillRect(mx, my + mh * (1 - t), mw, mh * t);
+    c.fillStyle = t > 0.85 ? '#ff2e2e' : s.inhaling ? '#ff7a1a' : '#a8401a'; c.fillRect(mx, my + mh * (1 - t), mw, mh * t);
     c.strokeStyle = '#000'; c.lineWidth = 1; c.strokeRect(mx + 0.5, my + 0.5, mw - 1, mh - 1);
     D.text(c, 'BRASA', mx + mw / 2, my + mh + 11, { size: 10, color: '#8a939c', align: 'center' });
     // estado

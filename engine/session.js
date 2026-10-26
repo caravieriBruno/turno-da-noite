@@ -53,6 +53,8 @@
   }
 
   function newSession(roster, playlist, { test = null } = {}) {
+    // roundsPerPlayer: uma rodada por jogador da sessão (ex.: cada um é o guarda uma vez)
+    for (const e of playlist) { const def = TN.minigames[e.id]; if (def && def.roundsPerPlayer) e.rounds = roster.length; }
     TN.session = { roster, playlist, index: 0, totals: {}, test };
     for (const p of roster) TN.session.totals[p.id] = 0;
   }

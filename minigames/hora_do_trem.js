@@ -17,8 +17,9 @@ TN.registerMinigame({
   scoring: 'survival',
 
   // ---- constantes (original: espera 3 s, nichos abrem 1 s após o aviso, 2 s de pausa,
-  //      abertos = max(vivos+2-ciclos, 1), empurrão 0,1 s de preparo, impulso 15 decaindo) ----
-  SPEED: 180, SHOVE: 600, SHOVE_WIND: 0.1, SHOVE_LOCK: 0.35, SHOVE_RANGE: 72,
+  //      abertos = max(vivos+2-ciclos, 1); empurrão: 0,1 s de preparo, UM alvo, decaimento linear,
+  //      quem empurra fica 0,5 s parado; distância reduzida para ~180 px e ~0,8 s sem controle) ----
+  SPEED: 180, SHOVE: 400, SHOVE_DECAY: 444, SHOVE_WIND: 0.1, SHOVE_LOCK: 0.5, SHOVE_RANGE: 72,
   FORA_DO_NICHO: 0.3,   // quem é empurrado para fora de um nicho fica este tempo sem contar como escondido
   NOOK_W: 54, NOOK_D: 50,
   Y0: -200, Y1: 540, HALF: 150,   // túnel em y (fundo → câmera) e meia largura do chão (paredes em 480 ± HALF)
@@ -108,11 +109,12 @@ TN.registerMinigame({
       b.lock -= dt;
       const stunned = Math.hypot(p.vx, p.vy) > 40;
       if (!stunned) b.foraT = Math.max(0, b.foraT - dt);   // a janela sem reentrar conta depois do atordoamento
-      if (stunned) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt, bounds); p.input = save; }
+      const shoving = b.lock > 0;   // preparo + volta do braço: parado
+      if (stunned || shoving) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt, bounds); p.input = save; }
       else g.movePlayer(p, this.SPEED, dt, bounds);
-      g.decayPush(p, dt, 6);
+      g.decayPushLinear(p, dt, this.SHOVE_DECAY);
       // empurrão: 0,1 s de preparo e depois o impulso na direção em que está olhando
-      if (p.input.aPressed && b.lock <= 0 && !stunned) { b.lock = this.SHOVE_LOCK; b.wind = this.SHOVE_WIND; }
+      if (p.input.aPressed && !shoving && !stunned) { b.lock = this.SHOVE_LOCK; b.wind = this.SHOVE_WIND; }
       if (b.wind > 0) {
         b.wind -= dt;
         if (b.wind <= 0) this.shove(g, p);
@@ -120,6 +122,7 @@ TN.registerMinigame({
     }
     U.separate(g.alive());
     for (const p of g.alive()) this.resolveWalls(g, p, dt);
+    this.umPorNicho(g);
 
     // ---------- mortes ----------
     for (const p of g.alive()) {
@@ -145,16 +148,40 @@ TN.registerMinigame({
   shove(g, p) {
     const fx = Math.cos(p.dir), fy = Math.sin(p.dir);
     g.sfx('whoosh');
+    // como no original, pega um só: o mais próximo dentro do cone
+    let alvo = null, melhor = Infinity;
     for (const o of g.alive()) {
       if (o === p) continue;
       const dx = o.x - p.x, dy = o.y - p.y, dist = Math.hypot(dx, dy);
-      if (dist < this.SHOVE_RANGE && (dx * fx + dy * fy) / (dist || 1) > 0.2) {
-        // empurrões não acumulam: a velocidade é substituída. Quem está num nicho sai reto para o trilho
-        // (a parede do nicho segurava o impulso lateral) e fica um instante sem poder se reesconder.
-        const n = this.nookOf(g, o);
-        if (n) { o.vy = 0; o.vx = -n.side * this.SHOVE; o.data.foraT = this.FORA_DO_NICHO; }
-        else { o.vx = (dx / dist) * this.SHOVE; o.vy = (dy / dist) * this.SHOVE; }
-        g.sfx('hit'); g.particles((o.x + p.x) / 2, (o.y + p.y) / 2, '#fff', 6, 140);
+      if (dist < this.SHOVE_RANGE && (dx * fx + dy * fy) / (dist || 1) > 0.2 && dist < melhor) { alvo = o; melhor = dist; }
+    }
+    if (!alvo) return;
+    const o = alvo, dx = o.x - p.x, dy = o.y - p.y;
+    // empurrões não acumulam: a velocidade é substituída. Quem está num nicho sai reto para o trilho
+    // (a parede do nicho segurava o impulso lateral) e fica um instante sem poder se reesconder.
+    const n = this.nookOf(g, o);
+    if (n) { o.vy = 0; o.vx = -n.side * this.SHOVE; o.data.foraT = this.FORA_DO_NICHO; }
+    else { o.vx = (dx / melhor) * this.SHOVE; o.vy = (dy / melhor) * this.SHOVE; }
+    g.sfx('hit'); g.particles((o.x + p.x) / 2, (o.y + p.y) / 2, '#fff', 6, 140);
+  },
+
+  // Nicho aberto cabe um só (como no original). Quem já está dentro fica; quem chega depois bate na
+  // parede como se o nicho estivesse cheio. Sem isso, dois cabiam pela diagonal e, com um nicho só,
+  // a rodada podia acabar sem vencedor.
+  umPorNicho(g) {
+    const d = g.data;
+    for (const n of d.nooks) {
+      if (n.state === 'closed') { n.dono = null; continue; }
+      const dentro = g.alive().filter((p) => this.nookOf(g, p) === n);
+      if (!dentro.some((p) => p.id === n.dono)) {
+        // o mais fundo vira o dono
+        dentro.sort((a, b) => n.side * (b.x - a.x));
+        n.dono = dentro.length ? dentro[0].id : null;
+      }
+      for (const p of dentro) {
+        if (p.id === n.dono) continue;
+        const wallX = n.side < 0 ? d.floorL : d.floorR;
+        p.x = wallX - n.side * p.r; if (n.side * p.vx > 0) p.vx = 0;
       }
     }
   },

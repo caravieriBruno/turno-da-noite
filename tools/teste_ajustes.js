@@ -135,17 +135,19 @@ function secaoPisoFalso() {
   ok(meu.sym !== e.safe && e.tiles.some((t) => t.sym === e.safe), 'piso falso: a garantia não torna seguro o piso sob o jogador (parado tem que andar)');
 }
 
-// --- tragada certa: sem a barra de fôlego; lotar o pulmão só força a exalação ---
+// --- tragada: valores do original (tosse de 3 s ao passar do limite ou tragar de boca cheia) ---
 function secaoTragada() {
   const def = TN.minigames.tragada, g = rodada('tragada'), s = g.players[0].data;
-  ok(def.CHOKE_TIME === 1.2 && def.CIG_MULT >= 0.28 && def.CIG_MULT <= 0.32, 'tragada: tosse 1,2 s e cigarro gasta ~0,3 por tragada');
-  aperta(0, { a: true }); segundos(g, 2);   // o pulmão lota em ~1,8 s de tragada contínua
-  ok(s.coughs === 0 && s.choke === 0 && !s.inhaling && s.exhaling, `tragada: lotar o pulmão força a exalação sem tosse (tosses ${s.coughs}, exalando ${s.exhaling})`);
-  ok(s.stun > 0, `tragada: o atordoamento de 0,3 s está valendo (${s.stun.toFixed(2)} s)`);
-  segundos(g, 1); ok(s.coughs === 0, 'tragada: segurar AÇÃO depois de lotar não dá tosse');
-  solta(); segundos(g, 2);
+  ok(def.CHOKE_TIME === 3 && def.CIG_MULT === 0.15, 'tragada: tosse 3 s e cigarro gasta 0,15 por unidade de tragada (original)');
+  aperta(0, { a: true }); segundos(g, 2);   // o pulmão passa de 1,0 em ~1,83 s de tragada contínua
+  ok(s.coughs === 1 && s.choke > 2.5, `tragada: passar do limite dá tosse (tosses ${s.coughs}, tosse ${s.choke.toFixed(2)} s)`);
+  solta(); segundos(g, 3.2);
+  ok(s.choke === 0, 'tragada: a tosse acaba depois de 3 s');
+  aperta(0, { a: true }); segundos(g, 1.5); solta(); passo(g);
+  ok(s.coughs === 1 && s.exhaling, `tragada: soltar abaixo do limite exala sem tosse (pulmão ${s.lung.toFixed(2)})`);
+  segundos(g, 2);
   aperta(0, { a: true }); segundos(g, 0.4); solta(); passo(g); aperta(0, { a: true }); passo(g);
-  ok(s.choke > 0 && s.choke <= 1.2, `tragada: apertar antes de esvaziar ainda tosse (${s.choke.toFixed(2)} s)`);
+  ok(s.choke > 0 && s.choke <= 3, `tragada: apertar antes de esvaziar ainda tosse (${s.choke.toFixed(2)} s)`);
   // Review Focus 4: o cigarro acaba no meio da tragada
   const h = rodada('tragada'), q = h.players[0].data; q.cig = 0.001; q.lung = 0;
   aperta(0, { a: true }); segundos(h, 3); solta(); segundos(h, 2);
@@ -203,7 +205,7 @@ function secaoCabo() {
 // --- hora do trem: empurrão tira do nicho de verdade ---
 function secaoTrem() {
   const def = TN.minigames.hora_do_trem;
-  ok(def.SHOVE_RANGE === 72 && def.SHOVE_LOCK === 0.35 && def.FORA_DO_NICHO === 0.3, 'trem: alcance 72, recarga 0,35, 0,3 s sem reentrar');
+  ok(def.SHOVE_RANGE === 72 && def.SHOVE_LOCK === 0.5 && def.FORA_DO_NICHO === 0.3, 'trem: alcance 72, empurrador parado 0,5 s, 0,3 s sem reentrar');
   for (const lado of [-1, 1]) {   // Review Focus 5: parede da esquerda e da direita (eixos transpostos: o túnel corre em y)
     const g = rodada('hora_do_trem'), d = g.data, n = d.nooks.find((k) => k.side === lado);
     n.state = 'open';
@@ -222,6 +224,47 @@ function secaoTrem() {
     segundos(g, 0.35); v.y = n.cy; v.x = lado < 0 ? d.floorL - 20 : d.floorR + 20;
     ok(v.data.foraT === 0 && def.seguro(g, v), `trem (lado ${lado}): passada a janela, volta a valer o esconderijo`);
   }
+  // nicho aberto cabe um só: dois nos cantos opostos (diagonal) → o mais fundo fica, o outro bate na parede
+  for (const lado of [-1, 1]) {
+    const g = rodada('hora_do_trem'), d = g.data, n = d.nooks.find((k) => k.side === lado);
+    n.state = 'open';
+    const [a, b] = g.players, half = def.NOOK_W / 2 - a.r;
+    a.y = n.cy - half; a.x = lado < 0 ? d.floorL - 34 : d.floorR + 34;   // fundo
+    b.y = n.cy + half; b.x = lado < 0 ? d.floorL - 10 : d.floorR + 10;   // perto da boca
+    ok(def.seguro(g, a) && def.seguro(g, b), `trem (lado ${lado}): pela diagonal os dois cabiam (montagem do teste)`);
+    def.umPorNicho(g);
+    ok(def.seguro(g, a) && !def.seguro(g, b) && def.nookOf(g, b) !== n, `trem (lado ${lado}): só o mais fundo fica no nicho`);
+  }
 }
 
-fim([secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato, secaoMemoria, secaoPisoFalso, secaoTragada, secaoBatata, secaoCabo, secaoTrem]);
+// --- empurrões: decaimento linear (~0,8 s sem controle, ~180 px); empurrador parado 0,5 s ---
+function secaoEmpurroes() {
+  {
+    const g = rodada('aspiradores'), d = g.data, [a, v] = g.players;
+    d.nextSpawn = Infinity;
+    for (const p of g.players.slice(2)) { p.x = g.arena.x + 40; p.y = g.arena.y + 40; }
+    a.x = g.arena.x + 150; a.y = g.arena.y + g.arena.h / 2; v.x = a.x + 40; v.y = a.y; a.dir = 0;
+    aperta(0, { a: true, x: 1 }); passo(g);
+    const ax = a.x;
+    let q = 0; while (Math.hypot(v.vx, v.vy) > 40 && q < 300) { passo(g); q++; }
+    ok(q / 60 > 0.6 && q / 60 < 1.0, `aspiradores: empurrado fica sem controle ~0,8 s (${(q / 60).toFixed(2)} s)`);
+    const longe = v.x - ax - 40;
+    ok(longe > 120 && longe < 260, `aspiradores: empurrão anda ~180 px, sem arremessar pela arena (${longe.toFixed(0)} px)`);
+    const g2 = rodada('aspiradores'), [b] = g2.players; g2.data.nextSpawn = Infinity;
+    b.x = g2.arena.x + 150; b.y = g2.arena.y + g2.arena.h / 2; b.dir = 0;
+    aperta(0, { a: true, x: 1 }); passo(g2); const bx = b.x; segundos(g2, 0.4);
+    ok(Math.abs(b.x - bx) < 1, `aspiradores: quem empurra fica parado (andou ${(b.x - bx).toFixed(1)} px em 0,4 s)`);
+    segundos(g2, 0.3);
+    ok(b.x - bx > 10, 'aspiradores: depois de 0,5 s volta a andar');
+    ok(TN.minigames.aspiradores.ROOMBA_SPEED / TN.minigames.aspiradores.SPEED === 437 / 175, 'aspiradores: aspirador a 2,5× o jogador');
+  }
+  {
+    const g = rodada('hora_do_trem'), [a, v, w] = g.players;
+    a.x = 480; a.y = 200; a.dir = Math.PI / 2;
+    v.x = 480; v.y = 240; w.x = 490; w.y = 262; g.players[3].x = 480; g.players[3].y = 500;
+    aperta(0, { a: true }); segundos(g, 0.15);
+    ok(Math.hypot(v.vx, v.vy) > 300 && Math.hypot(w.vx, w.vy) < 40, `trem: empurrão pega só o mais próximo (v ${Math.hypot(v.vx, v.vy).toFixed(0)}, w ${Math.hypot(w.vx, w.vy).toFixed(0)})`);
+  }
+}
+
+fim([secaoContramao, secaoServicoInterno, secaoTriagem, secaoFabrica, secaoCarrapato, secaoMemoria, secaoPisoFalso, secaoTragada, secaoBatata, secaoCabo, secaoTrem, secaoEmpurroes]);

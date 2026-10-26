@@ -336,6 +336,16 @@ secaoNomes();
 secaoRoda();
 secaoMenusComNome();
 secaoNomesRevisao();
+// roundsPerPlayer: uma rodada por jogador (temporada de caça: cada um é o guarda uma vez)
+(function secaoRodadasPorJogador() {
+  for (const n of [2, 3, 4]) {
+    const slots = [0, 1, 2, 3].map((i) => (i < n ? { device: 'kb' + (i + 1) } : null));
+    const roster = I.buildRoster(slots, false);
+    I.newSession(roster, [{ id: 'temporada_de_caca', rounds: 1 }, { id: 'cinzel', rounds: 1 }]);
+    const pl = TN.session.playlist;
+    ok(pl[0].rounds === n && pl[1].rounds === 1, `rodadas por jogador: ${n} jogadores → temporada ${pl[0].rounds} rodadas, cinzel mantém 1`);
+  }
+})();
 // CHAMADAS EXTRAS (as tarefas seguintes acrescentam aqui)
 console.log(falhas ? `\n${falhas} falha(s).` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

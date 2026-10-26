@@ -68,7 +68,7 @@ for (const id of ids) {
       id: i, name: TN.PLAYER_NAMES[i], color: TN.PLAYER_COLORS[i],
       isBot: !(opt.parado && i === 0), device: opt.parado && i === 0 ? 'parado' : null,
     }));
-    const total = def.rounds;
+    const total = def.roundsPerPlayer ? roster.length : def.rounds;
     for (let r = 1; r <= total; r++) {
       let g, frames = 0;
       try {
