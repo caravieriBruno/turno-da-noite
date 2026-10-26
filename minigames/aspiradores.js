@@ -17,7 +17,7 @@ TN.registerMinigame({
   //      aspirador 2,5×, entrada 1,5×; quem empurra fica 0,5 s parado. O empurrão decai linear como no original,
   //      mas menor: lá ele cruza 2/3 da arena; aqui ~180 px e ~0,8 s sem controle, para não arremessar longe) ----
   SPEED: 175, ROOMBA_SPEED: 437, WARMUP_SPEED: 262, ROOMBA_R: 22,
-  SPAWN_FIRST: 0.5, SPAWN_EVERY: 5, MAX_ROOMBAS: 5, SHOVE: 400, SHOVE_DECAY: 444, SHOVE_LOCK: 0.5,
+  SPAWN_FIRST: 0.5, SPAWN_EVERY: 5, MAX_ROOMBAS: 5, SHOVE: 400, SHOVE_DECAY: 444, SHOVE_LOCK: 0.5, TOMBO: 1.1,   // empurrado cai e levanta (1,1 s sem controle)
 
   init(g) {
     g.data.roombas = [];
@@ -47,7 +47,7 @@ TN.registerMinigame({
     // jogadores
     for (const p of g.alive()) {
       p.data.lock -= dt;
-      const stunned = Math.hypot(p.vx, p.vy) > 40;
+      const stunned = p.tombo > 0;   // derrubado (g.derrubar): sem controle até levantar
       const shoving = p.data.lock > 0;   // quem empurra fica parado enquanto o braço volta
       if (stunned || shoving) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt); p.input = save; }
       else g.movePlayer(p, this.SPEED, dt);
@@ -60,8 +60,7 @@ TN.registerMinigame({
           if (o === p) continue;
           const dx = o.x - p.x, dy = o.y - p.y, dist = Math.hypot(dx, dy);
           if (dist < 56 && (dx * fx + dy * fy) / (dist || 1) > 0.2) {
-            g.push(o, (dx / dist) * this.SHOVE, (dy / dist) * this.SHOVE);
-            g.sfx('hit');
+            if (g.derrubar(o, (dx / dist) * this.SHOVE, (dy / dist) * this.SHOVE, this.TOMBO)) g.sfx('hit');
           }
         }
       }
@@ -164,7 +163,7 @@ TN.registerMinigame({
       r.light(rb.x, 30, rb.y, col, 0.6, 140);
     }
     // jogadores
-    for (const p of g.players) r.character(p, { flash: p.alive && Math.hypot(p.vx, p.vy) > 40 });
+    for (const p of g.players) r.character(p, { flash: p.alive && p.tombo > 0 });
   },
 
   draw(g, c) {

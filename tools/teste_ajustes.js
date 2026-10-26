@@ -216,9 +216,9 @@ function secaoTrem() {
     def.shove(g, a);
     ok(Math.abs(v.vy) < 1 && Math.sign(v.vx) === -lado && Math.abs(v.vx) > 300, `trem (lado ${lado}): empurrão sai reto do nicho (vx ${v.vx.toFixed(0)}, vy ${v.vy.toFixed(0)})`);
     ok(v.data.foraT === 0.3, `trem (lado ${lado}): vítima fica 0,3 s sem reentrar (${v.data.foraT})`);
-    let quadros = 0;   // quadros reais: enquanto está atordoada (vel > 40), a janela de reentrada nem começa a contar
-    while (Math.hypot(v.vx, v.vy) > 40 && quadros < 120) { passo(g); quadros++; }
-    ok(quadros > 0 && v.data.foraT >= 0.29, `trem (lado ${lado}): ao fim do atordoamento (${(quadros / 60).toFixed(2)} s) ainda faltam ${v.data.foraT.toFixed(2)} s sem poder reentrar`);
+    let quadros = 0;   // quadros reais: enquanto está no chão (p.tombo), a janela de reentrada nem começa a contar
+    while (v.tombo > 0 && quadros < 200) { passo(g); quadros++; }
+    ok(quadros > 0 && v.data.foraT >= 0.28, `trem (lado ${lado}): ao levantar (${(quadros / 60).toFixed(2)} s) ainda faltam ${v.data.foraT.toFixed(2)} s sem poder reentrar`);
     v.y = n.cy; v.x = lado < 0 ? d.floorL - 20 : d.floorR + 20; passo(g);   // teleporta de volta ao fundo do nicho
     ok(!def.seguro(g, v), `trem (lado ${lado}): dentro do nicho mas com foraT > 0 não conta como segura`);
     segundos(g, 0.35); v.y = n.cy; v.x = lado < 0 ? d.floorL - 20 : d.floorR + 20;
@@ -257,6 +257,17 @@ function secaoEmpurroes() {
     segundos(g2, 0.3);
     ok(b.x - bx > 10, 'aspiradores: depois de 0,5 s volta a andar');
     ok(TN.minigames.aspiradores.ROOMBA_SPEED / TN.minigames.aspiradores.SPEED === 437 / 175, 'aspiradores: aspirador a 2,5× o jogador');
+    // derrubado: cai de costas virado para quem empurrou, sem controle por 1,1 s, e não cai de novo enquanto está no chão
+    const g3 = rodada('aspiradores'), [e, w] = g3.players; g3.data.nextSpawn = Infinity;
+    e.x = g3.arena.x + 150; e.y = g3.arena.y + g3.arena.h / 2; w.x = e.x + 40; w.y = e.y; e.dir = 0;
+    aperta(0, { a: true, x: 1 }); passo(g3);
+    ok(Math.abs(w.tombo - 1.1) < 0.05 && Math.cos(w.dir) < -0.9, `aspiradores: empurrado cai (tombo ${w.tombo.toFixed(2)} s) virado para quem empurrou`);
+    ok(!g3.derrubar(w, 400, 0), 'aspiradores: quem está no chão não é derrubado de novo');
+    solta(); aperta(1, { x: -1 }); segundos(g3, 0.95);
+    ok(w.vx === 0 || w.x > e.x + 40, `aspiradores: no chão o controle não move (x ${(w.x - e.x).toFixed(0)} px à frente)`);
+    const wx = w.x; segundos(g3, 0.3);
+    ok(w.tombo === 0 && w.x < wx - 10, 'aspiradores: depois de levantar volta a andar');
+    solta();
   }
   {
     const g = rodada('hora_do_trem'), [a, v, w] = g.players;

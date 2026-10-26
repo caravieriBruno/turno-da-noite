@@ -304,7 +304,7 @@
 
   // ---------------- personagem (detento de uniforme; no visual antigo, boneco de macacão com visor) ----------------
   // poses do detento glTF que o boneco de caixas não tem → a mais parecida
-  const BOX_POSE = { hold: 'arms', work: 'arms', pull: 'arms', swing: 'arms', shoot: 'aim', gun: 'aim', statue: 'idle', dance: 'walk', drive: 'sit', hit: 'idle', jump: 'fall', land: 'crouch' };
+  const BOX_POSE = { tombo: 'lie', levantar: 'crouch', hold: 'arms', work: 'arms', pull: 'arms', swing: 'arms', shoot: 'aim', gun: 'aim', statue: 'idle', dance: 'walk', drive: 'sit', hit: 'idle', jump: 'fall', land: 'crouch' };
   const charPool = { list: [], n: 0, quadro: 0 };   // c.quadro = último quadro em que a vaga foi usada
   const charState = new Map(); // key -> { x, z, phase, t }
   // detento glTF (visual novo): carregado em segundo plano no init; até ficar pronto, ou se falhar, o pool
@@ -503,7 +503,7 @@
     unproject,
     // Personagem. Aceita o jogador `p` (usa p.x, p.y, p.dir, p.alive, p.color, p.label) ou um objeto parecido.
     // o: { pose: 'auto'|'idle'|'walk'|'dead'|'sit'|'crouch'|'fall'|'lie'|'arms'|'aim'|'hold'|'work'|'pull'|'statue'|'dance'
-    //            |'swing'|'gun'|'shoot'|'drive'|'hit'|'jump'|'land' (lista completa em docs/COMO_CRIAR_MINIGAME.md),
+    //            |'swing'|'gun'|'shoot'|'drive'|'hit'|'jump'|'land'|'tombo'|'levantar' (lista em docs/COMO_CRIAR_MINIGAME.md),
     //      y (elevação), scale, color, flash, label (texto ou false), key (id do cache), dir (rad) }
     character(p, o = {}) {
       const key = o.key ?? p.id ?? charPool.n + 1;
@@ -536,6 +536,8 @@
       const alive = p.alive !== false;
       let pose = o.pose || 'auto';
       if (pose === 'auto') pose = !alive ? 'dead' : (c.gltf ? andando : st.moving > 0.3) ? 'walk' : 'idle';
+      // derrubado (g.derrubar): cai e levanta sozinho, qualquer que seja a pose pedida
+      if (alive && p.tombo > 0) pose = p.tombo > TN.Round.TOMBO_LEVANTAR ? 'tombo' : 'levantar';
       const scale = (o.scale || 1) * ((p.r || 16) / 16);
       const color = o.color || p.color || '#999';
       c.suit.color.set(color);

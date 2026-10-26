@@ -11,9 +11,9 @@ TN.registerMinigame({
     r.light(200, 200, 300, '#ffe8c0', 1.0, 700);
     r.light(760, 200, 300, '#ffe8c0', 1.0, 700);
     // todas as poses, em duas fileiras
-    const poses = ['idle', 'walk', 'dead', 'sit', 'crouch', 'fall', 'arms', 'aim', 'hold', 'work', 'pull', 'statue', 'dance', 'swing', 'gun', 'shoot', 'drive', 'hit', 'jump', 'land', 'lie'];
+    const poses = ['idle', 'walk', 'dead', 'sit', 'crouch', 'fall', 'arms', 'aim', 'hold', 'work', 'pull', 'statue', 'dance', 'swing', 'gun', 'shoot', 'drive', 'hit', 'jump', 'land', 'lie', 'tombo', 'levantar'];
     poses.forEach((pose, i) => {
-      const x = 215 + (i % 11) * 54, z = i < 11 ? 360 : 440;
+      const x = 190 + (i % 12) * 52, z = i < 12 ? 360 : 440;
       r.character({ id: 'dbg' + i, x, y: z, dir: pose === 'walk' ? 0 : Math.PI / 2, color: TN.PLAYER_COLORS[i % 4], label: pose }, { pose });
     });
     g.players.forEach((p) => r.character(p, { dir: 0 }));

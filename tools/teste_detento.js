@@ -103,6 +103,13 @@ async function secaoDetento() {
   // deitar (lie) usa a animação da morte mais rápida: num jogo de reflexo o boneco precisa estar no chão logo
   a.pose('idle'); a.avancar(0.3); a.pose('lie'); a.avancar(0.5); a.root.updateMatrixWorld(true);
   ok(W(a, 'Head').y < 12, `lie: deitado em 0,5 s (cabeça a ${W(a, 'Head').y.toFixed(1)})`);
+  // tombo (g.derrubar): cai como o lie, e levantar é a queda ao contrário a partir do fim da queda
+  a.pose('idle'); a.avancar(0.3); a.pose('tombo'); a.avancar(0.6); a.root.updateMatrixWorld(true);
+  ok(W(a, 'Head').y < 12, `tombo: deitado em 0,6 s (cabeça a ${W(a, 'Head').y.toFixed(1)})`);
+  a.pose('levantar');
+  ok(a.atual === 'Death01' && a.acao.timeScale < 0 && a.acao.time <= 1.2 + 1e-6, `levantar: mesmo clipe, ao contrário, a partir do fim da queda (t ${a.acao.time.toFixed(2)})`);
+  a.avancar(0.45); a.root.updateMatrixWorld(true);
+  ok(W(a, 'Head').y > 45, `levantar: em pé de novo em 0,45 s (cabeça a ${W(a, 'Head').y.toFixed(1)})`);
   // corrida no lugar: o clipe não pode levar o boneco embora de p.x/p.y
   a.pose('walk', 170); a.avancar(0.3); a.root.updateMatrixWorld(true);
   const p0 = W(a, 'pelvis'); a.avancar(1); a.root.updateMatrixWorld(true); const p1 = W(a, 'pelvis');

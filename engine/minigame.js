@@ -46,7 +46,7 @@
       this.players = roster.map((r) => ({
         id: r.id, name: r.name, color: r.color, isBot: !!r.isBot, device: r.device,
         input: { x: 0, y: 0, a: false, b: false, aPressed: false, bPressed: false },
-        alive: true, score: 0, x: 0, y: 0, vx: 0, vy: 0, r: 16, dir: 0,
+        alive: true, score: 0, x: 0, y: 0, vx: 0, vy: 0, r: 16, dir: 0, tombo: 0,
         data: {}, finished: false, eliminatedAt: null, label: r.name || `P${r.id + 1}`,
       }));
       this.playerCount = this.players.length;
@@ -89,7 +89,7 @@
     }
     // Move o jogador pelo input (diagonal normalizada) e prende na área `bounds` (padrão: this.arena).
     movePlayer(p, speed, dt, bounds = this.arena) {
-      let { x, y } = p.input;
+      let { x, y } = p.tombo > 0 ? { x: 0, y: 0 } : p.input;   // derrubado: só desliza
       const l = Math.hypot(x, y);
       if (l > 1) { x /= l; y /= l; }
       p.x += (x * speed + p.vx) * dt; p.y += (y * speed + p.vy) * dt;
@@ -101,6 +101,16 @@
     }
     // impulso que decai (empurrões, explosões)
     push(p, ix, iy) { p.vx += ix; p.vy += iy; }
+    // Derruba o jogador (como o empurrão do Machine Party): o impulso substitui a velocidade, ele vira de
+    // frente para quem empurrou e cai de costas, fica `tempo` s sem controle (o movePlayer ignora o input) e
+    // levanta nos últimos TOMBO_LEVANTAR s. O r.character troca a pose sozinho. Quem já está no chão não é
+    // derrubado de novo (retorna false).
+    derrubar(p, vx, vy, tempo = 1.1) {
+      if (p.tombo > 0) return false;
+      p.vx = vx; p.vy = vy; p.tombo = tempo;
+      if (vx || vy) p.dir = Math.atan2(-vy, -vx);
+      return true;
+    }
     decayPush(p, dt, rate = 8) { const k = Math.max(0, 1 - rate * dt); p.vx *= k; p.vy *= k; }
     // decaimento linear (px/s por segundo), como o move_toward do original: o empurrão dura v/taxa segundos
     decayPushLinear(p, dt, rate) {
@@ -145,6 +155,7 @@
     update(dt) {
       if (this.finished) return;
       this.time += dt;
+      for (const p of this.players) if (p.tombo > 0) p.tombo = Math.max(0, p.tombo - dt);
       this._readInputs(dt);
       this.def.update(this, dt);
       // timers
@@ -254,4 +265,5 @@
   }
 
   TN.Round = Round;
+  Round.TOMBO_LEVANTAR = 0.4;   // últimos segundos de p.tombo: a pose vira 'levantar'
 })();

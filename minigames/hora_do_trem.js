@@ -19,7 +19,7 @@ TN.registerMinigame({
   // ---- constantes (original: espera 3 s, nichos abrem 1 s após o aviso, 2 s de pausa,
   //      abertos = max(vivos+2-ciclos, 1); empurrão: 0,1 s de preparo, UM alvo, decaimento linear,
   //      quem empurra fica 0,5 s parado; distância reduzida para ~180 px e ~0,8 s sem controle) ----
-  SPEED: 180, SHOVE: 400, SHOVE_DECAY: 444, SHOVE_WIND: 0.1, SHOVE_LOCK: 0.5, SHOVE_RANGE: 72,
+  SPEED: 180, SHOVE: 400, SHOVE_DECAY: 444, TOMBO: 1.1, SHOVE_WIND: 0.1, SHOVE_LOCK: 0.5, SHOVE_RANGE: 72,
   FORA_DO_NICHO: 0.3,   // quem é empurrado para fora de um nicho fica este tempo sem contar como escondido
   NOOK_W: 54, NOOK_D: 50,
   Y0: -200, Y1: 540, HALF: 150,   // túnel em y (fundo → câmera) e meia largura do chão (paredes em 480 ± HALF)
@@ -107,7 +107,7 @@ TN.registerMinigame({
     for (const p of g.alive()) {
       const b = p.data;
       b.lock -= dt;
-      const stunned = Math.hypot(p.vx, p.vy) > 40;
+      const stunned = p.tombo > 0;   // derrubado (g.derrubar): sem controle até levantar
       if (!stunned) b.foraT = Math.max(0, b.foraT - dt);   // a janela sem reentrar conta depois do atordoamento
       const shoving = b.lock > 0;   // preparo + volta do braço: parado
       if (stunned || shoving) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt, bounds); p.input = save; }
@@ -157,11 +157,12 @@ TN.registerMinigame({
     }
     if (!alvo) return;
     const o = alvo, dx = o.x - p.x, dy = o.y - p.y;
-    // empurrões não acumulam: a velocidade é substituída. Quem está num nicho sai reto para o trilho
+    // o empurrado cai (g.derrubar: a velocidade é substituída, não acumula). Quem está num nicho sai reto para o trilho
     // (a parede do nicho segurava o impulso lateral) e fica um instante sem poder se reesconder.
     const n = this.nookOf(g, o);
-    if (n) { o.vy = 0; o.vx = -n.side * this.SHOVE; o.data.foraT = this.FORA_DO_NICHO; }
-    else { o.vx = (dx / melhor) * this.SHOVE; o.vy = (dy / melhor) * this.SHOVE; }
+    const caiu = n ? g.derrubar(o, -n.side * this.SHOVE, 0, this.TOMBO) : g.derrubar(o, (dx / melhor) * this.SHOVE, (dy / melhor) * this.SHOVE, this.TOMBO);
+    if (!caiu) return;   // já estava no chão
+    if (n) o.data.foraT = this.FORA_DO_NICHO;
     g.sfx('hit'); g.particles((o.x + p.x) / 2, (o.y + p.y) / 2, '#fff', 6, 140);
   },
 
@@ -210,7 +211,7 @@ TN.registerMinigame({
   // consegue alcançar antes do trem, empurra quem disputar, e sai depois que o trem passa.
   bot(g, p, dt) {
     const U = TN.util, d = g.data, b = p.data;
-    if (Math.hypot(p.vx, p.vy) > 40) return {};
+    if (p.tombo > 0) return {};
     const midX = 480;
     const cur = this.nookOf(g, p);
     const t = d.train;
@@ -363,7 +364,7 @@ TN.registerMinigame({
     for (const p of g.players) {
       if (!p.alive) { r.character(p); continue; }
       const busy = p.data.wind > 0;
-      r.character(p, { pose: busy ? 'work' : 'auto', flash: Math.hypot(p.vx, p.vy) > 40 || busy });
+      r.character(p, { pose: busy ? 'work' : 'auto', flash: p.tombo > 0 || busy });
     }
   },
 

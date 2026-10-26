@@ -10,7 +10,7 @@
     crouch: 'Crouch_Idle_Loop', fall: 'Jump_Loop', arms: 'Push_Loop', aim: 'Pistol_Aim_Neutral',
     hold: 'Idle_Torch_Loop', work: 'Interact', pull: 'Push_Loop', statue: 'A_TPose', dance: 'Dance_Loop',
     swing: 'Sword_Attack', gun: 'Pistol_Idle_Loop', shoot: 'Pistol_Shoot', drive: 'Driving_Loop', hit: 'Hit_Chest',
-    jump: 'Jump_Start', land: 'Jump_Land',
+    jump: 'Jump_Start', land: 'Jump_Land', tombo: 'Death01', levantar: 'Death01',
   };
   const UMA_VEZ = new Set(['Death01', 'Sword_Attack', 'Pistol_Shoot', 'Hit_Chest', 'Jump_Start', 'Jump_Land']);   // tocam uma vez e param no último quadro
   const SEGUE = { Jump_Start: 'Jump_Loop' };             // clipe de uma vez que emenda num loop (o impulso do pulo vira o pulo)
@@ -20,7 +20,8 @@
   const OSSOS_PELE = /^(Head|neck_01|hand_[lr])$|^(index|middle|pinky|ring|thumb)_/;
   const CORRIDA_1X = 170;                                // px/s em que a corrida anima em 1x
   const FADE = 0.15;
-  const DEITAR_RAPIDO = 3;                               // lie: a queda da morte em ~0,4 s (jogos de reflexo)
+  const DEITAR_RAPIDO = 3;                               // lie/tombo: a queda da morte em ~0,4 s (jogos de reflexo)
+  const LEVANTAR_RAPIDO = 3;                             // levantar: a queda ao contrário, do fim da queda até em pé (~0,4 s)
   // a morte deita o corpo para trás (cabeça em -X); durante a queda (0,7 a 1,2 s do clipe) o corpo é
   // empurrado para a frente até ficar centrado na posição, como o boneco de caixas deitado
   const RECUO_MORTE = 23, QUEDA_INI = 0.7, QUEDA_FIM = 1.2;
@@ -115,10 +116,17 @@
         if (!m.clipes.has(clipe)) return;
         // a mesma pose mantida depois de o clipe de uma vez emendar no loop (jump → Jump_Loop) continua no loop
         if (nome === this.nome && SEGUE[clipe] === this.atual) clipe = this.atual;
+        const antes = this.nome;
         this.nome = nome;
         this.tocar(clipe);
         this.acao.timeScale = VEL_1X[clipe] ? Math.min(1.8, Math.max(0.5, (velocidade || VEL_1X[clipe]) / VEL_1X[clipe]))
-          : nome === 'lie' ? DEITAR_RAPIDO : nome === 'pull' ? -1 : 1;
+          : nome === 'lie' || nome === 'tombo' ? DEITAR_RAPIDO : nome === 'levantar' ? -LEVANTAR_RAPIDO : nome === 'pull' ? -1 : 1;
+        // tombo ↔ levantar usam o mesmo clipe: em vez de recomeçar, inverte de onde está. O levantar começa no
+        // fim da queda (o resto do clipe é o corpo parado no chão); um tombo no meio do levantar volta a cair dali.
+        if (antes !== nome && (nome === 'levantar' || nome === 'tombo')) {
+          this.acao.paused = false; this.acao.enabled = true;
+          if (nome === 'levantar') this.acao.time = this.acao.time > 0 ? Math.min(this.acao.time, QUEDA_FIM) : QUEDA_FIM;
+        }
       },
       tocar(clipe) {
         if (clipe === this.atual) return;
