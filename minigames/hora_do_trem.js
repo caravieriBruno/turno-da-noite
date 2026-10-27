@@ -21,8 +21,12 @@ TN.registerMinigame({
   //      quem empurra fica 0,5 s parado; distância reduzida para ~180 px e ~0,8 s sem controle) ----
   SPEED: 180, SHOVE: 400, SHOVE_DECAY: 444, TOMBO: 1.1, SHOVE_WIND: 0.1, SHOVE_LOCK: 0.5, SHOVE_RANGE: 72,
   FORA_DO_NICHO: 0.3,   // quem é empurrado para fora de um nicho fica este tempo sem contar como escondido
-  NOOK_W: 54, NOOK_D: 50,
-  Y0: -200, Y1: 540, HALF: 150,   // túnel em y (fundo → câmera) e meia largura do chão (paredes em 480 ± HALF)
+  // Layout do original (train_race), na escala 1 m = 25: chão de 12 m de largura (paredes em 480 ± 150),
+  // nichos de 2 m de fundo, 4 de cada lado, simétricos, a cada 4 m (z = -6, -2, 2, 6 m), e a área de
+  // jogo de z = -10 m (portão do fundo) até perto da câmera.
+  NOOK_W: 54, NOOK_D: 50, NOOKS_POR_LADO: 4, NOOK_PASSO: 100,
+  MEIO: 200,                      // y do meio do túnel (z = 0 do original)
+  Y0: -50, Y1: 420, HALF: 150,    // túnel em y (portão do fundo → câmera) e meia largura do chão
   WAIT: 3, OPEN_AFTER: 1, TRAIN_ENTER: 3.4, TRAIN_V: 470, TRAIN_LEN: 560, CLOSE_TIME: 1.2,
   SAIDA_FIM: 1100,      // o comboio que já passou continua visível até a cauda passar daqui (atrás da câmera)
 
@@ -30,15 +34,17 @@ TN.registerMinigame({
     const d = g.data;
     d.floorL = 480 - this.HALF; d.floorR = 480 + this.HALF;
     d.nooks = [];
-    const step = (this.Y1 - this.Y0 - 120) / 6;
-    for (let i = 0; i < 6; i++) {
-      d.nooks.push({ side: -1, cy: this.Y0 + 60 + step * (i + 0.5) - 18, w: this.NOOK_W, state: 'closed' });
-      d.nooks.push({ side: 1, cy: this.Y0 + 60 + step * (i + 0.5) + 18, w: this.NOOK_W, state: 'closed' });
+    for (let i = 0; i < this.NOOKS_POR_LADO; i++) {
+      const cy = this.MEIO + (i - (this.NOOKS_POR_LADO - 1) / 2) * this.NOOK_PASSO;
+      d.nooks.push({ side: -1, cy, w: this.NOOK_W, state: 'closed' });
+      d.nooks.push({ side: 1, cy, w: this.NOOK_W, state: 'closed' });
     }
     d.phase = 'wait'; d.phaseT = 0; d.cycles = 0;
     d.train = null;        // { front } quando o trem está no túnel (front em y, crescendo)
     d.saida = null;        // { front } do comboio que já passou (só visual)
-    g.placeInCircle(480, 330, 90);
+    // nascimentos do original: (±4 m, ±4 m) em volta do meio do túnel, olhando para o fundo
+    const sp = [[-100, -100], [100, 100], [-100, 100], [100, -100]];
+    g.players.forEach((p, i) => { p.x = 480 + sp[i % 4][0]; p.y = this.MEIO + sp[i % 4][1]; p.dir = -Math.PI / 2; });
     for (const p of g.players) Object.assign(p.data, { lock: 0, wind: 0, shoveT: 0, noise: 0, noiseT: 0, foraT: 0 });
   },
 
@@ -245,7 +251,7 @@ TN.registerMinigame({
       return { x: (midX - p.x) / 100, y: 1 };
     }
     // fora de perigo: sai do nicho e espera perto do meio do túnel
-    const tx = midX + b.noise.y * 70, ty = 260 + b.noise.x * 180;
+    const tx = midX + b.noise.y * 70, ty = this.MEIO + 20 + b.noise.x * 120;
     if (cur) return { x: -cur.side, y: 0 };
     const v = U.norm(tx - p.x, ty - p.y), far = U.dist(p.x, p.y, tx, ty) > 25;
     let out = { x: far ? v.x : 0, y: far ? v.y : 0 };
@@ -287,78 +293,111 @@ TN.registerMinigame({
   },
 
   // ---------------- 3D (câmera fixa) ----------------
-  // Túnel de frente: a câmera no fim do túnel, baixa; paredes laterais de tijolo com os nichos, dois
-  // trilhos em perspectiva, boca escura ao fundo de onde o trem sai (os faróis iluminam o túnel antes)
-  // e o trem crescendo até passar por baixo da câmera.
-  camera: { pos: [480, 160, 800], target: [480, 40, 80], fov: 50 },
-  env: { bg: '#07080a', fog: [1300, 2600], ambient: 0.65, sun: 1.2, sunDir: [-0.2, 1, 0.6], sunColor: '#ffdcb0', hemiSky: '#8a8f99', hemiGround: '#2a2420' },
-  WALL_H: 160,
+  // Como no original (Tunnel Hazard): túnel de serviço estreito e alto, de chapas de aço enferrujadas,
+  // visto do alto e de trás, olhando para o fundo. No fundo, o portão de enrolar iluminado por trás:
+  // quando o trem vem, ele sobe e o vagão de transporte de presos entra por ali. Quatro nichos em cada
+  // parede, com uma prensa no alto (desce quando o nicho fecha e esmaga quem entra), lâmpada redonda no
+  // chão na cor do estado e faixas zebradas nas quinas.
+  camera: { pos: [480, 262, 545], target: [480, 0, 150], fov: 72 },
+  env: { bg: '#060708', fog: [900, 2600], ambient: 1.0, sun: 1.2, sunDir: [-0.2, 1, 0.6], sunColor: '#e9e0cf', hemiSky: '#8a8f99', hemiGround: '#2a2420' },
+  WALL_H: 340, GRADE_H: 150, PORTA_W: 262, PORTA_H: 270, PRENSA_Y: 200,
+
+  // quanto o portão do fundo está aberto (0 fechado, 1 aberto): sobe enquanto o trem vem, desce depois
+  portao(g) {
+    const d = g.data;
+    if (d.train) return 1;
+    if (d.phase === 'warn') return TN.util.clamp(d.phaseT / (this.TRAIN_ENTER - 240 / this.TRAIN_V), 0, 1);
+    if (d.phase === 'closing') return TN.util.clamp(1 - d.phaseT / this.CLOSE_TIME, 0, 1);
+    return 0;
+  },
 
   draw3d(g, r) {
-    const d = g.data, U = TN.util, Y0 = this.Y0, Y1 = this.Y1, fl = d.floorL, fr = d.floorR, H = this.WALL_H;
-    const Z0 = Y0 - 700, Z1 = 1200, LEN = Z1 - Z0, MZ = (Z0 + Z1) / 2;
+    const d = g.data, U = TN.util, Y0 = this.Y0, fl = d.floorL, fr = d.floorR, H = this.WALL_H, ND = this.NOOK_D;
+    const ZF = Y0 - 12, Z1 = 760, LEN = Z1 - ZF, MZ = (ZF + Z1) / 2;   // da parede do portão até atrás da câmera
     const lights = [];
-    // ---- chão de cascalho e trilhos (ao longo de y) ----
-    r.plane(480, -1, MZ, 1400, LEN, '#0a0b0d');
-    r.plane(480, 0, MZ, fr - fl, LEN, '#2a2d31', { rough: 1 });
-    for (const tx of [480 - 55, 480 + 55]) {
-      for (let z = Y0 - 400; z < Z1; z += 34) r.box(tx, 0, z, 68, 3, 12, '#4a3a2c', { rough: 1, shadow: false });
-      for (const dx of [-21.5, 21.5]) r.beam(tx + dx, 5, Z0, tx + dx, 5, Z1, 4, '#9aa3ab', { metal: 0.85, rough: 0.3, shadow: false });
-    }
-    // faixas de segurança na beira das paredes
-    r.plane(fl + 2, 0.4, MZ, 4, LEN, '#f5c400', { glow: true, opacity: 0.55 });
-    r.plane(fr - 2, 0.4, MZ, 4, LEN, '#f5c400', { glow: true, opacity: 0.55 });
-    // ---- paredes laterais (com recortes nos nichos) ----
-    const brick = '#4d3329', bo = { rough: 0.95, tex: 'tijolo' };
+    // ---- chão de concreto sujo e um trilho no meio ----
+    r.plane(480, 0, MZ, fr - fl + 2 * ND + 4, LEN, '#3a3b37', { rough: 1, tex: 'piso' });
+    for (let z = ZF + 14; z < Z1; z += 30) r.box(480, 0, z, 150, 3, 11, '#3a3027', { rough: 1, shadow: false });
+    for (const dx of [-46, 46]) r.beam(480 + dx, 5, ZF, 480 + dx, 5, Z1, 5, '#8d959c', { metal: 0.85, rough: 0.3, shadow: false });
+    r.plane(480, 0.3, MZ, 64, LEN, '#22231f', { tex: false, opacity: 0.5 });   // marca de óleo entre os trilhos
+    // ---- paredes laterais de chapa: fundo contínuo, pilares entre os nichos e verga sobre cada nicho ----
+    const chapa = '#7d7f79', co = { rough: 0.8, metal: 0.3, tex: 'metal' };
     for (const side of [-1, 1]) {
-      const wall = side < 0 ? fl : fr, back = wall + side * this.NOOK_D;
-      // parte de trás (fundo dos nichos), contínua
-      r.box(back + side * 30, 0, MZ, 60, H, LEN, brick, bo);
-      // segmentos entre os nichos
+      const wall = side < 0 ? fl : fr, back = wall + side * ND;
+      r.box(back + side * 30, 0, MZ, 60, H, LEN, chapa, co);
       const ns = d.nooks.filter((n) => n.side === side).sort((n1, n2) => n1.cy - n2.cy);
-      let z = Z0;
+      let z = ZF;
       for (const n of [...ns, { cy: Z1 + this.NOOK_W / 2, w: this.NOOK_W }]) {
         const z2 = n.cy - n.w / 2;
-        if (z2 > z) r.box((wall + back) / 2, 0, (z + z2) / 2, this.NOOK_D, H, z2 - z, brick, bo);
+        if (z2 > z) {
+          // pilar: chapa maciça em cima; embaixo, grade (dá para ver quem está escondido no nicho ao lado)
+          r.box((wall + back) / 2, this.GRADE_H, (z + z2) / 2, ND, H - this.GRADE_H, z2 - z, chapa, co);
+          for (let bz = z + 6; bz < z2 - 2; bz += 13) r.tube(wall, 0, bz, wall, this.GRADE_H, bz, 1.8, '#34373a', { metal: 0.7, rough: 0.4 });
+          r.box(wall, 0, (z + z2) / 2, 5, 6, z2 - z, '#2b2d2f', { metal: 0.6 });
+        }
         z = n.cy + n.w / 2;
       }
-      // vergas sobre os nichos (o nicho vira uma porta baixa) e cano ao longo da parede
-      for (const n of ns) r.box((wall + back) / 2, 84, n.cy, this.NOOK_D, H - 84, n.w, brick, bo);
-      r.beam(wall - side * 5, 104, Z0, wall - side * 5, 104, Z1, 9, '#4d5560', { metal: 0.7, rough: 0.4 });
-      r.beam(wall - side * 4, 119, Z0, wall - side * 4, 119, Z1, 5, '#6b3a22', { metal: 0.6, rough: 0.5 });
+      for (const n of ns) r.box((wall + back) / 2, this.PRENSA_Y + 34, n.cy, ND, H - this.PRENSA_Y - 34, n.w, '#4e504f', co);
+      // canos e cabos ao longo da parede, no alto
+      r.tube(wall - side * 8, 290, ZF, wall - side * 8, 290, Z1, 8, '#6b4a33', { metal: 0.6, rough: 0.5 });
+      r.tube(wall - side * 6, 268, ZF, wall - side * 6, 268, Z1, 4, '#c9c4b8', { rough: 0.7 });
+      // escorrido de ferrugem nas chapas
+      for (let k = 0; k < 4; k++) r.box(wall - side * 0.6, 120 + (k % 2) * 40, ns[k] ? ns[k].cy + 50 : 0, 1, 180, 10, '#6e4127', { tex: false, shadow: false, opacity: 0.7 });
     }
-    // teto escuro e boca do túnel ao fundo
-    r.box(480, H, MZ, fr - fl + 2 * this.NOOK_D + 120, 6, LEN, '#121314', { rough: 1 });
-    r.box(480, 0, Y0 - 460, 1400, H + 40, 20, '#050506');
-    // ---- aviso: lâmpadas vermelhas piscando nas paredes (entre os nichos) ----
+    // quadro de força na parede da esquerda (fusebox do original) e cano vertical na direita
+    r.box(fl + 6, 186, this.MEIO + 100, 12, 58, 36, '#7d7f7c', { metal: 0.6, rough: 0.5 });
+    r.box(fl + 12.5, 190, this.MEIO + 100, 1, 50, 30, '#5f615e', { metal: 0.6 });
+    r.tube(fr - 18, 0, this.MEIO - 95, fr - 18, H, this.MEIO - 95, 9, '#8a6a46', { metal: 0.5, rough: 0.6 });
+    // teto escuro
+    r.box(480, H, MZ, fr - fl + 2 * ND + 120, 8, LEN, '#141515', { rough: 1 });
+    // ---- parede do fundo com o portão de enrolar ----
+    const PW = this.PORTA_W, PH = this.PORTA_H, larg = fr - fl + 2 * ND + 120, lado = (larg - PW) / 2;
+    for (const s of [-1, 1]) r.box(480 + s * (PW / 2 + lado / 2), 0, ZF - 10, lado, H, 20, chapa, co);
+    r.box(480, PH, ZF - 10, PW, H - PH, 20, '#4e504f', co);
+    for (let k = 0; k < 14; k++) r.box(480 - PW / 2 + (k + 0.5) * PW / 14, PH - 12, ZF + 0.5, PW / 14, 12, 2, k % 2 ? '#141414' : '#d9a800', { tex: false });   // zebrado na verga
+    const ab = this.portao(g), sobe = ab * (PH - 10);
+    // túnel além do portão (escuro, comprido) e a luz branca lá dentro
+    r.box(480 - PW / 2 - 10, 0, ZF - 620, 20, PH, 1200, '#2a2b2a', co);
+    r.box(480 + PW / 2 + 10, 0, ZF - 620, 20, PH, 1200, '#2a2b2a', co);
+    r.box(480, PH, ZF - 620, PW + 40, 10, 1200, '#1a1b1b', co);
+    r.plane(480, 0.2, ZF - 620, PW, 1200, '#2c2d2a', { tex: 'piso' });
+    r.box(480, 0, ZF - 1200, PW, PH, 10, '#e9e6dd', { glow: true });
+    // a folha do portão: chapa clara, iluminada por trás (a "boca" acesa do original); sobe ao abrir
+    r.box(480, sobe, ZF - 2, PW - 4, PH - sobe, 4, '#c9c6bc', { emissive: '#8f8b80', emissiveIntensity: 0.5, tex: 'metal', metal: 0.3, rough: 0.7 });
+    for (let y = sobe + 18; y < PH - 4; y += 18) r.box(480, y, ZF + 0.6, PW - 8, 2, 1, '#8c897f', { tex: false, shadow: false });
+    // pisca-piscas sobre o portão (blinker frame do original)
     const warnOn = d.phase === 'warn' && Math.sin(g.time * 14) > 0;
+    r.box(480, PH + 18, ZF + 2, 90, 40, 8, '#2b2c2b', { metal: 0.6 });
+    for (const s of [-1, 1]) r.sphere(480 + s * 22, PH + 38, ZF + 7, 9, warnOn === (s < 0) && d.phase === 'warn' ? '#ff2a2a' : '#3a0c0c', { glow: true });
+    // ---- aviso: lâmpadas vermelhas nos pilares, entre os nichos ----
     const wcol = warnOn ? '#ff2a2a' : '#3a0c0c';
     for (const side of [-1, 1]) {
       const wall = side < 0 ? fl : fr;
       const zs = d.nooks.filter((n) => n.side === side).map((n) => n.cy).sort((p1, p2) => p1 - p2);
       for (let i = 0; i < zs.length - 1; i++) {
         const z = (zs[i] + zs[i + 1]) / 2;
-        r.box(wall, 62, z, 4, 14, 14, '#1a1a1a'); r.sphere(wall - side * 3, 69, z, 5, wcol, { glow: true });
+        r.box(wall, 172, z, 4, 16, 16, '#1a1a1a'); r.sphere(wall - side * 3, 180, z, 6, wcol, { glow: true });
       }
     }
     if (d.phase === 'warn') {
       const k = warnOn ? 1.4 : 0.25;
-      lights.push([fl + 20, 140, 100, '#ff2a2a', k, 520], [fr - 20, 140, 400, '#ff2a2a', k, 520]);
+      lights.push([fl + 20, 180, this.MEIO - 60, '#ff2a2a', k, 520], [fr - 20, 180, this.MEIO + 100, '#ff2a2a', k, 520]);
     }
     // ---- nichos ----
     for (const n of d.nooks) this.drawNook3d(g, r, n);
-    // ---- trem chegando: os faróis iluminam o fundo do túnel antes de ele aparecer ----
+    // ---- trem chegando: os faróis acendem o túnel do outro lado do portão antes de ele aparecer ----
     const warning = d.phase === 'warn' && (!d.train || d.train.front < Y0 + 40);
     if (warning) {
       const k = U.clamp(d.phaseT / this.TRAIN_ENTER, 0, 1);
-      lights.unshift([480, 50, d.train ? d.train.front + 30 : Y0 - 100 + 300 * k, '#fff2b0', 0.6 + 2.2 * k, 600]);
-      r.sphere(480, 30, Y0 - 420, 10 + 30 * k, '#fff6c8', { glow: true, opacity: 0.6 });
+      lights.unshift([480, 80, d.train ? d.train.front + 30 : ZF - 400 + 360 * k, '#fff2b0', 0.6 + 2.2 * k, 700]);
+      if (ab > 0.2) r.sphere(480, 70, ZF - 700 + 400 * k, 14 + 26 * k, '#fff6c8', { glow: true, opacity: 0.7 });
     }
     // ---- trem (o que está no túnel e o que já passou) ----
     if (d.train) this.drawTrain3d(g, r, d.train.front, lights);
     if (d.saida) this.drawTrain3d(g, r, d.saida.front, lights);
-    // luzes de serviço quentes ao longo das paredes (a câmera está no fim do túnel: as mais perto dela pesam mais)
-    lights.push([fl + 30, 150, 520, '#ffd9a8', 1.1, 620], [fr - 30, 150, 300, '#ffd9a8', 1.0, 620], [fl + 30, 150, 60, '#ffd9a8', 0.9, 620], [fr - 30, 150, -160, '#ffd9a8', 0.8, 620]);
+    // as duas luminárias do teto do túnel (as OmniLights do original) e a luz atrás do portão
+    lights.push([480, 300, this.MEIO - 84, '#f3ead8', 1.7, 800], [480, 300, this.MEIO + 182, '#f3ead8', 1.6, 800], [480, 120, ZF - 60, '#fffaf0', 0.8 + 0.8 * ab, 420]);
+    for (const z of [this.MEIO - 84, this.MEIO + 182]) { r.box(480, H - 30, z, 120, 6, 26, '#2a2b2a', { metal: 0.6 }); r.box(480, H - 32, z, 110, 2, 18, '#fff4dc', { glow: true }); }
     for (const l of lights.slice(0, 6)) r.light(...l);
     // ---- jogadores ----
     for (const p of g.players) {
@@ -374,45 +413,52 @@ TN.registerMinigame({
     const blink = n.state === 'closing' && Math.sin(g.time * 18) > 0;
     const col = n.state === 'open' ? '#2fdc5a' : n.state === 'closing' ? (blink ? '#ffd23f' : '#6a5a10') : '#d0302a';
     // piso do nicho (brilho fraco da cor do estado) e soleira acesa
-    r.plane(mid, 0.3, n.cy, this.NOOK_D, n.w, '#121416');
+    r.plane(mid, 0.3, n.cy, this.NOOK_D, n.w, '#1a1b1a');
     r.plane(mid, 0.5, n.cy, this.NOOK_D - 4, n.w - 4, col, { glow: true, opacity: n.state === 'closed' ? 0.14 : 0.22 });
     r.plane(wall, 0.7, n.cy, 3, n.w, col, { glow: true });
-    // lâmpada do batente e dois marcadores altos na boca, na cor do estado (visíveis de frente, de longe)
-    r.box(wall - n.side * 1.5, 86, n.cy, 3, 10, 24, '#1a1a1a'); r.box(wall - n.side * 3.2, 88, n.cy, 1, 6, 20, col, { glow: true });
-    for (const sz of [-1, 1]) r.box(wall - n.side * 2.5, 0, n.cy + sz * (n.w / 2 + 4), 4, 90, 6, col, { glow: true, opacity: n.state === 'closed' ? 0.6 : 1 });
-    // prensa dentada (nicho fechado): parede de dentes no fundo; avança quando esmaga
-    if (n.state === 'closed') {
-      const slam = n.crush > 0 ? n.crush / 0.4 : 0;
-      const px = back - n.side * (6 + slam * (this.NOOK_D - 14));
-      r.box(px, 0, n.cy, 10, 70, n.w - 4, n.crush > 0 ? '#e8e8e8' : '#6f757c', { metal: 0.8, rough: 0.35 });
-      for (let k = 0; k < 4; k++) for (const hy of [14, 44]) {
-        r.cone(px - n.side * 5, hy, n.cy - (n.w - 14) / 2 + k * (n.w - 14) / 3, 5, 12, '#9aa1a8', { rotZ: n.side < 0 ? -Math.PI / 2 : Math.PI / 2, metal: 0.9, rough: 0.3 });
-      }
+    // lâmpada redonda no chão, na frente do nicho (a OmniLight a 1 m da parede no original)
+    r.cyl(wall - n.side * 26, 0, n.cy, 11, 3, '#2a2b2a', { metal: 0.6 });
+    r.disc(wall - n.side * 26, 3.2, n.cy, 8, col, { glow: true });
+    // faixas zebradas nas duas quinas e marcadores altos na boca, na cor do estado (visíveis de longe)
+    for (const sz of [-1, 1]) {
+      const zq = n.cy + sz * (n.w / 2 + 6);
+      for (let k = 0; k < 4; k++) r.plane(wall - n.side * 7, 0.6, zq + (k - 1.5) * 4 * sz, 12, 3, k % 2 ? '#141414' : '#e0b400', { tex: false });
+      r.box(wall - n.side * 2.5, 0, n.cy + sz * (n.w / 2 + 3), 4, 96, 5, col, { glow: true, opacity: n.state === 'closed' ? 0.6 : 1 });
     }
+    // prensa no alto do nicho: aberta fica recolhida em cima; fechada desce até a altura do peito
+    // (ninguém cabe); ao esmagar, bate no chão
+    const alvo = n.state === 'open' ? this.PRENSA_Y : n.state === 'closing' ? this.PRENSA_Y - 40 : 64;
+    const y = n.crush > 0 ? 64 * (1 - n.crush / 0.4) : alvo;
+    r.box(mid, y, n.cy, this.NOOK_D - 4, 34, n.w - 6, n.crush > 0 ? '#e8e8e8' : '#6f757c', { metal: 0.8, rough: 0.35 });
+    for (let k = 0; k < 4; k++) r.cone(mid, y - 9, n.cy - (n.w - 18) / 2 + k * (n.w - 18) / 3, 5, 10, '#9aa1a8', { rotX: Math.PI, metal: 0.9, rough: 0.3 });
+    r.tube(mid, y + 34, n.cy, mid, this.WALL_H, n.cy, 7, '#3f4347', { metal: 0.8 });   // haste da prensa
   },
 
-  // comboio de dois trens lado a lado vindo do fundo (y crescendo): cabine na frente (y maior)
+  // vagão de transporte de presos (um comboio só, da largura do trilho, como o trem do original),
+  // vindo do fundo (y crescendo): cabine na frente (y maior)
   drawTrain3d(g, r, front, lights) {
-    const L = this.TRAIN_LEN, W = 130;
-    for (const k of [-1, 1]) {
-      const xc = 480 + k * 72;
-      // vagões (com vãos entre eles)
-      for (let z = front - L; z < front - 90; z += 125) {
-        const z2 = Math.min(z + 118, front - 90);
-        r.box(xc, 8, (z + z2) / 2, W, 64, z2 - z, '#5a6470', { metal: 0.5, rough: 0.45 });
-        r.box(xc + k * (W / 2 + 0.5), 40, (z + z2) / 2, 1, 14, z2 - z - 16, '#ffe8a8', { glow: true, opacity: 0.85 });   // janelas acesas
-        r.box(xc, 72, (z + z2) / 2, W - 20, 6, z2 - z - 20, '#434c55', { metal: 0.6 });
+    const L = this.TRAIN_LEN, W = 250, H = 210, xc = 480;
+    // vagões (com vãos entre eles)
+    for (let z = front - L; z < front - 120; z += 150) {
+      const z2 = Math.min(z + 142, front - 120);
+      r.box(xc, 6, (z + z2) / 2, W, H - 10, z2 - z, '#4f5b66', { metal: 0.5, rough: 0.45 });
+      r.box(xc, H - 4, (z + z2) / 2, W - 24, 8, z2 - z - 16, '#3b444c', { metal: 0.6 });
+      for (const s of [-1, 1]) {   // janelinhas gradeadas acesas nas laterais
+        for (let k = 0; k < 2; k++) {
+          const wz = z + (k + 0.5) * (z2 - z) / 2;
+          r.box(xc + s * (W / 2 + 0.5), 110, wz, 1, 34, 40, '#ffe8a8', { glow: true, opacity: 0.85 });
+          for (let b = -1; b <= 1; b++) r.box(xc + s * (W / 2 + 1.5), 110, wz + b * 12, 1, 34, 3, '#1b1f22', { tex: false });
+        }
+        r.box(xc + s * (W / 2 + 0.5), 60, (z + z2) / 2, 1, 16, z2 - z - 20, '#d9a800', { tex: false });   // faixa amarela
       }
-      // cabine amarela com para-brisa virado para a câmera e faróis
-      r.box(xc, 8, front - 46, W, 74, 88, '#c9a227', { metal: 0.4, rough: 0.4 });
-      r.box(xc, 48, front - 3, W - 22, 22, 6, '#1d2a33', { metal: 0.8, rough: 0.15 });
-      for (let s = 0; s < 6; s++) r.box(xc - W / 2 + 12 + s * 21, 8, front + 0.6, 10, 20, 1, s % 2 ? '#141414' : '#f5c400', { shadow: false });
-      for (const s of [-1, 1]) r.sphere(xc + s * (W / 2 - 12), 28, front + 1, 7, '#fff6c8', { glow: true });
-      // facho de luz à frente
-      r.plane(xc, 0.9, front + 70, W - 10, 140, '#fff2b0', { glow: true, opacity: 0.18 });
-      for (const wx of [-1, 1]) r.cyl(xc + wx * (W / 2 - 6), 0, front - 60, 10, 6, '#111', { rotZ: Math.PI / 2 });
     }
-    lights.unshift([480, 40, front + 60, '#fff2c0', 2.4, 420]);
+    // cabine com faixas zebradas e para-brisa virado para a câmera, faróis acesos
+    r.box(xc, 6, front - 60, W, H, 120, '#c9a227', { metal: 0.4, rough: 0.4 });
+    r.box(xc, 120, front - 3, W - 50, 58, 6, '#1d2a33', { metal: 0.8, rough: 0.15 });
+    for (let s = 0; s < 10; s++) r.box(xc - W / 2 + 12.5 + s * 25, 10, front + 0.6, 12, 40, 1, s % 2 ? '#141414' : '#f5c400', { shadow: false });
+    for (const s of [-1, 1]) r.sphere(xc + s * (W / 2 - 26), 72, front + 1, 11, '#fff6c8', { glow: true });
+    r.plane(xc, 0.9, front + 90, W - 20, 180, '#fff2b0', { glow: true, opacity: 0.16 });   // facho de luz à frente
+    lights.unshift([480, 60, front + 70, '#fff2c0', 2.4, 460]);
   },
 
   drawOverlay(g, c) {
@@ -446,14 +492,12 @@ TN.registerMinigame({
         for (let y = Y0 + (col % 2) * 20; y < Y1; y += 40) { c.beginPath(); c.moveTo(x0 + col * 14, y); c.lineTo(x0 + Math.min(w, col * 14 + 14), y); c.stroke(); }
       }
     }
-    // faixa dos nichos (fundo escuro) e chão de cascalho + dois trilhos
+    // faixa dos nichos (fundo escuro) e chão de concreto + o trilho do meio
     c.fillStyle = '#1a1c1f'; c.fillRect(fl - this.NOOK_D, Y0, this.NOOK_D, Y1 - Y0); c.fillRect(fr, Y0, this.NOOK_D, Y1 - Y0);
     c.fillStyle = '#25282c'; c.fillRect(fl, Y0, fr - fl, Y1 - Y0);
-    for (const tx of [480 - 55, 480 + 55]) {
-      c.fillStyle = '#4a3a2c';
-      for (let y = Y0 + 6; y < Y1; y += 26) c.fillRect(tx - 34, y, 68, 12);
-      c.fillStyle = '#9aa3ab'; c.fillRect(tx - 24, Y0, 5, Y1 - Y0); c.fillRect(tx + 19, Y0, 5, Y1 - Y0);
-    }
+    c.fillStyle = '#4a3a2c';
+    for (let y = Y0 + 6; y < Y1; y += 30) c.fillRect(480 - 75, y, 150, 11);
+    c.fillStyle = '#9aa3ab'; c.fillRect(480 - 48, Y0, 5, Y1 - Y0); c.fillRect(480 + 43, Y0, 5, Y1 - Y0);
     c.fillStyle = 'rgba(245,196,0,0.5)'; c.fillRect(fl, Y0, 3, Y1 - Y0); c.fillRect(fr - 3, Y0, 3, Y1 - Y0);
     // aviso: lâmpadas vermelhas nas paredes piscando; farol do trem vindo do fundo (de cima)
     const warning = d.phase === 'warn' && (!d.train || d.train.front < Y0 + 40);
@@ -514,9 +558,8 @@ TN.registerMinigame({
     const d = g.data, L = this.TRAIN_LEN;
     c.save();
     c.beginPath(); c.rect(d.floorL - 4, this.Y0 - 400, d.floorR - d.floorL + 8, 2000); c.clip();
-    const half = (d.floorR - d.floorL) / 2;
-    for (let k = 0; k < 2; k++) {
-      const x = d.floorL + k * half + 3, w = half - 6;
+    {   // um comboio só, da largura do trilho (como no 3D)
+      const x = 480 - 125, w = 250;
       c.fillStyle = '#5a6470'; c.strokeStyle = '#1a1d20'; c.lineWidth = 3;
       c.beginPath(); c.roundRect(x, front - L, w, L, 10); c.fill(); c.stroke();
       c.fillStyle = '#c9a227'; c.beginPath(); c.roundRect(x + 4, front - 70, w - 8, 66, 12); c.fill();   // cabine

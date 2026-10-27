@@ -2,6 +2,8 @@
 // Cada um tem a sua esteira, com a MESMA sequência de itens para todos. Arte vai para o fogo,
 // tecnologia vai para a reciclagem. No fim de cada turno, o pior da linha é esmagado pela prensa.
 // Vários turnos (cada um 1 s mais curto) dentro da mesma rodada, até sobrar um.
+// Cenário como o original: almoxarifado em cruz com as quatro esteiras em cata-vento em volta do incinerador,
+// e tela dividida (uma câmera por operador, por cima do ombro).
 TN.registerMinigame({
   id: 'triagem',
   title: 'TRIAGEM',
@@ -34,9 +36,12 @@ TN.registerMinigame({
     d.flying = [];        // itens saindo da esteira (animação)
     const n = g.players.length, laneH = Math.min(102, a.h / n);
     const top = a.y + (a.h - laneH * n) / 2;
+    const seats = this.SEATS3[Math.min(4, Math.max(1, n))];
     g.players.forEach((p, i) => {
-      p.x = 92; p.y = top + laneH * i + laneH / 2; p.dir = 0;
-      Object.assign(p.data, { lane: { y: top + laneH * i, h: laneH }, idx: 0, sub: 0, total: 0, lock: 0, wrong: 0, shift: 0, crush: 0 });
+      // p.x/p.y = lugar do operador no chão do 3D (baia em cata-vento); lane = faixa do desenho 2D de reserva
+      const seat = seats[i % seats.length], w = this.W(seat, this.UP3, 0), e = this.eixo(seat);
+      p.x = w.x; p.y = w.z; p.dir = Math.atan2(-e.uz, -e.ux);
+      Object.assign(p.data, { seat, lane: { y: top + laneH * i, h: laneH }, idx: 0, sub: 0, total: 0, lock: 0, wrong: 0, shift: 0, crush: 0, lastBurn: null });
     });
   },
 
@@ -45,12 +50,14 @@ TN.registerMinigame({
     const d = g.data, pd = p.data;
     const item = this.ITEMS[d.seq[pd.idx % d.seq.length]];
     const ok = item.art === burn;
-    d.flying.push({ type: d.seq[pd.idx % d.seq.length], x: this.SLOT_X, y: p.y, vy: burn ? -260 : 260, t: 0.35, burn, lane: p });
-    pd.idx++; pd.shift = 1;
+    // x/y: posição no desenho 2D; pid: dono (o 3D acha a baia por ele)
+    d.flying.push({ type: d.seq[pd.idx % d.seq.length], x: this.SLOT_X, y: pd.lane.y + pd.lane.h / 2, vy: burn ? -260 : 260, t: 0.35, burn, pid: p.id });
+    pd.idx++; pd.shift = 1; pd.lastBurn = burn;
     if (ok) {
       pd.sub++; pd.total++;
       g.sfx(burn ? 'shoot' : 'coin');
-      g.particles(this.SLOT_X, p.y, burn ? '#ff7a2a' : '#46e27b', 6, 120, 0.35);
+      const w = this.W(pd.seat, 0, burn ? 60 : -60);
+      g.particles(w.x, w.z, burn ? '#ff7a2a' : '#46e27b', 6, 120, 0.35);
     } else {
       pd.lock = this.LOCK; pd.wrong = 0.3;
       g.sfx('buzz');
@@ -138,9 +145,64 @@ TN.registerMinigame({
     return burn ? { a: true } : { b: true };
   },
 
-  // ---------- 3D (câmera fixa): X = x da lógica, Z = baia, esteiras correndo da esquerda para a direita ----------
-  camera: { pos: [480, 600, 930], target: [480, 0, 280], fov: 39 },
-  env: { ambient: 0.5, sun: 1.7, sunDir: [-0.4, 1, 0.5] },
+  // ---------- 3D: almoxarifado em cruz com o incinerador no meio (como The Filter) ----------
+  // Quatro esteiras em cata-vento em volta da fornalha central; cada uma vem do fundo de um corredor de
+  // estantes. Cada operador fica na ponta da sua esteira, de frente para os itens que chegam: QUEIMAR joga o
+  // item de lado para dentro da fornalha, RECICLAR derruba na calha verde do outro lado. Como no original, cada
+  // jogador tem a própria câmera (tela dividida), por cima do ombro do seu operador.
+  // Coordenadas locais de cada baia: u = ao longo da esteira (os itens andam para +u, até o operador),
+  // v = de lado, para o centro (+v = fornalha, −v = calha de reciclagem).
+  C3: { x: 480, z: 300 }, D3: 130, UP3: 74, GAP3: 58, U0: -640, BH3: 22,
+  // seats: 0 = em cima, 1 = direita, 2 = embaixo, 3 = esquerda (o corredor de cada um sai em cata-vento)
+  SEATS3: { 1: [0], 2: [0, 2], 3: [0, 1, 2], 4: [0, 1, 2, 3] },
+
+  // base local → mundo
+  eixo(seat) { const a = seat * Math.PI / 2, ux = Math.cos(a), uz = Math.sin(a); return { ux, uz, vx: -uz, vz: ux }; },
+  W(seat, u, v) {
+    const e = this.eixo(seat), C = this.C3, D = this.D3;
+    return { x: C.x - D * e.vx + u * e.ux + v * e.vx, z: C.z - D * e.vz + u * e.uz + v * e.vz };
+  },
+  // caixa em coordenadas locais (lu ao longo de u, lv ao longo de v)
+  boxL(r, seat, u, y, v, lu, h, lv, cor, o) {
+    const w = this.W(seat, u, v);
+    if (seat % 2) r.box(w.x, y, w.z, lv, h, lu, cor, o); else r.box(w.x, y, w.z, lu, h, lv, cor, o);
+  },
+  beamL(r, seat, u1, y1, v1, u2, y2, v2, t, cor, o) {
+    const a = this.W(seat, u1, v1), b = this.W(seat, u2, v2);
+    r.beam(a.x, y1, a.z, b.x, y2, b.z, t, cor, o);
+  },
+  seatOf(p) { return p.data.seat || 0; },
+
+  // câmera de cada operador: atrás e acima do ombro, olhando a esteira de onde os itens vêm
+  camSeat(seat) {
+    const p = this.W(seat, this.UP3 + 150, -30), t = this.W(seat, -105, 10);
+    return { pos: [p.x, 215, p.z], target: [t.x, 0, t.z], fov: 50 };
+  },
+  viewports(g) {
+    const ps = g.players, n = ps.length, Y = 34, H = TN.H - Y, W = TN.W, hw = W / 2, hh = H / 2;
+    if (n <= 1) return [{ rect: [0, Y, W, H], camera: this.camSeat(this.seatOf(ps[0])) }];
+    if (n === 2) return ps.map((p, i) => ({ rect: [0, Y + i * hh, W, hh], camera: this.camSeat(this.seatOf(p)) }));
+    const q = [[0, Y], [hw, Y], [0, Y + hh], [hw, Y + hh]];
+    const vs = ps.slice(0, 4).map((p, i) => ({ rect: [q[i][0], q[i][1], hw, hh], camera: this.camSeat(this.seatOf(p)) }));
+    // com 3, o quarto quadro mostra o almoxarifado inteiro de cima
+    if (n === 3) vs.push({ rect: [hw, Y + hh, hw, hh], camera: { pos: [this.C3.x, 1250, this.C3.z + 520], target: [this.C3.x, 0, this.C3.z + 20], fov: 52 } });
+    return vs;
+  },
+  camera: { pos: [480, 1250, 820], target: [480, 0, 320], fov: 52 },
+  env: { bg: '#0b0a0a', fog: [700, 1700], ambient: 0.5, sun: 1.2, sunDir: [-0.4, 1, 0.5], sunColor: '#ffe2c0' },
+
+  // estante alta de madeira com caixas, ao longo de u (de u1 a u2) na linha v; base de tijolo como no original
+  estante3d(r, seat, u1, u2, v) {
+    const H = 210, D = 34, n = Math.max(1, Math.round((u2 - u1) / 110)), step = (u2 - u1) / n;
+    this.boxL(r, seat, (u1 + u2) / 2, 0, v, u2 - u1, 46, D + 6, '#6a3a2c', { tex: 'tijolo', texWorld: true });
+    for (let i = 0; i <= n; i++) this.boxL(r, seat, u1 + i * step, 46, v, 7, H - 46, D, '#4a3a2c', { tex: 'madeira' });
+    for (const y of [46, 100, 154, H - 4]) this.boxL(r, seat, (u1 + u2) / 2, y, v, u2 - u1, 4, D, '#5a4634', { tex: 'madeira' });
+    for (let i = 0; i < n; i++) for (const [k, y] of [[0, 50], [1, 104], [2, 158]]) {
+      const s = (seat * 31 + i * 17 + k * 7) % 11;
+      if (s % 4 === 0) continue;
+      this.boxL(r, seat, u1 + (i + 0.5) * step + (s % 5) * 6 - 12, y, v, step * (0.45 + (s % 3) * 0.12), 26 + (s % 3) * 8, D - 8, s % 2 ? '#8a6a3e' : '#7a5c36', { tex: 'tecido' });
+    }
+  },
 
   // item 3D low-poly sobre uma bandeja vermelha (arte) ou verde (tecnologia); base em y
   item3d(r, type, x, y, z, k = 1, op = 1) {
@@ -189,111 +251,119 @@ TN.registerMinigame({
   },
 
   draw3d(g, r) {
-    const a = g.arena, d = g.data;
-    const BX0 = this.SLOT_X - 34, BX1 = a.x + a.w - 96, BH = 22, SX = this.SLOT_X;
-    // incinerador do subsolo: sala de concreto com a boca da fornalha na parede; mureta atrás das baias
-    const zp = a.y - 60;
-    r.room(a.x - 90, zp, a.x + a.w + 90, a.y + a.h + 60, { estilo: 'subsolo' });
-    r.box(480, 0, zp + 6, 200, 120, 14, '#2a2725', { metal: 0.4 });                       // fornalha
-    r.box(480, 14, zp + 13, 150, 70, 2, '#1a0a04', { tex: false });
-    r.box(480, 21, zp + 14.5, 136, 56, 1, '#ff5a1a', { glow: true, opacity: 0.55 });
-    r.box(480, 0, a.y - 14, a.w + 60, 40, 20, '#363b42', { metal: 0.3 });
-    for (let i = 0; i < 9; i++) r.box(a.x + 6 + i * (a.w - 12) / 8, 0, a.y - 3, 26, 4, 2, i % 2 ? '#111' : '#f5c400', { shadow: false });
-    r.box(a.x - 12, 0, a.y + a.h / 2, 20, 46, a.h + 8, '#40464e', { metal: 0.3 });
-    r.box(a.x + a.w + 12, 0, a.y + a.h / 2, 20, 46, a.h + 8, '#40464e', { metal: 0.3 });
-    r.light(300, 300, 160, '#ffd9a8', 0.7, 700);
-    r.light(660, 300, 400, '#ffd9a8', 0.7, 700);
-    for (const p of g.players) {
-      const pd = p.data, L = pd.lane, cy = p.y, dead = !p.alive;
-      // baia
-      r.plane(480, 0, cy, a.w, L.h - 6, dead ? '#141518' : '#1d2126', { rough: 0.95 });
-      r.plane(a.x + 4, 0.4, cy, 8, L.h - 6, dead ? '#333' : p.color, { glow: !dead });
-      r.plane(480, 0.4, L.y + 2, a.w, 2, '#f5c400', { opacity: 0.35 });
-      // esteira: corpo, lona, roletes nas pontas e ripas que andam junto com os itens
-      r.box((BX0 + BX1) / 2, 0, cy, BX1 - BX0, BH, 60, '#2a2e34', { metal: 0.5, rough: 0.5 });
-      r.plane((BX0 + BX1) / 2, BH + 0.3, cy, BX1 - BX0 - 4, 56, '#16181b', { rough: 0.9 });
-      for (const ex of [BX0, BX1]) this.hcylZ(r, ex, BH / 2 + 1, cy, 62, BH / 2 + 1, '#4a5058');
-      for (let k = 0; k < this.VISIBLE; k++) {
-        const x = SX + 34 + (k + pd.shift) * this.SLOT_GAP;
-        if (x > BX1 - 6 || x < BX0 + 4) continue;
-        r.box(x, BH, cy, 3, 1.2, 56, '#2f343b', { shadow: false });
-      }
-      // incinerador (atrás do item ativo) e calha de reciclagem (na frente)
-      const fl = Math.round((0.6 + 0.4 * Math.sin(g.time * 14 + p.id * 1.7)) * 5) / 5;
-      r.box(SX, 0, cy - 41, 70, 34, 14, '#26292e', { metal: 0.5 });
-      r.box(SX, 34, cy - 41, 60, 1, 10, dead ? '#2a1a12' : '#ff7a1a', { glow: !dead, opacity: dead ? 1 : 0.5 + 0.5 * fl });
-      if (!dead) r.light(SX, 50, cy - 46, '#ff7a2a', 0.35 + 0.25 * fl, 120);
-      r.box(SX, 0, cy + 41, 70, 12, 14, '#1d3a27', { metal: 0.4 });
-      r.box(SX, 12, cy + 41, 60, 1, 10, dead ? '#13241a' : '#2fbf62', { glow: !dead });
+    const d = g.data, C = this.C3, BH = this.BH3, U0 = this.U0, UP = this.UP3, GAP = this.GAP3, t = g.time;
+    // ---- chão de ladrilho do almoxarifado e o incinerador no meio ----
+    r.plane(C.x, -1, C.z, 2400, 2400, '#5a5856', { tex: 'piso' });
+    r.box(C.x, 0, C.z, 170, 110, 170, '#3a3633', { metal: 0.4, rough: 0.6 });
+    r.box(C.x, 110, C.z, 150, 14, 150, '#2a2725', { metal: 0.5 });
+    r.cyl(C.x, 124, C.z, 26, 260, '#3b3735', { metal: 0.5 });   // chaminé
+    const fl = Math.round((0.6 + 0.4 * Math.sin(t * 9)) * 5) / 5;
+    r.light(C.x, 60, C.z, '#ff7a2a', 1.4 + 0.6 * fl, 520);
+    r.light(C.x - 300, 260, C.z - 300, '#ffd9a8', 0.8, 900);
+    r.light(C.x + 300, 260, C.z + 300, '#ffd9a8', 0.8, 900);
+    // ---- as quatro baias (as vazias ficam paradas, com a esteira desligada) ----
+    const ocup = {};
+    for (const p of g.players) ocup[this.seatOf(p)] = p;
+    for (let seat = 0; seat < 4; seat++) {
+      const p = ocup[seat], pd = p && p.data, dead = !p || !p.alive;
+      // corredor de estantes: externa (v −120) de U0 até a quina; interna (v +120) até a borda do miolo; parede do fundo com a boca
+      this.estante3d(r, seat, U0, 10, -128);
+      this.estante3d(r, seat, U0, -250, 128);
+      this.boxL(r, seat, U0 - 14, 0, 0, 20, 210, 236, '#5a4c40', { tex: 'tijolo', texWorld: true });
+      this.boxL(r, seat, U0 - 2, 0, 0, 6, 46, 70, '#0c0a08', { tex: false });   // boca de onde saem os itens
+      // boca da fornalha virada para esta baia (brasa acesa se a baia está ativa)
+      this.boxL(r, seat, 0, 18, this.D3 - 86, 90, 60, 3, '#1a0a04', { tex: false });
+      this.boxL(r, seat, 0, 24, this.D3 - 87.5, 76, 48, 1, dead ? '#3a1408' : '#ff5a1a', dead ? {} : { glow: true, opacity: 0.6 + 0.4 * fl });
+      // esteira: corpo, lona, roletes nas pontas, ripas que andam junto com os itens
+      const ua = U0 + 10, ub = 26;
+      this.boxL(r, seat, (ua + ub) / 2, 0, 0, ub - ua, BH, 60, '#2a2e34', { metal: 0.5, rough: 0.5 });
+      this.boxL(r, seat, (ua + ub) / 2, BH + 0.3, 0, ub - ua - 4, 0.6, 56, '#16181b', { rough: 0.9, tex: false });
+      for (const u of [ua, ub]) { const a = this.W(seat, u, -31), b = this.W(seat, u, 31); r.tube(a.x, BH / 2 + 1, a.z, b.x, BH / 2 + 1, b.z, BH / 2 + 1, '#4a5058', { metal: 0.8, rough: 0.3 }); }
+      const sh = pd ? pd.shift : 0;
+      for (let k = 0; k < 12; k++) { const u = -(k + sh) * GAP - GAP / 2; if (u > ua + 4) this.boxL(r, seat, u, BH, 0, 3, 1.2, 56, '#2f343b', { shadow: false }); }
+      // calha de reciclagem (lado de fora, em frente ao item ativo)
+      this.boxL(r, seat, 0, 0, -78, 70, 14, 44, '#1d3a27', { metal: 0.4 });
+      this.boxL(r, seat, 0, 14, -78, 60, 1, 34, dead ? '#13241a' : '#2fbf62', dead ? {} : { glow: true });
+      // painel com as duas alavancas (vermelha = fogo, do lado da fornalha; verde = reciclagem, do lado de fora)
+      this.boxL(r, seat, UP - 34, 0, 0, 14, 44, 64, '#3a3f45', { metal: 0.5 });
+      this.boxL(r, seat, UP - 34, 44, 0, 18, 3, 68, '#22262b', { metal: 0.5 });
+      const puxa = pd && pd.wrong <= 0 && sh > 0.4 ? pd.lastBurn : null;
+      this.beamL(r, seat, UP - 34, 46, 18, UP - 34 + (puxa === true ? 14 : -4), 70, 18, 3, '#9a9da0', { metal: 0.8 });
+      this.beamL(r, seat, UP - 34, 46, -18, UP - 34 + (puxa === false ? 14 : -4), 70, -18, 3, '#9a9da0', { metal: 0.8 });
+      const kv = this.W(seat, UP - 34 + (puxa === true ? 14 : -4), 18), kr = this.W(seat, UP - 34 + (puxa === false ? 14 : -4), -18);
+      r.sphere(kv.x, 72, kv.z, 5, '#e0402a', { glow: !dead });
+      r.sphere(kr.x, 72, kr.z, 5, '#2fbf62', { glow: !dead });
+      if (!p) continue;
       // itens da fila (o primeiro é o ativo)
       if (!dead) {
         for (let k = this.VISIBLE - 1; k >= 0; k--) {
-          const x = SX + (k + pd.shift) * this.SLOT_GAP;
-          if (x > BX1 - 22) continue;
-          this.item3d(r, d.seq[(pd.idx + k) % d.seq.length], x, BH + 0.5, cy, k === 0 ? 1.1 : 0.85);
+          const u = -(k + pd.shift) * GAP;
+          if (u < ua + 22) continue;
+          const w = this.W(seat, u, 0);
+          this.item3d(r, d.seq[(pd.idx + k) % d.seq.length], w.x, BH + 0.5, w.z, k === 0 ? 1.25 : 0.9);
         }
         // moldura do item ativo
         const wrong = pd.wrong > 0, fc = wrong ? '#ff3030' : '#ffd23f';
-        r.beam(SX - 31, BH + 2, cy - 31, SX + 31, BH + 2, cy - 31, 2.5, fc, { glow: true });
-        r.beam(SX - 31, BH + 2, cy + 31, SX + 31, BH + 2, cy + 31, 2.5, fc, { glow: true });
-        r.beam(SX - 31, BH + 2, cy - 31, SX - 31, BH + 2, cy + 31, 2.5, fc, { glow: true });
-        r.beam(SX + 31, BH + 2, cy - 31, SX + 31, BH + 2, cy + 31, 2.5, fc, { glow: true });
-        if (wrong) r.plane(SX, BH + 1, cy, 60, 60, '#ff2020', { glow: true, opacity: 0.35 });
+        for (const [a1, b1, a2, b2] of [[-31, -31, 31, -31], [-31, 31, 31, 31], [-31, -31, -31, 31], [31, -31, 31, 31]]) this.beamL(r, seat, a1, BH + 2, b1, a2, BH + 2, b2, 2.5, fc, { glow: true });
+        if (wrong) this.boxL(r, seat, 0, BH + 1, 0, 60, 0.5, 60, '#ff2020', { glow: true, opacity: 0.35 });
       }
-      // base do placar no fim da esteira
-      r.box(a.x + a.w - 46, 0, cy, 70, 30, 50, '#22262b', { metal: 0.5 });
-      r.box(a.x + a.w - 46, 30, cy - 20, 66, 1, 6, dead ? '#444' : p.color, { glow: !dead });
-      // operador (de frente para a esteira)
-      r.character(p, { pose: dead ? 'dead' : 'work', dir: 0, flash: !dead && pd.wrong > 0.15 });
-      // prensa hidráulica: desce do teto em cima do operador
-      if (dead) r.disc(p.x + 26, 0.6, cy, 34, '#4a0c0c', { rough: 0.4 });
+      // operador (de frente para a esteira, olhando os itens chegarem)
+      const dirOp = Math.atan2(-this.eixo(seat).uz, -this.eixo(seat).ux);
+      r.character(p, { pose: dead ? 'dead' : 'work', dir: dirOp, flash: !dead && pd.wrong > 0.15, label: false });   // o nome fica no placar da vista
+      // prensa hidráulica num pórtico em cima do operador: desce e volta para o alto depois de esmagar
+      const pw = this.W(seat, UP, 0);
+      // (em repouso a prensa fica recolhida no teto, fora do quadro; só aparece quando desce)
+      if (dead) r.disc(pw.x, 0.6, pw.z, 34, '#4a0c0c', { rough: 0.4 });
       const up = dead ? TN.util.clamp(((pd.deadT || 0) - 0.6) / 0.5, 0, 1) : 0;
       if ((pd.crush > 0 || dead) && up < 1) {
-        // desce; 0,6 s depois da morte a prensa volta para o teto e deixa ver o operador esmagado
-        const k = dead ? 1 : pd.crush;
-        const hy = 200 - 192 * k + 320 * up, px = p.x + (dead ? 26 : 0);
-        r.beam(px, hy + 18, cy, px, 320, cy, 10, '#9aa3ad', { metal: 0.9, rough: 0.25 });
-        r.box(px, hy, cy, 70, 18, 64, '#f5c400', { metal: 0.3 });
-        for (let i = 0; i < 4; i++) r.box(px - 26 + i * 17, hy - 0.5, cy + 32.5, 8, 19, 1.5, '#111', { shadow: false, rotZ: 0.5 });
+        const k = dead ? 1 : pd.crush, hy = 300 - 292 * k + 300 * up;
+        r.beam(pw.x, hy + 18, pw.z, pw.x, 420, pw.z, 10, '#9aa3ad', { metal: 0.9, rough: 0.25 });
+        this.boxL(r, seat, UP, hy, 0, 64, 18, 64, '#f5c400', { metal: 0.3 });
+        for (let i = 0; i < 4; i++) this.boxL(r, seat, UP + 32.5, hy - 0.5, -26 + i * 17, 1.5, 19, 8, '#111', { shadow: false });
       }
     }
-    // itens saindo da esteira: para trás (fogo) ou para a frente (reciclagem), com arco e queda
+    // itens saindo da esteira: para dentro da fornalha (+v) ou para a calha (−v), com arco e queda
     for (const f of d.flying) {
-      const u = 1 - Math.max(0, f.t) / 0.35, dir = f.burn ? -1 : 1;
-      const z = f.lane.y + dir * Math.min(u * 90, 40);
-      const y = BH + 26 * Math.sin(Math.min(1, u * 1.4) * Math.PI) - (u > 0.65 ? (u - 0.65) * 90 : 0);
-      this.item3d(r, f.type, f.x, Math.max(0, y), z, 0.75, Math.max(0.1, Math.round((1 - u) * 10) / 10));
+      const p = g.players.find((q) => q.id === f.pid);
+      if (!p) continue;
+      const u = 1 - Math.max(0, f.t) / 0.35, dir = f.burn ? 1 : -1;
+      const v = dir * Math.min(u * 110, f.burn ? 70 : 72);
+      const y = BH + 30 * Math.sin(Math.min(1, u * 1.4) * Math.PI) - (u > 0.65 ? (u - 0.65) * 90 : 0);
+      const w = this.W(this.seatOf(p), 0, v);
+      this.item3d(r, f.type, w.x, Math.max(0, y), w.z, 0.75, Math.max(0.1, Math.round((1 - u) * 10) / 10));
     }
   },
 
-  // cilindro deitado ao longo do eixo Z (roletes da esteira), centrado em x,z
-  hcylZ(r, x, y, z, len, rad, color) {
-    r.cyl(x, y, z - len / 2, rad, len, color, { metal: 0.8, rough: 0.3, rotX: Math.PI / 2 });
-  },
-
-  // placares por baia + faixa de status (2D por cima do 3D)
+  // HUD por cima do 3D: moldura das vistas, placar de cada operador na sua vista e o painel do turno no meio
   drawOverlay(g, c) {
     if (!g.uses3d || !g.uses3d()) return;
-    const a = g.arena, D = TN.draw, d = g.data, U = TN.util;
-    for (const p of g.players) {
-      const pd = p.data, dead = !p.alive;
-      const s = TN.R3.project(a.x + a.w - 46, 30, p.y);
-      D.panel(c, s.x - 34, s.y - 26, 68, 44, { stroke: dead ? '#444' : p.color, fill: 'rgba(0,0,0,0.7)' });
-      D.text(c, dead ? '✖' : String(pd.sub), s.x, s.y - 4, { size: 28, color: dead ? '#f55' : pd.subFlash > 0 && Math.floor(g.time * 10) % 2 ? '#ff5a3c' : '#fff', align: 'center' });
-    }
-    const t = d.phase === 'play' ? d.timer : 0;
-    c.fillStyle = 'rgba(8,10,13,0.7)'; c.fillRect(a.x, 37, a.w, 30);
-    D.text(c, `TURNO ${d.sub}`, a.x + 10, 52, { size: 16, color: '#ff5a3c' });
-    D.text(c, U.formatTime(t), g.W / 2, 52, { size: 24, color: t < 4 && d.phase === 'play' ? '#f55' : '#fff', align: 'center' });
-    D.text(c, 'AÇÃO: QUEIMAR ARTE', a.x + a.w - 250, 45, { size: 12, color: '#ff7a5a', align: 'left' });
-    D.text(c, 'EXTRA: RECICLAR TECNOLOGIA', a.x + a.w - 250, 59, { size: 12, color: '#46e27b', align: 'left' });
+    const D = TN.draw, d = g.data, U = TN.util, vs = this.viewports(g);
+    c.fillStyle = '#000';
+    for (const v of vs) { const [x, y, w, h] = v.rect; c.fillRect(x + w - 1, y, 2, h); c.fillRect(x, y + h - 1, w, 2); }
+    g.players.forEach((p, i) => {
+      const v = vs[i]; if (!v) return;
+      const [rx, y, rw] = v.rect, pd = p.data, dead = !p.alive, x = rx + rw / 2 >= g.W / 2 + 1 && rw < g.W ? rx + rw - 148 : rx;   // coluna da direita: placar no canto direito
+      D.panel(c, x + 8, y + 8, 132, 46, { stroke: dead ? '#444' : p.color, fill: 'rgba(0,0,0,0.72)' });
+      D.text(c, p.label, x + 16, y + 21, { size: 12, color: dead ? '#888' : p.color });
+      D.text(c, dead ? 'PRENSADO' : 'NO TURNO', x + 16, y + 40, { size: 10, color: dead ? '#f55' : '#aaa' });
+      D.text(c, dead ? '✖' : String(pd.sub), x + 118, y + 31, { size: 26, color: dead ? '#f55' : pd.subFlash > 0 && Math.floor(g.time * 10) % 2 ? '#ff5a3c' : '#fff', align: 'center' });
+    });
+    if (vs.length > g.players.length) { const [x, y] = vs[vs.length - 1].rect; D.text(c, 'ALMOXARIFADO · VISTA GERAL', x + 12, y + 18, { size: 11, color: '#bbb' }); }
+    // painel do turno no centro da divisão
+    const t = d.phase === 'play' ? d.timer : 0, cx = g.W / 2, cy = vs.length > 1 ? 34 + (g.H - 34) / 2 : 70;
+    D.panel(c, cx - 118, cy - 32, 236, 64, { stroke: '#ff5a3c', fill: 'rgba(8,10,13,0.88)' });
+    D.text(c, `TURNO ${d.sub}`, cx - 106, cy - 17, { size: 13, color: '#ff5a3c' });
+    D.text(c, U.formatTime(t), cx + 60, cy - 14, { size: 22, color: t < 4 && d.phase === 'play' ? '#f55' : '#fff', align: 'center' });
+    D.text(c, 'AÇÃO: QUEIMAR ARTE', cx, cy + 6, { size: 11, color: '#ff7a5a', align: 'center' });
+    D.text(c, 'EXTRA: RECICLAR TECNOLOGIA', cx, cy + 21, { size: 11, color: '#46e27b', align: 'center' });
     if (d.phase === 'pause') {
-      D.text(c, `TURNO ${d.sub}`, g.W / 2, g.H / 2 - 40, { size: 40, color: '#ff5a3c', align: 'center' });
-      D.text(c, String(d.contagem || 'JÁ!'), g.W / 2, g.H / 2 + 30, { size: 64, color: '#fff', align: 'center' });
+      D.panel(c, cx - 110, cy - 70, 220, 140, { stroke: '#ff5a3c', fill: 'rgba(8,10,13,0.9)' });
+      D.text(c, `TURNO ${d.sub}`, cx, cy - 36, { size: 34, color: '#ff5a3c', align: 'center' });
+      D.text(c, String(d.contagem || 'JÁ!'), cx, cy + 26, { size: 56, color: '#fff', align: 'center' });
     }
     if (d.banner) {
-      D.panel(c, g.W / 2 - 250, g.H / 2 - 26, 500, 52, { stroke: d.banner.color });
-      D.text(c, d.banner.text, g.W / 2, g.H / 2, { size: 20, color: d.banner.color, align: 'center' });
+      D.panel(c, cx - 250, cy - 26, 500, 52, { stroke: d.banner.color, fill: 'rgba(8,10,13,0.92)' });
+      D.text(c, d.banner.text, cx, cy, { size: 20, color: d.banner.color, align: 'center' });
     }
   },
 
@@ -361,7 +431,7 @@ TN.registerMinigame({
     const a = g.arena, D = TN.draw, d = g.data, U = TN.util;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);
     for (const p of g.players) {
-      const pd = p.data, L = pd.lane, cy = p.y, dead = !p.alive;
+      const pd = p.data, L = pd.lane, cy = L.y + L.h / 2, dead = !p.alive;
       // fundo da baia
       c.fillStyle = dead ? '#151515' : '#1b1f24'; c.fillRect(a.x, L.y + 3, a.w, L.h - 6);
       c.fillStyle = dead ? '#333' : p.color; c.fillRect(a.x, L.y + 3, 6, L.h - 6);
@@ -391,18 +461,19 @@ TN.registerMinigame({
       D.panel(c, a.x + a.w - 86, cy - 28, 80, 56, { stroke: dead ? '#444' : p.color, fill: 'rgba(0,0,0,0.6)' });
       D.text(c, dead ? '✖' : String(pd.sub), a.x + a.w - 46, cy + 2, { size: 30, color: dead ? '#f55' : '#fff', align: 'center' });
       // operador
-      g.drawPlayer(c, p, { flash: pd.wrong > 0.15 });
+      g.drawPlayer(c, { ...p, x: 92, y: cy, dir: 0 }, { flash: pd.wrong > 0.15 });
       // prensa hidráulica
       if (pd.crush > 0 || dead) {
         const k = dead ? 1 : pd.crush;
         const h = (cy - L.y - 4) + 22 * k;
-        c.fillStyle = '#555'; c.fillRect(p.x - 4, L.y + 3, 8, Math.max(0, h - 30));
-        D.hazardStripes(c, p.x - 34, L.y + 3 + Math.max(0, h - 30), 68, 26, 8);
+        c.fillStyle = '#555'; c.fillRect(92 - 4, L.y + 3, 8, Math.max(0, h - 30));
+        D.hazardStripes(c, 92 - 34, L.y + 3 + Math.max(0, h - 30), 68, 26, 8);
       }
     }
     // itens voando para o fogo (sobe) / reciclagem (desce), presos à própria baia
     for (const f of d.flying) {
-      const L = f.lane.data.lane;
+      const dono = g.players.find((q) => q.id === f.pid); if (!dono) continue;
+      const L = dono.data.lane;
       c.save(); c.beginPath(); c.rect(a.x, L.y + 3, a.w, L.h - 6); c.clip();
       c.globalAlpha = Math.max(0, f.t / 0.35);
       this.drawItem(c, f.type, f.x, f.y, 18);
@@ -410,7 +481,7 @@ TN.registerMinigame({
     }
     // boca do incinerador (em cima) e calha de reciclagem (embaixo) do item ativo
     for (const p of g.alive()) {
-      const cy = p.y, f = 0.6 + 0.4 * Math.sin(g.time * 14 + p.id);
+      const cy = p.data.lane.y + p.data.lane.h / 2, f = 0.6 + 0.4 * Math.sin(g.time * 14 + p.id);
       c.fillStyle = `rgba(255,${90 + 60 * f | 0},30,0.9)`; c.fillRect(this.SLOT_X - 31, cy - 40, 62, 5);
       c.fillStyle = '#2fa85a'; c.fillRect(this.SLOT_X - 31, cy + 35, 62, 5);
     }

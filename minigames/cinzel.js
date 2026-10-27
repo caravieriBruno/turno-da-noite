@@ -227,79 +227,169 @@
     },
 
     // ------------------------------------------------------------------ desenho 3D
-    // Oficina: telão holográfico ao fundo; 4 bancadas de frente para a câmera, cada uma com o bloco
-    // de 19 prismas hexagonais. O escultor fica atrás da própria bancada.
-    // duas câmeras: na memorização, de frente para o telão; esculpindo, mais alta e aberta atrás dos painéis
-    camera: { pos: [480, 420, 1010], target: [480, 130, 270], fov: 40 },
-    CAM_PAINEIS: { pos: [480, 520, 1080], target: [480, 60, 270] },
-    // posição 3D de cada escultor (atrás da própria bancada): rótulos e partículas do motor
-    worldPos(g, p) { return { x: this.tableX(p.id), y: 14, z: this.TABLE_Z - 92 }; },
-    env: { bg: '#0c0a09', fog: [1000, 2400], sunDir: [-0.35, 1, 0.75], sunColor: '#ffe2bd' },
-    S3D: 12, TABLE_Z: 380,
-    tableX(i) { return 135 + i * 230; },
+    // Fosso circular de concreto (como o chisel_gauntlet): no centro, o telão suspenso de 4 faces sobre o
+    // buraco de cabos; em volta, 4 mesas de controle em diagonal, cada uma com o bloco de 19 prismas do
+    // seu escultor, que fica de frente para o centro. Placas de setor (ALFA, BRAVO, CHARLIE, DELTA) na
+    // parede de cada um, tambores e paletes encostados. A parede da frente fica aberta para a câmera.
+    // duas câmeras: na memorização, de frente para o telão; esculpindo, mais alta e aberta sobre o fosso
+    camera: { pos: [480, 470, 1060], target: [480, 160, 300], fov: 42 },
+    CAM_PAINEIS: { pos: [480, 720, 1000], target: [480, 20, 300] },
+    PIT: { x: 480, z: 300, R: 360, H: 470 },   // centro e raio do fosso (original: ~9,5 u → 38 px/u)
+    PANEL_R: 150, SCULPTOR_R: 222, S3D: 11,
+    SETORES: ['ALFA', 'BRAVO', 'CHARLIE', 'DELTA'],
+    // direção (para fora do centro) da mesa de cada jogador: 0 fundo-esq., 1 fundo-dir., 2 frente-esq., 3 frente-dir.
+    eixo(i) { const k = Math.SQRT1_2; return { x: i % 2 ? k : -k, z: i < 2 ? -k : k }; },
+    // posição 3D de cada escultor (de frente para o centro): rótulos e partículas do motor
+    worldPos(g, p) { const u = this.eixo(p.id); return { x: this.PIT.x + u.x * this.SCULPTOR_R, y: 0, z: this.PIT.z + u.z * this.SCULPTOR_R }; },
+    env: { bg: '#0b0b0b', fog: [1100, 2600], ambient: 0.95, sun: 1.5, sunDir: [-0.2, 1, 0.5], sunColor: '#e8e4dc', spot: 0 },
 
-    drawBlock3d(r, tx, ty, tz, removed, opts = {}) {
+    // bloco de 19 prismas numa mesa: (lx, ly) locais → mundo, com ly crescendo na direção do escultor
+    drawBlock3d(r, M, ty, removed, opts = {}) {
       const S = this.S3D;
       CELLS.forEach((cell, i) => {
-        const x = tx + cell.x * S, z = tz + cell.y * S;
+        const [x, z] = M(cell.x * S, cell.y * S);
         const wrong = opts.compare && removed[i] && !opts.compare[i];
         const missing = opts.compare && !removed[i] && opts.compare[i];
-        if (removed[i]) {
-          r.cyl(x, ty, z, S * 0.9, 1.5, wrong ? '#ff3030' : '#2a221a', { sides: 6, glow: wrong });
-        } else {
-          r.cyl(x, ty, z, S * 0.93, 14, missing ? '#c4673f' : '#c9b48c', { sides: 6, rough: 0.95, emissive: missing ? '#5a1a00' : undefined });
-        }
+        if (removed[i]) r.cyl(x, ty, z, S * 0.9, 1.5, wrong ? '#ff3030' : '#2a221a', { sides: 6, glow: wrong });
+        else r.cyl(x, ty, z, S * 0.93, 14, missing ? '#c4673f' : '#c9b48c', { sides: 6, rough: 0.95, emissive: missing ? '#5a1a00' : undefined });
       });
     },
 
+    // palete de madeira encostado (local: x = largura, sobe em y; ang = giro, incl = inclinação)
+    palete(r, x, z, ang) {
+      const c = Math.cos(ang), s = Math.sin(ang);
+      for (let k = 0; k < 5; k++) { const lx = -48 + k * 24; r.box(x + lx * c, 0, z - lx * s, 12, 112, 5, '#6d5233', { tex: 'madeira', rotY: ang }); }
+      for (const h of [10, 92]) r.box(x - s * 6, h, z - c * 6, 118, 12, 8, '#5a4329', { tex: 'madeira', rotY: ang });
+    },
+
     draw3d(g, r) {
-      const d = g.data, S = this.S3D;
+      const d = g.data, P = this.PIT, memo = d.phase === 'memo';
       // câmera: desliza do telão (memo) para a vista aberta (esculpir/reveal) e volta
-      camBlend += ((d.phase === 'memo' ? 0 : 1) - camBlend) * 0.06;
+      camBlend += ((memo ? 0 : 1) - camBlend) * 0.06;
       const L = (a, b) => a.map((v, i) => v + (b[i] - v) * camBlend);
       r.camera(L(this.camera.pos, this.CAM_PAINEIS.pos), L(this.camera.target, this.CAM_PAINEIS.target), this.camera.fov);
-      // oficina de artesanato (parede de tijolo ao fundo, atrás do telão)
-      r.room(-140, 75, 1100, 560, { estilo: 'oficina', h: 460, props: false });
-      // telão com o bloco-alvo (prismas virados para a câmera)
-      r.box(480, 120, 98, 330, 280, 18, '#0d0f11', { metal: 0.5 });
-      r.box(480, 126, 108, 310, 266, 2, d.phase === 'memo' ? '#1b2a20' : '#0a0d0f', { emissive: d.phase === 'memo' ? '#0c2a16' : '#050607' });
-      if (d.phase === 'memo') {
+
+      // ---- fosso: piso de chapa, parede circular em gomos (a frente fica aberta), saliências e luminárias
+      r.plane(P.x, -1.5, P.z + 300, 2600, 2200, '#2b2c2b', { tex: 'piso' });
+      r.disc(P.x, -0.8, P.z, P.R, '#4a4c4b', { tex: 'metal', metal: 0.5, rough: 0.6 });
+      const N = 28, segW = (2 * Math.PI * (P.R + 14)) / N + 4;
+      for (let k = 0; k < N; k++) {
+        const th = (k + 0.5) * 2 * Math.PI / N, cs = Math.cos(th), sn = Math.sin(th);
+        if (sn > 0.8) continue;   // abertura da frente (lado da câmera)
+        const x = P.x + cs * (P.R + 14), z = P.z + sn * (P.R + 14), rot = -(th + Math.PI / 2);
+        r.box(x, 0, z, segW, P.H, 28, '#8f8c85', { tex: 'concreto', rotY: rot });
+        r.box(x, 0, z, segW + 1, 14, 30, '#2a2a28', { rotY: rot });                       // rodapé
+        for (const y of [150, 310]) {                                                      // saliências em anel
+          const x2 = P.x + cs * (P.R - 4), z2 = P.z + sn * (P.R - 4);
+          r.box(x2, y, z2, segW, 16, 22, '#8a877f', { tex: 'concreto', rotY: rot });
+        }
+        if (k % 2 === 0) {                                                                 // pilares
+          const x3 = P.x + cs * (P.R - 10), z3 = P.z + sn * (P.R - 10);
+          r.box(x3, 0, z3, 26, P.H, 26, '#6a6862', { tex: 'concreto', rotY: rot });
+        }
+        if (k % 4 === 1) {                                                                 // luminária de parede
+          const x4 = P.x + cs * (P.R - 14), z4 = P.z + sn * (P.R - 14);
+          r.box(x4, 238, z4, 70, 12, 14, '#3a3b3a', { metal: 0.5, rotY: rot });
+          r.box(P.x + cs * (P.R - 22), 240, P.z + sn * (P.R - 22), 60, 5, 2, '#f2fff6', { glow: true, rotY: rot });
+        }
+      }
+      // grade de proteção no alto do fosso
+      for (let k = 0; k <= 36; k++) {
+        const th = k * 2 * Math.PI / 36;
+        if (Math.sin(th) > 0.8) continue;
+        r.tube(P.x + Math.cos(th) * (P.R + 8), P.H, P.z + Math.sin(th) * (P.R + 8), P.x + Math.cos(th) * (P.R + 8), P.H + 46, P.z + Math.sin(th) * (P.R + 8), 2, '#3d3e3b', { metal: 0.6 });
+      }
+
+      // ---- piso do centro: área de chapa com faixa zebrada em octógono, grelhas em diagonal e o buraco de cabos
+      const OCT = 8, oR = 232;
+      for (let k = 0; k < OCT; k++) {
+        const a0 = (k + 0.5) * 2 * Math.PI / OCT, a1 = (k + 1.5) * 2 * Math.PI / OCT;
+        const x0 = P.x + Math.cos(a0) * oR, z0 = P.z + Math.sin(a0) * oR, x1 = P.x + Math.cos(a1) * oR, z1 = P.z + Math.sin(a1) * oR;
+        for (let j = 0; j < 8; j++) {
+          const t0 = j / 8, xm = x0 + (x1 - x0) * (t0 + 1 / 16), zm = z0 + (z1 - z0) * (t0 + 1 / 16);
+          r.plane(xm, 0.3, zm, Math.hypot(x1 - x0, z1 - z0) / 8 + 0.5, 7, j % 2 ? '#141414' : '#d9a800', { tex: false, rotY: -Math.atan2(z1 - z0, x1 - x0) });
+        }
+      }
+      for (const sgn of [-1, 1]) r.plane(P.x, 0.2, P.z, 2 * oR * 0.92, 26, '#1a1b1a', { rotY: sgn * Math.PI / 4, tex: 'metal' });   // grelhas
+      r.disc(P.x, 0.5, P.z, 46, '#070707', { tex: false });
+      r.ring(P.x, 0.6, P.z, 46, 54, '#3c3d3c', { metal: 0.6 });
+
+      // ---- telão suspenso de 4 faces (jumbotron), cabos até o buraco e semáforo
+      const MY = 190, MH = 205, MW = 270, MD = 130, ty = MY + MH / 2;
+      r.beam(P.x, MY + MH, P.z, P.x, P.H + 200, P.z, 22, '#262726', { metal: 0.6 });
+      for (const [ax, az] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        r.beam(P.x + ax * MW / 2, MY + MH, P.z + az * MD / 2, P.x + ax * 300, P.H + 30, P.z + az * 300, 3, '#1c1d1c', { metal: 0.4 });   // cabos de sustentação
+        r.tube(P.x + ax * 20, 0, P.z + az * 20, P.x + ax * 60, MY, P.z + az * 30, 4, '#1a1a1a', { tex: false });                          // cabos do buraco
+      }
+      r.box(P.x, MY, P.z, MW + 20, MH, MD + 20, '#202322', { metal: 0.6, rough: 0.5 });
+      r.box(P.x, MY - 14, P.z, MW - 40, 14, MD - 10, '#2c2f2e', { metal: 0.5 });
+      r.box(P.x, MY - 18, P.z, MW - 70, 4, MD - 40, "#cfe0d8", { glow: true });            // anel de luz embaixo do telão
+      const tela = memo ? '#16261c' : '#0a0d0f';
+      r.box(P.x, MY + 12, P.z + MD / 2 + 10, MW - 16, MH - 24, 2, tela, { emissive: memo ? '#0c2a16' : '#050607' });
+      r.box(P.x, MY + 12, P.z - MD / 2 - 12, MW - 16, MH - 24, 2, tela, { emissive: memo ? '#0c2a16' : '#050607' });
+      for (const sx of [-1, 1]) r.box(P.x + sx * (MW / 2 + 11), MY + 12, P.z, 2, MH - 24, MD - 16, tela, { emissive: memo ? '#0c2a16' : '#050607' });
+      // semáforo do telão: verde esculpindo, vermelho no veredito
+      const sem = d.phase === 'carve' ? '#3dff6e' : d.phase === 'reveal' ? '#ff2a1a' : '#5a4a10';
+      r.sphere(P.x + MW / 2 - 6, MY + MH + 12, P.z + MD / 2, 5, sem, { glow: true });
+      r.sphere(P.x - MW / 2 + 6, MY + MH + 12, P.z + MD / 2, 5, sem, { glow: true });
+      const zt = P.z + MD / 2 + 12;
+      if (memo) {
         const shown = CELLS.map(() => false);
         for (let k = 0; k < d.removedShown; k++) shown[d.order[k]] = true;
         CELLS.forEach((cell, i) => {
           if (shown[i]) return;
-          r.cyl(480 + cell.x * 24, 258 - cell.y * 24, 110, 22, 8, '#e3cfa6', { sides: 6, rotX: Math.PI / 2, emissive: '#3d2f14' });
+          r.cyl(P.x + cell.x * 20, ty + 6 - cell.y * 20, zt - 4, 18.5, 8, '#e3cfa6', { sides: 6, rotX: Math.PI / 2, emissive: '#3d2f14' });
         });
-        r.light(480, 260, 200, '#ffe7b8', 1.2, 600);
+        r.light(P.x, ty, zt + 120, '#ffe7b8', 1.1, 560);
       } else {
-        // "?" de estática enquanto esculpem
-        for (let k = 0; k < 14; k++) r.box(330 + ((k * 97 + Math.floor(g.time * 12) * 31) % 300), 140 + ((k * 53 + Math.floor(g.time * 12) * 17) % 230), 110, 18, 3, 1, '#2d3b33', { glow: true });
+        // estática enquanto esculpem
+        for (let k = 0; k < 14; k++) r.box(P.x - 135 + ((k * 97 + Math.floor(g.time * 12) * 31) % 270), MY + 20 + ((k * 53 + Math.floor(g.time * 12) * 17) % 190), zt, 18, 3, 1, '#2d3b33', { glow: true });
       }
-      // lâmpadas sobre as bancadas
-      r.light(250, 300, 380, '#ffcf8f', 1.0, 600);
-      r.light(710, 300, 380, '#ffcf8f', 1.0, 600);
-      // bancadas
+
+      // ---- tambores e paletes encostados na parede
+      const naParede = (th, rr) => [P.x + Math.cos(th) * rr, P.z + Math.sin(th) * rr];
+      { const [bx, bz] = naParede(Math.PI * 0.86, P.R - 50); r.prop('tambor', bx, bz, { color: '#5b4a36' }); r.prop('tambor', bx + 30, bz - 26, { color: '#4f5e3a' }); r.prop('tambor', bx + 12, bz - 10, { color: '#5b4a36', y: 44 }); }
+      { const [bx, bz] = naParede(Math.PI * 1.62, P.R - 46); r.prop('tambor', bx, bz, { color: '#6b2e22' }); }
+      { const th = Math.PI * 1.17, [bx, bz] = naParede(th, P.R - 40); this.palete(r, bx, bz, -(th + Math.PI / 2)); }
+      { const th = Math.PI * 0.12, [bx, bz] = naParede(th, P.R - 40); this.palete(r, bx, bz, -(th + Math.PI / 2)); }
+
+      // ---- luzes: teto do fosso e duas de serviço sobre as mesas
+      r.light(P.x, P.H, P.z - 60, '#e8f4ff', 0.9, 900);
+      r.light(P.x - 230, 260, P.z + 60, '#ffd9a8', 0.7, 520);
+      r.light(P.x + 230, 260, P.z + 60, '#ffd9a8', 0.7, 520);
+
+      // ---- mesas de controle (uma por escultor) com o bloco, os botões e a placa do setor
       g.players.forEach((p, i) => {
-        const tx = this.tableX(i), tz = this.TABLE_Z, s = p.data;
-        r.box(tx, 0, tz, 205, 36, 120, '#5a4636', { rough: 0.9 });
-        r.box(tx, 36, tz, 210, 6, 124, '#6e5643', { rough: 0.8 });
-        r.box(tx, 0.5, tz + 64, 205, 2, 4, p.alive ? p.color : '#333', { glow: p.alive });   // faixa da cor do dono
+        const u = this.eixo(i), s = p.data, rx = u.z, rz = -u.x;   // (rx, rz) = direita de quem olha para o centro
+        const cx = P.x + u.x * this.PANEL_R, cz = P.z + u.z * this.PANEL_R, ang = Math.atan2(u.z, u.x);
+        const M = (lx, ly) => [cx + rx * lx + u.x * ly, cz + rz * lx + u.z * ly];
+        const rot = -(ang + Math.PI / 2);   // eixo X local da caixa ao longo da direita do escultor
+        r.box(cx, 0, cz, 200, 38, 96, '#2e3231', { metal: 0.45, rough: 0.6, rotY: rot });
+        r.box(cx, 38, cz, 206, 5, 102, '#3f4442', { metal: 0.55, rough: 0.45, rotY: rot });
+        const [fx, fz] = M(0, 52);
+        r.box(fx, 2, fz, 200, 3, 3, p.alive ? p.color : '#333', { glow: p.alive, rotY: rot });   // faixa da cor do dono
         const compare = d.phase === 'reveal' ? d.target : null;
-        this.drawBlock3d(r, tx - 14, 42, tz, s.cells, { compare });
+        const B = (lx, ly) => M(lx - 22, ly);
+        this.drawBlock3d(r, B, 43, s.cells, { compare });
         // botões ENVIAR / RESETAR na beirada direita
-        const btnX = tx - 14 + NODES[SEND].x * S;
-        r.box(btnX, 42, tz + NODES[SEND].y * S * 1.6, 20, 6, 16, s.sent ? '#7dffaa' : '#1f8a45', { emissive: '#0b3d1e' });
-        r.box(btnX, 42, tz + NODES[RESET].y * S * 1.6, 20, 6, 16, '#d68a1e', { emissive: '#3d2405' });
-        // cursor (anel brilhante) durante a escultura
+        const S = this.S3D, bS = B(NODES[SEND].x * S, NODES[SEND].y * S * 1.6), bR = B(NODES[RESET].x * S, NODES[RESET].y * S * 1.6);
+        r.box(bS[0], 43, bS[1], 18, 6, 15, s.sent ? '#7dffaa' : '#1f8a45', { emissive: '#0b3d1e', rotY: rot });
+        r.box(bR[0], 43, bR[1], 18, 6, 15, '#d68a1e', { emissive: '#3d2405', rotY: rot });
+        // cursor (anel brilhante) e cinzel durante a escultura
         if (d.phase === 'carve' && !s.sent && p.alive) {
           const n = NODES[s.cursor];
-          const cx = s.cursor >= SEND ? btnX : tx - 14 + n.x * S, cz = s.cursor >= SEND ? tz + n.y * S * 1.6 : tz + n.y * S;
-          r.ring(cx, 58 + Math.abs(Math.sin(g.time * 6)) * 3, cz, S * 0.75, S * 1.05, p.color, { glow: true });
-          r.beam(cx + 6, 62, cz - 6, cx + 16, 86, cz - 16, 3, '#c9ced4', { metal: 0.8 });   // cinzel
+          const [qx, qz] = s.cursor >= SEND ? (s.cursor === SEND ? bS : bR) : B(n.x * S, n.y * S);
+          r.ring(qx, 59 + Math.abs(Math.sin(g.time * 6)) * 3, qz, S * 0.75, S * 1.05, p.color, { glow: true });
+          r.beam(qx + 6, 63, qz - 6, qx + 16, 87, qz - 16, 3, '#c9ced4', { metal: 0.8 });
         }
-        // escultor atrás da bancada, olhando para a câmera
-        r.box(tx, 0, tz - 92, 90, 14, 46, '#3b302a');   // degrau do escultor
-        r.character({ ...p, x: tx, y: tz - 92 }, { key: p.id, y: 14, scale: 1.15, dir: Math.PI / 2, pose: !p.alive ? 'dead' : d.phase === 'carve' && !s.sent ? 'work' : 'idle', label: false });
+        // escultor de frente para o centro
+        const w = this.worldPos(g, p);
+        r.character({ ...p, x: w.x, y: w.z }, { key: p.id, scale: 1.15, dir: Math.atan2(-u.z, -u.x), pose: !p.alive ? 'dead' : d.phase === 'carve' && !s.sent ? 'work' : 'idle', label: false });
+        // placa do setor na parede atrás do escultor
+        const [sx, sz] = naParede(ang, P.R - 36);
+        r.box(sx, 300, sz, 130, 38, 6, '#1b1d1c', { rotY: rot });
+        r.box(sx, 296, sz, 136, 3, 7, p.alive ? p.color : '#444', { glow: p.alive, rotY: rot });
+        if (memo) r.label(sx - u.x * 8, 312, sz - u.z * 8, this.SETORES[i], "#e6e1d4", 13);
       });
     },
 

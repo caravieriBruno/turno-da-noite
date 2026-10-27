@@ -19,7 +19,9 @@ TN.registerMinigame({
   endWhenOneLeft: false,
 
   // ---- constantes ----
-  FIELD: { x0: 150, x1: 810 }, START_Y: 720, WALL_Y: 80,
+  // vala estreita e comprida como a trincheira do original (≈ 25 × 135 m); o comprimento da corrida não mudou
+  FIELD: { x0: 180, x1: 780 }, START_Y: 720, WALL_Y: 80,
+  RAIL_Y: 450,               // trilho do vagão de presos atravessando a vala (só cenário, rente ao chão)
   RUN_SPEED: 150, MERGULHO: 0.5, LASER: 0.5, RECARGA: 1.5, AIM_LOCK: 2, MAX_TIME: 40,
   AIM_SPEED: 300, ZOOM_SPEED: 110,
   ALVO_PE: { w: 32, h: 44 }, ALVO_AGACHADO: { w: 24, h: 24 },   // caixa do alvo no chão (x × y), centrada no fugitivo
@@ -234,19 +236,89 @@ TN.registerMinigame({
   camera: { pos: [480, 110, 950], target: [480, 20, 250], fov: 44 },
   env: { bg: '#05060a', fog: [1300, 2800], ambient: 0.38, sun: 0.7, sunDir: [0.3, 1, 0.5], sunColor: '#9fb4ff', hemiSky: '#55648c', hemiGround: '#1a140c' },
 
+  // ruído determinístico para o cenário (o draw não pode sortear)
+  hash(i) { const s = Math.sin(i * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); },
+
+  // vala de escoamento atrás do muro da cadeia (a trincheira do Duck Hunt): fundo de terra com mato e
+  // valeta d'água, paredões de pedra em degraus dos dois lados, cerca e holofotes na borda, o trilho do
+  // vagão de presos cruzando, a manilha caída e o pilar quebrado na largada, e a cabeceira de concreto
+  // do bueiro no fundo (a saída, onde estava a torre do original)
+  drawVala3d(g, r) {
+    const F = this.FIELD, SY = this.START_Y, WY = this.WALL_Y, H = (i) => this.hash(i), RY = this.RAIL_Y;
+    const z0 = WY - 80, z1 = SY + 560, cx = (F.x0 + F.x1) / 2;
+    r.plane(cx, -1.5, (z0 + z1) / 2, 2000, z1 - z0 + 1400, '#262c1f', { tex: 'concreto' });
+    r.plane(cx, -0.6, (WY + SY) / 2 + 60, F.x1 - F.x0 + 60, SY - WY + 360, '#323a26', { tex: 'concreto' });
+    r.plane(cx + 70, -0.3, (WY + SY) / 2 + 100, 26, SY - WY + 420, '#0f1719', { tex: false, metal: 0.4, rough: 0.2 });   // valeta
+    // mato e pedrinhas (enfeite, rente ao chão)
+    for (let i = 0; i < 70; i++) {
+      const x = F.x0 - 20 + H(i) * (F.x1 - F.x0 + 40), z = WY + 20 + H(i + 300) * (SY - WY + 200);
+      if (Math.abs(z - RY) < 30) continue;
+      if (i % 3) r.cone(x, 0, z, 4 + H(i + 50) * 4, 8 + H(i + 90) * 12, i % 2 ? '#5d6838' : '#76733f', { tex: false, shadow: false });
+      else r.box(x, 0, z, 7 + H(i + 7) * 8, 4, 6 + H(i + 8) * 6, '#77766d', { rotY: H(i + 9) * 3 });
+    }
+    // paredões de pedra em três degraus (deixam um corte para o trilho passar)
+    const PEDRA = ['#4a4741', '#3d3a35', '#45403a'];
+    for (const s of [-1, 1]) {
+      const edge = s < 0 ? F.x0 - 34 : F.x1 + 34;
+      for (let k = 0, z = z0; z < z1; k++, z += 92) {
+        if (Math.abs(z - RY) < 70) continue;
+        for (let t = 0; t < 3; t++) {
+          const h = H(k * 7 + t + (s > 0 ? 500 : 0));
+          r.box(edge + s * (30 + t * 58 + h * 12), 0, z, 72, 80 + t * 85 + h * 45, 100, PEDRA[t], { rotY: (h - 0.5) * 0.35, tex: 'concreto', rough: 1 });
+        }
+        if (k % 2 === 0) r.cone(edge + s * 32, 0, z + 30, 10, 26, '#5d6838', { tex: false, shadow: false });
+      }
+      // cerca de arame na borda de cima e holofotes de vapor de sódio virados para a vala
+      const fx = edge + s * 190, fy = 250;
+      for (let z = z0; z < z1; z += 120) r.box(fx, fy, z, 4, 70, 4, '#3a3b38', { metal: 0.5 });
+      for (const hy of [fy + 30, fy + 64]) r.beam(fx, hy, z0, fx, hy, z1, 1.2, '#6c6f72', { metal: 0.7, shadow: false });
+      for (const z of [180, 400, 620]) {
+        r.box(fx - s * 6, fy, z, 6, 90, 6, '#33342f', { metal: 0.5 });
+        r.box(fx - s * 14, fy + 86, z, 18, 12, 22, '#2a2d30', { metal: 0.5 });
+        r.box(fx - s * 24, fy + 88, z, 2, 8, 16, '#ffe2b0', { glow: true });
+      }
+    }
+    // trilho atravessando (dormentes e dois trilhos) e os vagões de presos parados nos cortes
+    for (let x = F.x0 - 300; x <= F.x1 + 300; x += 34) r.box(x, 0, RY, 12, 3, 64, '#3b2d22', { tex: 'madeira' });
+    for (const dz of [-18, 18]) r.beam(F.x0 - 320, 5, RY + dz, F.x1 + 320, 5, RY + dz, 4, '#6e6a64', { metal: 0.8, shadow: false });
+    for (const s of [-1, 1]) {
+      const wx = s < 0 ? F.x0 - 170 : F.x1 + 170;
+      r.box(wx, 14, RY, 230, 12, 76, '#3a3330', { metal: 0.5 });
+      for (const dx of [-80, 80]) for (const dz of [-24, 24]) r.tube(wx + dx, 12, RY + dz - 4, wx + dx, 12, RY + dz + 4, 12, '#222', { metal: 0.6 });
+      if (s < 0) for (const [dx, dy, w] of [[40, 26, 36], [76, 26, 36], [58, 58, 30]]) r.box(wx + dx, dy, RY + (dy > 30 ? 0 : 6), w, 32, 34, '#5d6266', { metal: 0.5 });
+      else for (const dz of [-20, 0, 20]) r.tube(wx - 100, 36 + (dz === 0 ? 18 : 0), RY + dz, wx + 60, 36 + (dz === 0 ? 18 : 0), RY + dz, 10, '#6f6b63', { metal: 0.3 });
+    }
+    // manilha de concreto caída à esquerda da largada (oca, boca para a câmera) e pilar quebrado à direita
+    r.tube(F.x0 - 70, 32, 600, F.x0 - 22, 32, 712, 32, '#6f6d66', { tex: 'concreto' });
+    r.tube(F.x0 - 25, 32, 706, F.x0 - 21, 32, 714, 25, '#141413', { tex: false });
+    for (let i = 0; i < 4; i++) r.box(F.x1 + 44 + (i % 2) * 4, i * 46, 650, 52 - i * 4, 46, 52 - i * 4, i % 2 ? '#4c4a44' : '#55524b', { rotY: 0.15 * i, tex: 'concreto' });
+    // cabeceira do bueiro no fundo: muro de concreto com pilastras, boca gradeada (a saída) e seta pintada
+    const BW = F.x1 - F.x0 + 520;
+    r.box(cx, 0, WY - 46, BW, 210, 52, '#66655f', { tex: 'concreto', rough: 0.95 });
+    r.box(cx, 210, WY - 46, BW + 10, 12, 60, '#55544e', { tex: 'concreto' });
+    for (const dx of [-1, 1]) for (const k of [90, 240]) r.box(cx + dx * k, 0, WY - 16, 26, 222, 14, '#5c5b55', { tex: 'concreto' });
+    r.box(cx, 0, WY - 19, 150, 104, 4, '#040505', { tex: false });
+    r.box(cx, 104, WY - 16, 170, 12, 10, '#55544e', { tex: 'concreto' });
+    for (let i = 0; i < 7; i++) {
+      const bx = cx - 66 + i * 22;
+      if (i === 3 || i === 4) r.tube(bx, 104, WY - 15, bx + (i === 3 ? -14 : 14), 30, WY + 6, 2.2, '#4a4844', { metal: 0.6 });   // barras arrancadas
+      else r.tube(bx, 0, WY - 15, bx, 104, WY - 15, 2.2, '#4a4844', { metal: 0.6 });
+    }
+    r.box(cx, 140, WY - 19, 44, 30, 4, '#0b0d0e', { tex: false });   // janelinha
+    r.box(cx, 178, WY - 18, 6, 20, 2, '#d8d4c4', { tex: false });   // seta pintada para baixo
+    for (const s of [-1, 1]) r.box(cx + s * 5, 172, WY - 18, 14, 4, 2, '#d8d4c4', { tex: false, rotZ: s * 0.8 });
+    for (let i = 0; i < 9; i++) r.cone(cx - 520 + i * 130 + H(i + 40) * 40, 0, WY - 200 - H(i + 60) * 120, 50, 260 + H(i + 70) * 120, '#121811', { tex: false, shadow: false });
+  },
+
   draw3d(g, r) {
     const d = g.data, F = this.FIELD, SY = this.START_Y, WY = this.WALL_Y;
-    // pátio à noite: chão de cimento, muro alto com arame ao fundo, largada atrás
-    r.yard(F.x0 - 400, WY - 260, F.x1 + 400, SY + 500, { quadra: false, holofote: false, postes: 0, guarita: false });
-    r.box(480, 0, WY - 30, 1400, 160, 40, '#5a5a56', { rough: 0.95, tex: 'concreto' });
-    for (let x = -200; x <= 1160; x += 170) r.cyl(x, 160, WY - 30, 2, 26, '#3a3d40', { metal: 0.6 });
-    for (const hy of [172, 182]) r.beam(-200, hy, WY - 30, 1160, hy, WY - 30, 1.2, '#8a8f96', { metal: 0.7, shadow: false });
+    this.drawVala3d(g, r);
     r.plane(480, 0.5, WY, F.x1 - F.x0 + 80, 6, '#4dff7a', { glow: true, opacity: 0.5 });
     r.plane(480, 0.5, SY, F.x1 - F.x0 + 80, 6, '#d8d8d8', { opacity: 0.6 });
-    // holofotes nos cantos do muro
-    for (const x of [F.x0 - 60, F.x1 + 60]) { r.box(x, 150, WY - 6, 16, 10, 12, '#2a2d30', { metal: 0.5 }); r.box(x, 148, WY, 12, 4, 2, '#ffe2b0', { glow: true }); }
-    r.light(F.x0 - 40, 150, WY + 40, '#ffd9a8', 1.0, 700);
-    r.light(F.x1 + 40, 150, WY + 40, '#ffd9a8', 1.0, 700);
+    // holofotes em cima da cabeceira
+    for (const x of [F.x0 + 10, F.x1 - 10]) { r.box(x, 222, WY - 30, 16, 10, 12, '#2a2d30', { metal: 0.5 }); r.box(x, 220, WY - 23, 12, 4, 2, '#ffe2b0', { glow: true }); }
+    r.light(F.x0 + 20, 200, WY + 40, '#ffd9a8', 1.0, 700);
+    r.light(F.x1 - 20, 200, WY + 40, '#ffd9a8', 1.0, 700);
     // torre atrás da largada (atrás das duas câmeras): o guarda em cima, e o facho do holofote dela varrendo o pátio
     const TX = 480, TZ = SY + 280;
     for (const [ox, oz] of [[-20, -20], [20, -20], [-20, 20], [20, 20]]) r.beam(TX + ox * 2, 0, TZ + oz * 2, TX + ox, 240, TZ + oz, 6, '#5a4128');
@@ -282,6 +354,8 @@ TN.registerMinigame({
       r.cone(cv.x, 0, cv.y, cv.w / 2, cv.h, '#5a4330', { rough: 1 });
       r.cone(cv.x - cv.w * 0.22, 0, cv.y + 8, cv.w * 0.28, cv.h * 0.6, '#4e3a2a', { rough: 1 });
       r.cone(cv.x + cv.w * 0.25, 0, cv.y - 6, cv.w * 0.24, cv.h * 0.5, '#63493a', { rough: 1 });
+      // sacos de areia na crista (as trincheiras de sacos do original)
+      for (let i = 0; i < 3; i++) r.box(cv.x + (i - 1) * 26, cv.h * 0.45, cv.y + 10, 26, 12, 18, '#7d7056', { tex: 'tecido', rotY: (i - 1) * 0.15 });
     }
   },
 

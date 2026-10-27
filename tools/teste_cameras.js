@@ -75,12 +75,12 @@ function secaoPisaLeve() {
 // --- hora do trem: trem vindo do fundo, nichos nas paredes laterais ---
 function secaoTrem() {
   const def = TN.minigames.hora_do_trem;
-  ok(def.Y0 === -200 && def.Y1 === 540 && def.HALF === 150, 'trem: túnel em y de -200 a 540, 150 de meia largura');
+  ok(def.Y0 === -50 && def.Y1 === 420 && def.HALF === 150, 'trem: túnel em y de -50 a 420, 150 de meia largura');
   ok(def.camera.pos[2] > def.Y1 && def.camera.target[2] < def.camera.pos[2] && Math.abs(def.camera.pos[0] - 480) < 1, 'trem: câmera atrás do fim do túnel, olhando para o fundo');
   const g = rodada('hora_do_trem'), d = g.data, P = g.players;
-  ok(d.floorL === 330 && d.floorR === 630 && d.nooks.length === 12 && d.nooks.filter((n) => n.side < 0).length === 6, 'trem: paredes em x=330/630, 6 nichos de cada lado');
+  ok(d.floorL === 330 && d.floorR === 630 && d.nooks.length === 8 && d.nooks.filter((n) => n.side < 0).length === 4, 'trem: paredes em x=330/630, 4 nichos de cada lado');
   const cys = d.nooks.map((n) => n.cy);
-  ok(Math.min(...cys) > def.Y0 && Math.max(...cys) < def.Y1 && Math.max(...cys) - Math.min(...cys) > 500, 'trem: nichos distribuídos em profundidade');
+  ok(Math.min(...cys) > def.Y0 && Math.max(...cys) < def.Y1 && Math.max(...cys) - Math.min(...cys) >= 300, 'trem: nichos distribuídos em profundidade');
   ok(P.every((p) => p.x > d.floorL && p.x < d.floorR && p.y > def.Y0 && p.y < def.Y1), 'trem: todos começam no chão do túnel');
   // nookOf / isSafeIn nas paredes laterais
   const n = d.nooks.find((k) => k.side < 0), p = P[0];

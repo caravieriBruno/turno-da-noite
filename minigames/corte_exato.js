@@ -189,34 +189,82 @@ TN.registerMinigame({
     return { x: n.x * k, y: n.y * k, a: cutting };
   },
 
-  // ---------- 3D (câmera fixa): oficina ao fundo, uma bancada pequena por jogador; o jogo em si é a camada 2D ----------
-  camera: { pos: [480, 400, 1010], target: [480, 70, 270], fov: 40 },
-  env: { bg: '#0c0a09', fog: [1000, 2400], ambient: 0.6, sun: 1.6, sunDir: [-0.3, 1, 0.5], sunColor: '#ffe2bd' },
-  TABLE_Z: 380,
-  tableX(i) { return 135 + i * 230; },
-  standPos(g, p) { return { x: this.tableX(p.id), z: this.TABLE_Z - 92, dir: Math.PI / 2 }; },
-  worldPos(g, p) { const s = this.standPos(g, p); return { x: s.x, y: 0, z: s.z }; },
+  // ---------- 3D (câmera fixa): o palco do Shape Cutter numa serralheria da cadeia ----------
+  // Geometria do original (1 m ≈ 22 px): estrado de chapa de 40 × 32 m e 2 m de altura com a frente em
+  // z = 560, três telas suspensas lado a lado sobre ele (as dos lados viradas 15° para o meio, todas
+  // inclinadas para baixo), o placar pendurado no meio e a câmera baixa na frente do estrado olhando
+  // um pouco para cima. Como aqui todos cortam juntos, as quatro bancadas ficam em fila em cima do estrado.
+  // A tela do meio mostra a figura; a da esquerda, as notas; a da direita, o tempo do corte.
+  camera: { pos: [480, 130, 900], target: [480, 150, 250], fov: 56 },
+  env: { bg: '#0c0a09', fog: [1100, 2600], ambient: 0.55, sun: 1.3, sunDir: [-0.3, 1, 0.5], sunColor: '#ffe2bd' },
+  STAGE: { x0: 40, x1: 920, z0: -144, z1: 560, h: 44 },
+  TABLE_Z: 400,
+  TELAS: [{ x: 260, z: 254, yaw: 0.26 }, { x: 480, z: 232, yaw: 0 }, { x: 700, z: 254, yaw: -0.26 }],
+  TELA: { w: 176, h: 132, y: 186, tilt: 0.26 },
+  tableX(i) { return 150 + i * 220; },
+  standPos(g, p) { return { x: this.tableX(p.id), z: this.TABLE_Z - 84, dir: Math.PI / 2 }; },
+  worldPos(g, p) { const s = this.standPos(g, p); return { x: s.x, y: this.STAGE.h, z: s.z }; },
+
+  // ponto (u, v) na face da tela k (u para a direita, v para cima a partir da base), `f` à frente da face
+  pontoTela(k, u, v, f = 4) {
+    const T = this.TELAS[k], S = this.TELA, a = T.yaw, ct = Math.cos(S.tilt), st = Math.sin(S.tilt);
+    // eixos: X = (cos a, 0, -sin a); Y = inclinado para a câmera; normal = Z girado
+    const Xx = Math.cos(a), Xz = -Math.sin(a), Nx = Math.sin(a) * ct, Nz = Math.cos(a) * ct;
+    const Yy = ct, Yx = Math.sin(a) * st, Yz = Math.cos(a) * st;
+    return [T.x + u * Xx + v * Yx + f * Nx, S.y + v * Yy - f * st, T.z + u * Xz + v * Yz + f * Nz];
+  },
 
   draw3d(g, r) {
-    const d = g.data, TZ = this.TABLE_Z;
-    // serralheria da oficina
-    r.room(-140, 75, 1100, 560, { estilo: 'oficina', h: 460, props: false });
-    r.light(250, 300, TZ, '#ffd9a8', 1.0, 600);
-    r.light(710, 300, TZ, '#ffd9a8', 1.0, 600);
+    const d = g.data, TZ = this.TABLE_Z, ST = this.STAGE, SH = ST.h, S = this.TELA;
+    // serralheria da oficina em volta do estrado
+    r.room(-260, ST.z0 - 80, 1220, 900, { estilo: 'oficina', h: 620, props: false, lamps: 4 });
+    // estrado de chapa com faixa zebrada na frente e escada no meio
+    r.box(480, 0, (ST.z0 + ST.z1) / 2, ST.x1 - ST.x0, SH, ST.z1 - ST.z0, '#4c4f52', { metal: 0.5, tex: 'metal' });
+    for (let i = 0; i < 44; i++) r.box(ST.x0 + 10 + i * 20, SH - 8, ST.z1 + 0.5, 20, 8, 2, i % 2 ? '#141414' : '#d9a800', { tex: false });
+    for (let k = 0; k < 3; k++) r.box(480, 0, ST.z1 + 18 + k * 18 - 18, 120, SH * (3 - k) / 3, 18, '#55585b', { metal: 0.5, tex: 'metal' });
+    // três telas suspensas (molduras de ferro presas por cabos ao teto) e o placar pendurado no meio
+    this.TELAS.forEach((T, k) => {
+      r.box(T.x, S.y - 6, T.z, S.w + 14, S.h + 12, 8, '#2a2c2e', { metal: 0.6, rotX: S.tilt, rotY: T.yaw });
+      const [cx, cy, cz] = this.pontoTela(k, 0, 0, 0.5);
+      r.box(cx, cy, cz, S.w, S.h, 2, '#0d1c1f', { glow: true, rotX: S.tilt, rotY: T.yaw });
+      for (const u of [-S.w / 2 + 10, S.w / 2 - 10]) { const [px, py, pz] = this.pontoTela(k, u, S.h + 4, -2); r.beam(px, py, pz, px, 640, pz, 1.4, '#1b1b1b'); }
+    });
+    r.beam(480, 330, 300, 480, 640, 300, 1.4, '#1b1b1b');
+    r.box(480, 300, 300, 50, 30, 30, '#2a2c2e', { metal: 0.6 });
+    r.box(480, 306, 315.5, 38, 16, 1, '#ff9b2f', { glow: true });
+    // tela do meio: a figura (forte na prévia, apagada no corte, verde no resultado)
+    if (d.poly) {
+      const cor = d.phase === 'preview' ? '#5ff' : d.phase === 'cut' ? '#2a6a6a' : '#46e27b', k = 0.55;
+      const P = d.poly.map((q) => this.pontoTela(1, q.x * k, S.h / 2 - q.y * k));
+      for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length]; r.beam(a[0], a[1], a[2], b[0], b[1], b[2], 5, cor, { glow: true }); }
+    }
+    // tela da esquerda: uma barra por jogador (a nota no resultado; cheia enquanto vivo)
+    g.players.forEach((p, i) => {
+      const n = g.players.length, u = -S.w / 2 + 22 + i * (S.w - 44) / Math.max(1, n - 1);
+      const val = !p.alive ? 0.06 : p.data.result ? Math.max(0.06, p.data.result.score / 100) : 0.5;
+      const [bx, by, bz] = this.pontoTela(0, u, 16, 2);
+      r.box(bx, by, bz, 18, (S.h - 34) * val, 2, p.alive ? p.color : '#333', { glow: true, rotX: S.tilt, rotY: this.TELAS[0].yaw });
+    });
+    // tela da direita: tempo do corte esvaziando
+    const frac = d.phase === 'cut' ? Math.max(0, d.phaseT / this.CUT_TIME) : d.phase === 'preview' ? 1 : 0;
+    if (frac > 0) { const [bx, by, bz] = this.pontoTela(2, -(S.w - 30) / 2 * (1 - frac), S.h / 2 - 12, 2); r.box(bx, by, bz, (S.w - 30) * frac, 24, 2, frac < 0.375 ? '#ff5050' : '#ff9b2f', { glow: true, rotX: S.tilt, rotY: this.TELAS[2].yaw }); }
+    // holofotes de palco
+    r.light(300, 420, TZ + 120, '#ffd9a8', 1.0, 700);
+    r.light(660, 420, TZ + 120, '#ffd9a8', 1.0, 700);
     g.players.forEach((p, i) => {
       const tx = this.tableX(i), b = p.data;
-      // mesa de corte (grelha) + chapa de aço pequena
-      r.box(tx, 0, TZ, 205, 36, 120, '#2a2e33', { metal: 0.5 });
-      r.box(tx, 36, TZ, 170, 3, 100, '#7a838c', { metal: 0.8, rough: 0.35 });
-      r.box(tx, 0.5, TZ + 64, 205, 2, 4, p.alive ? p.color : '#333', { glow: p.alive });   // faixa da cor do dono
+      // mesa de corte (grelha) + chapa de aço, em cima do estrado
+      r.box(tx, SH, TZ, 170, 36, 100, '#2a2e33', { metal: 0.5 });
+      r.box(tx, SH + 36, TZ, 150, 3, 86, '#7a838c', { metal: 0.8, rough: 0.35 });
+      r.box(tx, SH + 0.5, TZ + 54, 170, 2, 4, p.alive ? p.color : '#333', { glow: p.alive });   // faixa da cor do dono
       if (p.alive && d.phase === 'cut' && b.cutting) {
         const fl = 0.5 + 0.5 * Math.abs(Math.sin(g.time * 40 + i));
-        r.sphere(tx + b.cursor.x * 0.5, 41, TZ + b.cursor.y * 0.5, 3 + 2 * fl, '#ffffff', { glow: true });
-        r.light(tx, 70, TZ, '#ff9b2f', 1.2 + fl, 220);
+        r.sphere(tx + b.cursor.x * 0.45, SH + 41, TZ + b.cursor.y * 0.45, 3 + 2 * fl, '#ffffff', { glow: true });
+        r.light(tx, SH + 70, TZ, '#ff9b2f', 1.2 + fl, 220);
       }
       // operador atrás da bancada, olhando para a câmera
       const s = this.standPos(g, p);
-      r.character({ ...p, x: s.x, y: s.z }, { key: 'ce' + p.id, dir: s.dir, scale: 1.15, pose: !p.alive ? 'dead' : d.phase === 'cut' && !b.done ? 'work' : 'idle', label: false });
+      r.character({ ...p, x: s.x, y: s.z }, { key: 'ce' + p.id, y: SH, dir: s.dir, scale: 1.15, pose: !p.alive ? 'dead' : d.phase === 'cut' && !b.done ? 'work' : 'idle', label: false });
     });
   },
 
@@ -289,7 +337,7 @@ TN.registerMinigame({
   // por cima do 3D: cada quadrante ganha um fundo escuro translúcido
   drawOverlay(g, c) {
     if (!g.uses3d || !g.uses3d()) return;
-    this.drawHud(g, c, 'rgba(8,10,13,0.85)');
+    this.drawHud(g, c, 'rgba(8,10,13,0.6)');   // translúcido: o palco e as telas aparecem nas margens
   },
 
   // ---------- desenho 2D (alternativa sem WebGL) ----------

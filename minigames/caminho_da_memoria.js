@@ -17,6 +17,9 @@ TN.registerMinigame({
   // ---- constantes (original: luzes rows×0,5 s; tempo (rows+1)×5 s; 3×3 → máx. 7 fileiras × 6 portas) ----
   SPEED: 165, R: 13, LIVES: 2, FUSE: 2, ZONE_W: 84, WALL_T: 14, MAX_ROWS: 7, MAX_DOORS: 6, MAX_SUBS: 8,
   BOT_RECALL: 0.8,
+  // geometria do original: passarela de células de 8 × 10 m (aqui CELL × ROW_D) com uma porta por coluna em
+  // cada divisa, entre dois patamares mais largos que ela; a largura cresce com o número de portas
+  CELL: 68, ROW_D: 85,
 
   // cores das portas: verde/vermelho (como sempre), mas em painéis grandes com ✓/✗ e o chão pintado na prévia,
   // porque as esferas minúsculas confundiam
@@ -36,20 +39,26 @@ TN.registerMinigame({
     const d = g.data, a = g.arena, U = TN.util;
     d.sub++;
     d.leftToRight = !d.leftToRight;   // início e saída trocam de lado a cada travessia
-    const zw = this.ZONE_W;
-    d.startZone = d.leftToRight ? { x: a.x, y: a.y, w: zw, h: a.h } : { x: a.x + a.w - zw, y: a.y, w: zw, h: a.h };
-    d.endZone = d.leftToRight ? { x: a.x + a.w - zw, y: a.y, w: zw, h: a.h } : { x: a.x, y: a.y, w: zw, h: a.h };
-    // paredes igualmente espaçadas entre as zonas, na ordem em que serão atravessadas
-    const x0 = a.x + zw, x1 = a.x + a.w - zw, gap = Math.min(a.h / d.doors * 0.62, 58);
+    const zw = this.ZONE_W, C = this.CELL, RD = this.ROW_D;
+    // passarela centrada: (fileiras + 1) faixas de ROW_D de comprimento e uma célula de CELL por porta de largura
+    const len = (d.rows + 1) * RD, mx0 = a.x + (a.w - len) / 2, mx1 = mx0 + len;
+    const mw = d.doors * C, my0 = a.y + (a.h - mw) / 2;
+    d.maze = { x0: mx0, x1: mx1, y0: my0, y1: my0 + mw };
+    // patamares (início e saída) encostados nas pontas da passarela, com a altura toda da arena
+    const esq = { x: mx0 - zw, y: a.y, w: zw, h: a.h }, dir = { x: mx1, y: a.y, w: zw, h: a.h };
+    d.startZone = d.leftToRight ? esq : dir;
+    d.endZone = d.leftToRight ? dir : esq;
+    // divisas igualmente espaçadas na passarela, na ordem em que serão atravessadas; uma porta por célula
+    const gap = Math.min(C * 0.7, 58);
     d.walls = [];
     for (let i = 0; i < d.rows; i++) {
       const k = d.leftToRight ? i : d.rows - 1 - i;
       const doors = [];
       for (let j = 0; j < d.doors; j++) {
-        const cy = a.y + (j + 0.5) * a.h / d.doors;
+        const cy = my0 + (j + 0.5) * C;
         doors.push({ y0: cy - gap / 2, y1: cy + gap / 2, cy, red: false, flash: 0, flashOk: false });
       }
-      d.walls[i] = { x: x0 + (k + 1) * (x1 - x0) / (d.rows + 1), safe: U.randInt(0, d.doors - 1), doors };
+      d.walls[i] = { x: mx0 + (k + 1) * RD, safe: U.randInt(0, d.doors - 1), doors };
     }
     d.phase = 'preview';
     d.previewT = Math.max(2, d.rows * 0.5);
@@ -70,6 +79,13 @@ TN.registerMinigame({
   blocked(g, w, x, y, r) {
     if (Math.abs(x - w.x) >= this.WALL_T / 2 + r) return false;
     return !w.doors.some((dr) => y - r >= dr.y0 && y + r <= dr.y1);
+  },
+
+  // fora do piso? (passarela estreita entre os dois patamares; o resto é o vão da galeria)
+  fora(g, x, y, r) {
+    const d = g.data, m = d.maze, zl = Math.min(d.startZone.x, d.endZone.x), zr = Math.max(d.startZone.x, d.endZone.x) + this.ZONE_W;
+    if (x - r < zl || x + r > zr) return true;
+    return x + r > m.x0 && x - r < m.x1 && (y - r < m.y0 || y + r > m.y1);
   },
 
   addBatch(g, list, msg, sound = 'boom') {
@@ -101,6 +117,12 @@ TN.registerMinigame({
         if (!this.blocked(g, w, p.x, p.y, p.r)) continue;
         if (!this.blocked(g, w, ox, p.y, p.r)) p.x = ox;
         else if (!this.blocked(g, w, p.x, oy, p.r)) p.y = oy;
+        else { p.x = ox; p.y = oy; }
+      }
+      // grade lateral da passarela e beiradas dos patamares
+      if (this.fora(g, p.x, p.y, p.r)) {
+        if (!this.fora(g, ox, p.y, p.r)) p.x = ox;
+        else if (!this.fora(g, p.x, oy, p.r)) p.y = oy;
         else { p.x = ox; p.y = oy; }
       }
       // passou de uma parede no sentido da saída? (pela posição, para nunca perder uma travessia)
@@ -193,37 +215,61 @@ TN.registerMinigame({
   },
 
   // ---------- desenho 3D ----------
+  // Passarela de grade no vão de uma galeria de celas (o original é uma ponte de células suspensa no vazio):
+  // dois patamares de concreto nas pontas, a passarela estreita entre eles com guarda-corpo, as divisas de
+  // cela com as portas e, lá embaixo, os andares de baixo da galeria. Câmera a 45°, como a do original.
   camera: { pos: [480, 560, 840], target: [480, 0, 272], fov: 41 },
-  env: { bg: '#07090c', ambient: 0.55, sun: 1.8, sunDir: [-0.2, 1, 0.5] },
+  env: { bg: '#07090c', fog: [900, 1700], ambient: 0.55, sun: 1.8, sunDir: [-0.2, 1, 0.5] },
 
   draw3d(g, r) {
-    const a = g.arena, d = g.data, preview = d.phase === 'preview', T = this.WALL_T, WH = 44;
-    r.room(a.x - 90, a.y - 70, a.x + a.w + 90, a.y + a.h + 60);   // corredor de celas
-    const tile = 41;
-    for (let x = a.x; x < a.x + a.w; x += tile) for (let z = a.y; z < a.y + a.h; z += tile) {
-      r.plane(x + tile / 2, 0, z + tile / 2, tile - 1.5, tile - 1.5, ((x - a.x) / tile + (z - a.y) / tile) % 2 ? '#2b3138' : '#272c33');
+    const a = g.arena, d = g.data, m = d.maze, preview = d.phase === 'preview', T = this.WALL_T, WH = 44, C = this.CELL, RD = this.ROW_D;
+    const mcx = (m.x0 + m.x1) / 2, mcz = (m.y0 + m.y1) / 2, FERRO = '#4a4b47';
+    // galeria: paredes de cela em volta, sem chão (o vão); lá embaixo, os andares de baixo e o pátio interno
+    r.room(a.x - 120, a.y - 120, a.x + a.w + 120, a.y + a.h + 40, { estilo: 'cela', floor: false, h: 240, bars: false });
+    r.plane(480, -460, 300, 2600, 2200, '#0b0d0f', { tex: 'piso' });
+    for (const [z, sd] of [[a.y - 70, 1], [a.y + a.h + 60, -1]]) {   // passarelas dos andares de baixo, ao longo das paredes
+      for (const y of [-150, -300]) {
+        r.box(480, y, z, a.w + 240, 8, 70, '#2a2d30', { metal: 0.5 });
+        r.box(480, y + 34, z + sd * 34, a.w + 240, 3, 3, FERRO, { metal: 0.6 });
+        for (let x = a.x - 100; x <= a.x + a.w + 100; x += 90) r.box(x, y + 8, z + sd * 34, 3, 26, 3, FERRO, { metal: 0.6 });
+      }
     }
-    // zonas de início e saída (pisos que brilham)
-    r.plane(d.startZone.x + d.startZone.w / 2, 0.6, d.startZone.y + d.startZone.h / 2, d.startZone.w, d.startZone.h, '#1a4f80', { glow: true, opacity: 0.55 });
-    r.plane(d.endZone.x + d.endZone.w / 2, 0.6, d.endZone.y + d.endZone.h / 2, d.endZone.w, d.endZone.h, '#1d7a3c', { glow: true, opacity: 0.55 });
-    // muro externo baixo
-    r.box(a.x + a.w / 2, 0, a.y - 8, a.w + 16, 30, 16, '#3c444d');
-    r.box(a.x - 8, 0, a.y + a.h / 2, 16, 30, a.h, '#3c444d');
-    r.box(a.x + a.w + 8, 0, a.y + a.h / 2, 16, 30, a.h, '#3c444d');
-    // paredes de cela (meia-parede pintada) com portas; cada porta tem o portão de grade aberto, correndo
+    // patamares de concreto (início e saída) com guarda-corpo nas beiradas que dão para o vão
+    for (const [z, col] of [[d.startZone, '#1a4f80'], [d.endZone, '#1d7a3c']]) {
+      const zx = z.x + z.w / 2, zz = z.y + z.h / 2, fora = z.x < m.x0 ? z.x : z.x + z.w;
+      r.box(zx, -22, zz, z.w, 22, z.h, '#4a4d50', { tex: 'concreto' });
+      r.box(zx, -60, zz, z.w * 0.4, 38, 40, '#3a3d40', { tex: 'concreto' });   // pilar
+      r.plane(zx, 0.6, zz, z.w, z.h, col, { glow: true, opacity: 0.55 });
+      const grade = (x1, z1, x2, z2) => { r.beam(x1, 30, z1, x2, 30, z2, 3, FERRO, { metal: 0.6 }); r.beam(x1, 15, z1, x2, 15, z2, 2, FERRO, { metal: 0.6 }); };
+      grade(fora, z.y, fora, z.y + z.h);
+      grade(z.x, z.y, z.x + z.w, z.y); grade(z.x, z.y + z.h, z.x + z.w, z.y + z.h);
+      for (const [px, pz] of [[fora, z.y], [fora, z.y + z.h], [fora, zz], [z.x + z.w - fora + z.x, z.y], [z.x + z.w - fora + z.x, z.y + z.h]]) r.box(px, 0, pz, 4, 32, 4, FERRO, { metal: 0.6 });
+    }
+    // passarela: estrutura por baixo, piso de grade em células e guarda-corpo nos dois lados
+    r.box(mcx, -14, mcz, m.x1 - m.x0, 14, m.y1 - m.y0, '#2a2d30', { metal: 0.5 });
+    for (const zz of [m.y0 + 6, m.y1 - 6]) r.box(mcx, -40, zz, m.x1 - m.x0, 26, 8, '#33363a', { metal: 0.5 });   // vigas
+    for (let i = 0; i <= d.rows; i++) for (let j = 0; j < d.doors; j++) {
+      r.plane(m.x0 + (i + 0.5) * RD, 0, m.y0 + (j + 0.5) * C, RD - 2, C - 2, (i + j) % 2 ? '#3d4247' : '#363b40', { tex: 'metal', metal: 0.5 });
+    }
+    for (const zz of [m.y0, m.y1]) {
+      r.beam(m.x0, 30, zz, m.x1, 30, zz, 3, FERRO, { metal: 0.6 });
+      r.beam(m.x0, 15, zz, m.x1, 15, zz, 2, FERRO, { metal: 0.6 });
+      for (let x = m.x0; x <= m.x1 + 0.5; x += RD / 2) r.box(x, 0, zz, 4, 32, 4, FERRO, { metal: 0.6 });
+    }
+    // divisas de cela (meia-parede pintada) com portas; cada porta tem o portão de grade aberto, correndo
     // por fora da parede para o lado que tiver mais parede livre (não cobre outra porta)
     let lights = 0;
     for (const w of d.walls) {
-      let y = a.y;
+      let y = m.y0;
       const seg = (z0, z1) => {
         if (z1 - z0 <= 0.5) return;
         r.box(w.x, 0, (z0 + z1) / 2, T, 18, z1 - z0, '#35574a', { tex: 'tinta' });
         r.box(w.x, 18, (z0 + z1) / 2, T, WH - 18, z1 - z0, '#a59c86', { tex: 'tinta' });
       };
       for (const dr of w.doors) { seg(y, dr.y0); y = dr.y1; }
-      seg(y, a.y + a.h);
+      seg(y, m.y1);
       w.doors.forEach((dr, j) => {
-        const len = dr.y1 - dr.y0, antes = dr.y0 - (j ? w.doors[j - 1].y1 : a.y), depois = (j < w.doors.length - 1 ? w.doors[j + 1].y0 : a.y + a.h) - dr.y1;
+        const len = dr.y1 - dr.y0, antes = dr.y0 - (j ? w.doors[j - 1].y1 : m.y0), depois = (j < w.doors.length - 1 ? w.doors[j + 1].y0 : m.y1) - dr.y1;
         const gl = Math.min(len, Math.max(antes, depois) - 2);
         if (gl > 12) r.prop('grade', w.x + T / 2 + 3, depois >= antes ? dr.y1 + gl / 2 : dr.y0 - gl / 2, { w: gl, h: WH - 8, rotY: Math.PI / 2 });
         let col = null, segura = j === w.safe;
@@ -235,11 +281,11 @@ TN.registerMinigame({
         r.box(w.x, WH + 14, dr.cy, T + 2, 26, 26, col || '#222', { glow: !!col && col !== this.COR_EXPLODIDA });
         if (col) r.label(w.x, WH + 14, dr.cy, segura ? '✓' : '✗', col === this.COR_EXPLODIDA ? '#999' : '#fff', 22);
         if (preview) r.plane(w.x, 0.5, dr.cy, T + 10, dr.y1 - dr.y0, col, { glow: true, opacity: 0.35 });   // chão da porta pintado
-        if (col && dr.flash > 0 && lights < 6) { r.light(w.x, WH + 20, dr.cy, col, 0.8, 160); lights++; }
+        if (col && dr.flash > 0 && lights < 5) { r.light(w.x, WH + 20, dr.cy, col, 0.8, 160); lights++; }
         if (dr.red && !preview) r.disc(w.x, 0.8, dr.cy, 16, '#000', { opacity: 0.5 });     // fuligem da explosão
       });
     }
-    if (preview) r.light(480, 260, 290, '#ffffff', 0.6, 900);
+    r.light(mcx, 260, mcz + 60, '#ffffff', preview ? 0.6 : 0.35, 900);
     for (const p of g.players) r.character(p, { flash: p.alive && p.data.fuse > 0 && Math.sin(g.time * 30) > 0 });
   },
 
@@ -265,7 +311,9 @@ TN.registerMinigame({
   draw(g, c) {
     const a = g.arena, D = TN.draw, d = g.data, U = TN.util;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);
-    D.floor(c, a.x, a.y, a.w, a.h, { tile: 41, a: '#1a1f24', b: '#1d2329' });
+    const m = d.maze;
+    D.floor(c, m.x0, m.y0, m.x1 - m.x0, m.y1 - m.y0, { tile: 34, a: '#1a1f24', b: '#1d2329' });
+    for (const z of [d.startZone, d.endZone]) D.floor(c, z.x, z.y, z.w, z.h, { tile: 41, a: '#22272d', b: '#262b31' });
     // zonas de início e saída
     for (const [z, col, txt] of [[d.startZone, '#3fa9ff', 'INÍCIO'], [d.endZone, '#46e27b', 'SAÍDA']]) {
       c.globalAlpha = 0.14; c.fillStyle = col; c.fillRect(z.x, z.y, z.w, z.h); c.globalAlpha = 1;
@@ -273,14 +321,15 @@ TN.registerMinigame({
       D.text(c, txt, 0, 0, { size: 26, color: col, align: 'center' });
       c.restore();
     }
-    c.strokeStyle = '#555'; c.lineWidth = 6; c.strokeRect(a.x - 3, a.y - 3, a.w + 6, a.h + 6);
+    c.strokeStyle = '#555'; c.lineWidth = 4;
+    for (const yy of [m.y0, m.y1]) { c.beginPath(); c.moveTo(m.x0, yy); c.lineTo(m.x1, yy); c.stroke(); }
     // paredes com portas e lâmpadas
     const preview = d.phase === 'preview', T = this.WALL_T;
     for (const w of d.walls) {
-      let y = a.y;
+      let y = m.y0;
       c.fillStyle = '#5a636d';
       for (const dr of w.doors) { c.fillRect(w.x - T / 2, y, T, dr.y0 - y); y = dr.y1; }
-      c.fillRect(w.x - T / 2, y, T, a.y + a.h - y);
+      c.fillRect(w.x - T / 2, y, T, m.y1 - y);
       w.doors.forEach((dr, j) => {
         // estado da lâmpada: acesa no preview, marcada de vermelho se já explodiu, piscando ao atravessar
         let col = '#222', segura = j === w.safe;

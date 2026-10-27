@@ -22,27 +22,72 @@ TN.registerMinigame({
   ATIVACAO_MIN: 11, ATIVACAO_MAX: 17,   // a ativação é sorteada a cada vez (e a contagem não aparece na tela)
   THROW_V: 900, FRICTION: 2000, IMMUNE: 0.5, ATTACH_DELAY: 0.4, DEV_R: 13,
 
+  // ---- mapa (o do original: sala de 36,4 × 24,4 m, proporção 1,49; aqui 1 m = 19,8 px, quase a mesma área do
+  //      antigo retângulo de 880 × 410). Os obstáculos são os do
+  //      original: 8 blocos quadrados de 2 × 2 m (os de caixa de cabos, dois encostados no fundo e um na parede
+  //      da direita) e 8 lajes de concreto, duas delas inclinadas. Cada rodada pode vir espelhada na horizontal.
+  //      Jogadores nascem à direita e o carrapato no fundo à esquerda, como no original. ----
+  ARENA: { x: 120, y: 30, w: 720, h: 484 }, M: 19.8, OX: 0.16, OZ: -3.4, BLOCO_R: 22,
+  BLOCOS: [[-4.88, -4.94], [5.0, -4.93], [-4.87, 5.0], [5.01, 5.0], [-11.6, 4.95], [16.33, 0.87, 'dir'], [6.49, -13.8, 'fundo'], [-9.76, -13.8, 'fundo']],
+  // lajes: centro (m), tamanho (m) e inclinação (só visual: rotX/rotZ em rad)
+  LAJES: [
+    [-9.98, -0.75, 1.14, 2.62, 0, 0], [-8.33, -4.9, 5.03, 0.72, 0, 0], [-1.79, 2.9, 0.62, 3.4, 0, 0], [-2.48, 4.98, 5.02, 0.73, 0, 0],
+    [4.18, -0.3, 1.14, 2.05, 0, 0], [11.27, -7.0, 2.04, 0.63, 0, 0], [0.44, -8.35, 1.0, 3.21, 0, 0.22], [9.22, 0.07, 0.9, 3.11, 0.12, -0.2],
+  ],
+  SPAWNS: [[3.05, 2.85], [7.2, -1.58], [9.49, 3.17], [10.1, -3.59]], DEV_START: [-8.79, -6.81],
+
   init(g) {
-    const a = g.arena, d = g.data;
-    d.pillars = this.gerarPilares(a);
+    const d = g.data;
+    g.arena = { ...this.ARENA };
+    const a = g.arena;
+    d.espelho = TN.util.chance(0.5);
+    d.pillars = this.gerarPilares(a, d.espelho);
+    d.lajes = this.gerarLajes(a, d.espelho);
+    const [dx, dz] = this.mapa(a, d.espelho, ...this.DEV_START);
     d.dev = {
-      x: a.x + a.w / 2, y: a.y + a.h / 2, vx: 0, vy: 0, ang: 0, walk: 0,
+      x: dx, y: dz, vx: 0, vy: 0, ang: 0, walk: 0,
       state: 'idle', idleT: this.START, target: -1, carrier: -1, attachT: 0,
       timer: 0, dur: 0, timerOn: false, armed: false,
-      base: this.CHASE_SPEED, followT: 0, immune: -1, immuneT: 0, side: 1, sideT: 0,
+      base: this.CHASE_SPEED, followT: 0, immune: -1, immuneT: 0, side: 1, sideT: 0, chkT: 0, chkX: dx, chkY: dz,
     };
-    g.placeInCircle(a.x + a.w / 2, a.y + a.h / 2 + 10, 165);
+    const spawns = TN.util.shuffle(this.SPAWNS.slice());
+    g.players.forEach((p, i) => {
+      [p.x, p.y] = this.mapa(a, d.espelho, ...spawns[i % 4]);
+      p.dir = Math.atan2(d.dev.y - p.y, d.dev.x - p.x);   // de olho no carrapato
+    });
     for (const p of g.players) p.data = {};
   },
 
   // ---------- auxiliares ----------
+  // metros do original → px da arena (com espelho horizontal opcional)
+  mapa(a, esp, mx, mz) {
+    const x = (mx - this.OX) * this.M * (esp ? -1 : 1);
+    return [a.x + a.w / 2 + x, a.y + a.h / 2 + (mz - this.OZ) * this.M];
+  },
   byId(g, id) { return g.players.find((p) => p.id === id) || null; },
-  // empurra um círculo para fora dos pilares; devolve o pilar tocado
+  // todos os obstáculos como retângulos alinhados (centro x,y e meias-medidas hw,hh): blocos (r = meio lado) e lajes
+  obstaculos(g) {
+    const d = g.data, l = [];
+    for (const pl of d.pillars) l.push({ x: pl.x, y: pl.y, hw: pl.r, hh: pl.r });
+    for (const lj of d.lajes) l.push(lj);
+    return l;
+  },
+  // ponto do retângulo mais perto de (x, y)
+  perto(o, x, y) { return { x: TN.util.clamp(x, o.x - o.hw, o.x + o.hw), y: TN.util.clamp(y, o.y - o.hh, o.y + o.hh) }; },
+  // empurra um círculo para fora dos blocos e lajes; devolve a normal do último tocado (ou null)
   pillarPush(g, o, r) {
     let hit = null;
-    for (const pl of g.data.pillars) {
-      const dx = o.x - pl.x, dy = o.y - pl.y, dd = Math.hypot(dx, dy) || 1;
-      if (dd < pl.r + r) { o.x = pl.x + (dx / dd) * (pl.r + r); o.y = pl.y + (dy / dd) * (pl.r + r); hit = pl; }
+    for (const ob of this.obstaculos(g)) {
+      const q = this.perto(ob, o.x, o.y), dx = o.x - q.x, dy = o.y - q.y, dd = Math.hypot(dx, dy);
+      if (dd >= r) continue;
+      let nx, ny;
+      if (dd > 0.001) { nx = dx / dd; ny = dy / dd; }
+      else {   // centro dentro do retângulo: sai pelo lado mais próximo
+        const ex = [ob.x + ob.hw - o.x, o.x - (ob.x - ob.hw), ob.y + ob.hh - o.y, o.y - (ob.y - ob.hh)], k = ex.indexOf(Math.min(...ex));
+        [nx, ny] = [[1, 0], [-1, 0], [0, 1], [0, -1]][k];
+        q.x = k === 0 ? ob.x + ob.hw : k === 1 ? ob.x - ob.hw : o.x; q.y = k === 2 ? ob.y + ob.hh : k === 3 ? ob.y - ob.hh : o.y;
+      }
+      o.x = q.x + nx * r; o.y = q.y + ny * r; hit = { x: nx, y: ny };
     }
     return hit;
   },
@@ -61,20 +106,22 @@ TN.registerMinigame({
     dev.dur = TN.util.rand(this.ATIVACAO_MIN, this.ATIVACAO_MAX);
     dev.timer = dev.dur; dev.timerOn = true; dev.armed = false;
   },
-  // 8 a 10 pilares numa grade 3×3 irregular, com passagem de ao menos 40 px entre eles
-  gerarPilares(a) {
-    const U = TN.util;
-    for (let tent = 0; tent < 50; tent++) {
-      const lista = [];
-      for (const fx of [0.2, 0.5, 0.8]) for (const fy of [0.25, 0.5, 0.75]) {
-        lista.push({ x: a.x + a.w * (fx + U.rand(-0.06, 0.06)), y: a.y + a.h * (fy + U.rand(-0.06, 0.06)), r: U.rand(22, 34) });
-      }
-      if (U.chance(0.5)) lista.push({ x: a.x + a.w * U.rand(0.33, 0.67), y: a.y + a.h * U.rand(0.1, 0.14), r: U.rand(22, 30) });
-      else if (U.chance(0.5)) lista.splice(4, 1);   // sem o pilar central: um salão no meio
-      const ok = lista.every((p, i) => lista.every((q, j) => i === j || Math.hypot(p.x - q.x, p.y - q.y) > p.r + q.r + 40));
-      if (ok && lista.length >= 8 && lista.length <= 10) return lista;
-    }
-    return [[0.2, 0.25], [0.5, 0.25], [0.8, 0.25], [0.2, 0.5], [0.8, 0.5], [0.2, 0.75], [0.5, 0.75], [0.8, 0.75]].map(([fx, fy]) => ({ x: a.x + a.w * fx, y: a.y + a.h * fy, r: 26 }));
+  // os 8 blocos do original (r = meio lado, 22 px); os de parede ficam encostados nela
+  gerarPilares(a, esp = false) {
+    const R = this.BLOCO_R;
+    return this.BLOCOS.map(([mx, mz, enc]) => {
+      let [x, y] = this.mapa(a, esp, mx, mz);
+      if (enc === 'fundo') y = a.y + R;
+      if (enc === 'dir') x = esp ? a.x + R : a.x + a.w - R;
+      return { x, y, r: R };
+    });
+  },
+  // as 8 lajes (no mínimo 14 px de espessura, para a colisão não deixar ninguém atravessar)
+  gerarLajes(a, esp = false) {
+    return this.LAJES.map(([mx, mz, w, h, rx, rz]) => {
+      const [x, y] = this.mapa(a, esp, mx, mz);
+      return { x, y, hw: Math.max(7, (w * this.M) / 2), hh: Math.max(7, (h * this.M) / 2), rx, rz: esp ? -rz : rz };
+    });
   },
   follow(g, target, speed) {
     const dev = g.data.dev;
@@ -143,17 +190,27 @@ TN.registerMinigame({
         dev.followT += dt;
         const sp = dev.base + this.RAMP * Math.min(1, dev.followT / this.RAMP_T) + (dev.armed ? 40 : 0);
         let n = U.norm(t.x - dev.x, t.y - dev.y);
-        // contorna pilares no caminho: anda pela tangente, mantendo o mesmo lado por um tempo (não fica indeciso)
+        // contorna blocos e lajes que estão de fato no caminho (testa a reta até 70 px à frente): anda pela
+        // tangente do ponto mais perto do obstáculo, mantendo o mesmo lado por um tempo (não fica indeciso)
         dev.sideT -= dt;
-        for (const pl of d.pillars) {
-          const dx = pl.x - dev.x, dy = pl.y - dev.y, dd = Math.hypot(dx, dy) || 1;
-          const dot = (dx * n.x + dy * n.y) / dd;
-          if (dd < pl.r + 48 && dot > 0.2) {
-            if (!(dev.sideT > 0)) { dev.side = dx * n.y - dy * n.x > 0 ? 1 : -1; dev.sideT = 0.7; }
-            const tx = (-dy / dd) * dev.side, ty = (dx / dd) * dev.side;
-            const w = 1 - (dd - pl.r) / 48;
-            n = U.norm(n.x * (1 - w) * 0.6 + tx * (0.4 + w), n.y * (1 - w) * 0.6 + ty * (0.4 + w));
+        const look = Math.min(U.dist(dev.x, dev.y, t.x, t.y), 70), RR = this.DEV_R + 4;
+        let bloq = null, bs = 1e9;
+        for (const ob of this.obstaculos(g)) {
+          for (let k = 6; k <= look && k < bs; k += 6) {
+            if (Math.abs(dev.x + n.x * k - ob.x) < ob.hw + RR && Math.abs(dev.y + n.y * k - ob.y) < ob.hh + RR) { bs = k; bloq = ob; break; }
           }
+        }
+        if (bloq) {
+          if (!(dev.sideT > 0)) { dev.side = (bloq.x - dev.x) * n.y - (bloq.y - dev.y) * n.x > 0 ? 1 : -1; dev.sideT = 0.8; }
+          const q = this.perto(bloq, dev.x, dev.y), dx = q.x - dev.x, dy = q.y - dev.y, dd = Math.hypot(dx, dy) || 1;
+          const tx = (-dy / dd) * dev.side, ty = (dx / dd) * dev.side, w = 1 - bs / 76;
+          n = U.norm(n.x * (1 - w) * 0.6 + tx * (0.4 + w), n.y * (1 - w) * 0.6 + ty * (0.4 + w));
+        }
+        // empacou num canto (andou menos de 25 px em 1,2 s): troca o lado do contorno
+        dev.chkT = (dev.chkT || 0) + dt;
+        if (dev.chkT > 1.2) {
+          if (U.dist(dev.x, dev.y, dev.chkX ?? dev.x, dev.chkY ?? dev.y) < 25) { dev.side = -dev.side; dev.sideT = 1.2; }
+          dev.chkT = 0; dev.chkX = dev.x; dev.chkY = dev.y;
         }
         dev.x += n.x * sp * dt; dev.y += n.y * sp * dt;
         dev.ang = Math.atan2(n.y, n.x); dev.walk += sp * dt * 0.08;
@@ -186,8 +243,8 @@ TN.registerMinigame({
       if (dev.x > a.x + a.w - R) { dev.x = a.x + a.w - R; dev.vx = -Math.abs(dev.vx); }
       if (dev.y < a.y + R) { dev.y = a.y + R; dev.vy = Math.abs(dev.vy); }
       if (dev.y > a.y + a.h - R) { dev.y = a.y + a.h - R; dev.vy = -Math.abs(dev.vy); }
-      const pl = this.pillarPush(g, dev, R);
-      if (pl) { const n = U.norm(dev.x - pl.x, dev.y - pl.y), dot = dev.vx * n.x + dev.vy * n.y; if (dot < 0) { dev.vx -= 2 * dot * n.x; dev.vy -= 2 * dot * n.y; } g.sfx('step'); }
+      const n = this.pillarPush(g, dev, R);
+      if (n) { const dot = dev.vx * n.x + dev.vy * n.y; if (dot < 0) { dev.vx -= 2 * dot * n.x; dev.vy -= 2 * dot * n.y; } g.sfx('step'); }
       // acerta alguém no caminho = gruda nele
       for (const p of g.alive()) {
         if (p.id === dev.immune) continue;
@@ -224,7 +281,7 @@ TN.registerMinigame({
         const qx = p.x + cx * 70, qy = p.y + cy * 70;
         let s = 0;
         if (qx < a.x + 30 || qx > a.x + a.w - 30 || qy < a.y + 30 || qy > a.y + a.h - 30) s -= 300;
-        for (const pl of d.pillars) if (U.dist(qx, qy, pl.x, pl.y) < pl.r + p.r + 6) s -= 250;
+        for (const ob of this.obstaculos(g)) { const q = this.perto(ob, qx, qy); if (U.dist(qx, qy, q.x, q.y) < p.r + 6) s -= 250; }
         if (threat) s += Math.min(400, U.dist(qx, qy, threat.x, threat.y)) * (targeted || dev.state !== 'follow' ? 1 : 0.6);
         // fica longe das paredes (cantos são armadilha)
         s -= Math.max(0, 90 - Math.min(qx - a.x, a.x + a.w - qx, qy - a.y, a.y + a.h - qy)) * 1.2;
@@ -239,8 +296,31 @@ TN.registerMinigame({
   },
 
   // ---------- desenho 3D (câmera fixa) ----------
-  camera: { pos: [480, 560, 840], target: [480, 0, 268], fov: 41 },
-  env: { bg: '#07090b', fog: [1150, 2700], ambient: 0.5, sun: 1.7, sunDir: [-0.35, 1, 0.5], sunColor: '#d6e8ff' },
+  // Câmera do original: quase de cima (67° para baixo), 15,7 m de altura, fov 69.
+  camera: { pos: [480, 300, 470], target: [480, 0, 318], fov: 68 },
+  // luz fria e chapada de casa de força (o retrô tem menos ambiente, para o concreto claro não estourar)
+  env: (TN.R3 && TN.R3.RETRO === false)
+    ? { bg: '#07090b', fog: [1150, 2700], ambient: 0.5, sun: 1.7, sunDir: [-0.35, 1, 0.5], sunColor: '#d6e8ff' }
+    : { bg: '#07090b', fog: [1150, 2700], ambient: 0.3, sun: 0.8, sunDir: [-0.35, 1, 0.5], sunColor: '#d6e8ff', spot: 3.5, spotColor: '#e6eef5' },
+
+  // canaletas de cabos no piso (em metros do original) e as marcas de rastreio (disco preto e branco com LEDs)
+  CANALETAS: [
+    [[-13.7, -15.4], [-13.7, 1.0], [-8.4, 1.0], [-8.4, 8.8]], [[-13.7, -7.1], [-2.5, -7.1]],
+    [[-2.2, -15.4], [-2.2, -2.5], [6.6, -2.5]], [[1.1, -2.5], [1.1, 1.6], [1.9, 2.4], [1.9, 6.2]],
+    [[8.4, -10.0], [13.7, -10.0], [13.7, 8.8]], [[6.6, -3.4], [13.7, -3.4]],
+  ],
+  MARCAS: [[-2.12, -2.22], [-2.07, -9.77], [-13.6, -7.09], [-13.65, -12.62], [-13.65, 1.23], [-9.82, 3.58], [-8.29, 7.36], [2.07, 6.21], [13.82, 7.36], [6.79, -2.22], [13.82, -3.18], [13.78, -5.89], [8.51, -9.77]],
+  // cabos pendurados entre os topos dos 4 blocos do meio e daí para o teto (índices em BLOCOS; -1 = teto)
+  CABOS: [[0, 1], [1, 3], [3, 2], [2, 0], [0, 3], [0, -1], [1, -1], [3, -1], [2, -1]],
+  // quadro de força: caixa cinza com disjuntores e mostradores
+  quadro(r, x, z, y, w, h, frente) {
+    const lat = frente === 'x';   // de frente para x (na parede lateral) ou para +z (de frente para a câmera)
+    if (lat) r.box(x, y, z, 6, h, w, '#5f625e', { metal: 0.5 }); else r.box(x, y, z, w, h, 6, '#5f625e', { metal: 0.5 });
+    for (let i = 0; i < 4; i++) for (let k = 0; k < 2; k++) {
+      const u = -w / 2 + (i + 0.5) * w / 4, v = y + h * (0.3 + 0.4 * k);
+      if (lat) r.box(x + 3, v, z + u, 3, 6, w / 6, '#1a1b1c'); else r.box(x + u, v, z + 3, w / 6, 6, 3, '#1a1b1c');
+    }
+  },
 
   // a luz do carrapato está acesa neste quadro? (mesma regra do 2D: pisca mais rápido perto do fim)
   devLit(g, dev) {
@@ -275,34 +355,64 @@ TN.registerMinigame({
   },
 
   draw3d(g, r) {
-    const a = g.arena, d = g.data, dev = d.dev, t = g.time;
-    // galeria de celas em volta + ladrilhos de concreto esverdeado
-    r.room(a.x - 90, a.y - 70, a.x + a.w + 90, a.y + a.h + 60);
-    const T = 55;
-    for (let i = 0; i * T < a.w; i++) for (let j = 0; j * T < a.h; j++) {
-      const x0 = a.x + i * T, z0 = a.y + j * T, w = Math.min(T, a.x + a.w - x0), h = Math.min(T, a.y + a.h - z0);
-      r.plane(x0 + w / 2, 0, z0 + h / 2, w - 1.5, h - 1.5, (i + j) % 2 ? '#2b3535' : '#273131', { rough: 0.9 });
+    const a = g.arena, d = g.data, dev = d.dev, t = g.time, M = this.M, esp = d.espelho;
+    const P = (mx, mz) => this.mapa(a, esp, mx, mz);
+    // casa de força no subsolo: paredes de concreto, sem objetos de canto (o piso é desenhado aqui)
+    r.room(a.x, a.y, a.x + a.w, a.y + a.h, { estilo: 'subsolo', h: 150, props: false, lamps: 0, floor: '#1d1e1d' });
+    // piso de concreto rachado com manchas
+    r.plane(a.x + a.w / 2, 0.4, a.y + a.h / 2, a.w, a.h, '#6e706b', { rough: 0.95 });   // (acima das poças do estilo subsolo)
+    for (const [mx, mz, rr] of [[-12, -10, 40], [-6, 3, 26], [3, -11, 34], [10, 5, 30], [14, -12, 22], [-15, 6, 30], [0, 7, 20], [7, -6, 18]]) {
+      const [x, z] = P(mx, mz); r.disc(x, 0.6, z, rr, '#4f514c', { opacity: 0.6, tex: false });
     }
-    // paredes baixas + faixa de perigo na parede do fundo
-    const H = 34, Wd = 14;
-    r.box(a.x + a.w / 2, 0, a.y - Wd / 2, a.w + Wd * 2, H, Wd, '#3d4646', { metal: 0.25 });
-    r.box(a.x + a.w / 2, 0, a.y + a.h + Wd / 2, a.w + Wd * 2, H * 0.6, Wd, '#3d4646', { metal: 0.25 });
-    r.box(a.x - Wd / 2, 0, a.y + a.h / 2, Wd, H, a.h, '#3d4646', { metal: 0.25 });
-    r.box(a.x + a.w + Wd / 2, 0, a.y + a.h / 2, Wd, H, a.h, '#3d4646', { metal: 0.25 });
-    for (let i = 0; i < 22; i++) r.box(a.x + 20 + i * 40, 10, a.y - 0.5, 20, 14, 1.5, i % 2 ? '#111' : '#f5c400', { shadow: false });
-    // pilares de concreto com faixa de perigo e lâmpada no topo
+    // canaletas de cabos no piso e as marcas de rastreio com LEDs vermelhos
+    for (const linha of this.CANALETAS) for (let i = 0; i + 1 < linha.length; i++) {
+      const [x1, z1] = P(...linha[i]), [x2, z2] = P(...linha[i + 1]);
+      r.beam(x1, 1, z1, x2, 1, z2, 11, '#5c6063', { metal: 0.5 });
+      r.beam(x1, 2.2, z1, x2, 2.2, z2, 3, '#34383b', { metal: 0.5 });
+    }
+    for (const [mx, mz] of this.MARCAS) {
+      const [x, z] = P(mx, mz);
+      r.box(x, 0, z, 22, 2, 22, '#5a4f48');
+      r.cyl(x, 2, z, 8, 1, '#e8e8e2', { tex: false });
+      r.ring(x, 3.1, z, 0, 8, '#111111', { arc: 0.25 }); r.ring(x, 3.1, z + 0.01, 0, 8, '#111111', { arc: 0.75 });
+      for (const s of [-1, 1]) r.box(x + s * 6, 2, z - 9, 3, 3, 3, '#ff2020', { glow: true });
+    }
+    // canos enferrujados nas paredes laterais
+    for (const s of [-1, 1]) for (let k = 0; k < 3; k++) {
+      const x = s < 0 ? a.x + 8 : a.x + a.w - 8;
+      r.tube(x, 40 + k * 18, a.y, x, 40 + k * 18, a.y + a.h * (s < 0 ? 0.9 : 0.6), 6, k % 2 ? '#6b4a36' : '#5a4a3e', { metal: 0.5 });
+    }
+    // blocos de concreto (caixas de cabos) com a cruzeta de ferro e o distribuidor de cabos em cima
+    const HB = 84;
     for (const pl of d.pillars) {
-      r.cyl(pl.x, 0, pl.y, pl.r + 4, 4, '#2b3033', { metal: 0.4 });
-      r.cyl(pl.x, 0, pl.y, pl.r, 60, '#7a8282', { rough: 0.85 });
-      r.cyl(pl.x, 14, pl.y, pl.r + 1, 14, '#f5c400', { rough: 0.6 });
-      for (let k = 0; k < 6; k++) {
-        const an = (k / 6) * Math.PI * 2 + 0.3;
-        r.box(pl.x + Math.cos(an) * (pl.r + 1.3), 14, pl.y + Math.sin(an) * (pl.r + 1.3), 2, 14, 11, '#141414', { rotY: -an });
-      }
-      r.cyl(pl.x, 60, pl.y, pl.r + 5, 7, '#4a5155', { metal: 0.6, rough: 0.35 });
-      r.cyl(pl.x, 67, pl.y, 8, 4, '#ffe0b0', { glow: true });
-      r.light(pl.x, 125, pl.y, '#ffcf96', 0.75, 460);
+      r.box(pl.x, 0, pl.y, pl.r * 2, HB, pl.r * 2, '#8b8c86', { rough: 0.9 });
+      r.box(pl.x, HB, pl.y, pl.r * 2 + 4, 4, pl.r * 2 + 4, '#3b3d3e', { metal: 0.6 });
+      for (const s of [-1, 1]) r.beam(pl.x - pl.r, HB + 5, pl.y - s * pl.r, pl.x + pl.r, HB + 5, pl.y + s * pl.r, 3, '#2a2c2e', { metal: 0.6 });
+      r.box(pl.x, HB + 4, pl.y, 12, 8, 12, '#4a4d50', { metal: 0.7 });
     }
+    // lajes de concreto (duas inclinadas)
+    for (const lj of d.lajes) r.box(lj.x, 0, lj.y, lj.hw * 2, 80, lj.hh * 2, '#868781', { rough: 0.9, rotX: lj.rx, rotZ: lj.rz });
+    // quadros de força: na frente do bloco do fundo à esquerda, no bloco da parede direita e na parede esquerda
+    { const b = d.pillars[0]; this.quadro(r, b.x, b.y + b.r + 3, 44, 30, 30, 'z'); }
+    { const b = d.pillars[5], s = esp ? 1 : -1; this.quadro(r, b.x + s * (b.r + 3), b.y, 40, 30, 30, 'x'); }
+    { const [, z] = P(-16, 6.5), x = esp ? a.x + a.w - 3 : a.x + 3; this.quadro(r, x, z, 30, 60, 46, 'x'); }
+    // cabos pendurados: entre os topos dos blocos do meio e subindo para o teto (barriga de catenária)
+    const cabo = (x1, y1, z1, x2, y2, z2, sag, cor) => {
+      let px = x1, py = y1, pz = z1;
+      for (let i = 1; i <= 6; i++) {
+        const k = i / 6, x = x1 + (x2 - x1) * k, z = z1 + (z2 - z1) * k, y = y1 + (y2 - y1) * k - sag * 4 * k * (1 - k);
+        r.tube(px, py, pz, x, y, z, 1.6, cor, { shadow: false }); px = x; py = y; pz = z;
+      }
+    };
+    this.CABOS.forEach(([i, j], n) => {
+      const b = d.pillars[i], cor = n % 2 ? '#9a9d9f' : '#2b2c2d';
+      if (j >= 0) { const c = d.pillars[j]; cabo(b.x, HB + 8, b.y, c.x, HB + 8, c.y, 26, cor); }
+      else { const ex = b.x < a.x + a.w / 2 ? a.x - 40 : a.x + a.w + 40, ez = b.y < a.y + a.h / 2 ? a.y - 40 : a.y + a.h; cabo(b.x, HB + 8, b.y, ex, 300, ez, -40, cor); }
+    });
+    // luz fria do teto (a do original) e uma de cada lado, mais fraca
+    r.light(a.x + a.w / 2, 240, a.y + a.h / 2, '#dfe6ea', 0.6, 650);
+    r.light(a.x + a.w * 0.2, 200, a.y + a.h * 0.4, '#cfd8dc', 0.5, 420, { fundo: true });
+    r.light(a.x + a.w * 0.8, 200, a.y + a.h * 0.4, '#cfd8dc', 0.5, 420, { fundo: true });
     // corpos: mancha no chão + boneco caído
     for (const p of g.players) if (!p.alive) { r.disc(p.x, 0.6, p.y, 24, '#3a0a12', { opacity: 0.7 }); r.character(p); }
     // alvo atual: linha tracejada no chão e anel pulsante embaixo dele
@@ -374,14 +484,15 @@ TN.registerMinigame({
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);
     D.floor(c, a.x, a.y, a.w, a.h, { tile: 44, a: '#1f2a2a', b: '#233030' });
     c.strokeStyle = '#4a5555'; c.lineWidth = 6; c.strokeRect(a.x - 3, a.y - 3, a.w + 6, a.h + 6);
-    // pilares
-    for (const pl of d.pillars) {
-      c.fillStyle = 'rgba(0,0,0,0.35)'; c.beginPath(); c.arc(pl.x + 4, pl.y + 6, pl.r, 0, Math.PI * 2); c.fill();
-      c.fillStyle = '#6a7070'; c.strokeStyle = '#111'; c.lineWidth = 3;
-      c.beginPath(); c.arc(pl.x, pl.y, pl.r, 0, Math.PI * 2); c.fill(); c.stroke();
-      c.strokeStyle = '#f5c400'; c.lineWidth = 4; c.setLineDash([7, 6]);
-      c.beginPath(); c.arc(pl.x, pl.y, pl.r - 7, 0, Math.PI * 2); c.stroke(); c.setLineDash([]);
-      c.fillStyle = '#7d8484'; c.beginPath(); c.arc(pl.x, pl.y, pl.r - 13, 0, Math.PI * 2); c.fill();
+    // blocos e lajes (vistos de cima)
+    for (const ob of this.obstaculos(g)) {
+      c.fillStyle = 'rgba(0,0,0,0.35)'; c.fillRect(ob.x - ob.hw + 4, ob.y - ob.hh + 6, ob.hw * 2, ob.hh * 2);
+      c.fillStyle = '#7a7d78'; c.strokeStyle = '#111'; c.lineWidth = 3;
+      c.fillRect(ob.x - ob.hw, ob.y - ob.hh, ob.hw * 2, ob.hh * 2); c.strokeRect(ob.x - ob.hw, ob.y - ob.hh, ob.hw * 2, ob.hh * 2);
+    }
+    for (const pl of d.pillars) {   // cruzeta de ferro no topo dos blocos
+      c.strokeStyle = '#2a2c2e'; c.lineWidth = 3; c.beginPath();
+      c.moveTo(pl.x - pl.r, pl.y - pl.r); c.lineTo(pl.x + pl.r, pl.y + pl.r); c.moveTo(pl.x + pl.r, pl.y - pl.r); c.lineTo(pl.x - pl.r, pl.y + pl.r); c.stroke();
     }
     for (const p of g.players) if (!p.alive) g.drawPlayer(c, p);
     // linha de mira do carrapato até o alvo

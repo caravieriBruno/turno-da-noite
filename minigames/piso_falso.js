@@ -14,9 +14,10 @@ TN.registerMinigame({
   rounds: 3,
   scoring: 'survival',
 
-  // ---- constantes (original: grade 20×12, 3 embaralhamentos de 1 s, 3 s até cair, 3 s caído,
-  //      6 ladrilhos somem por ciclo, espera 7 s; empurrão 0,1 s de preparo + 0,3 s) ----
-  COLS: 14, ROWS: 8, TILE: 50,
+  // ---- constantes (original: grade 8×6 de ladrilhos de 4 m (a cena sobrescreve o padrão 20×12 do
+  //      script), 3 embaralhamentos de 1 s, 3 s até cair, 3 s caído, 6 ladrilhos somem por ciclo,
+  //      espera 7 s; empurrão 0,1 s de preparo + 0,3 s) ----
+  COLS: 8, ROWS: 6, TILE: 90,
   SPEED: 175, SHOVE: 560, SHOVE_WIND: 0.1, SHOVE_LOCK: 0.4, SHOVE_RANGE: 58,
   SHUFFLES: 3, SHUFFLE_T: 1, DROP_T: 2.5, WAIT_T: 3, REMOVE: 6,
   TOLERANCIA: 0.15,          // segundos sem chão antes de cair (dá para cortar a quina entre dois pisos)
@@ -26,12 +27,15 @@ TN.registerMinigame({
 
   init(g) {
     const d = g.data;
-    d.gx = g.W / 2 - (this.COLS * this.TILE) / 2; d.gy = 75;
+    d.gx = g.W / 2 - (this.COLS * this.TILE) / 2; d.gy = 60;
     d.tiles = [];
     for (let r = 0; r < this.ROWS; r++) for (let c = 0; c < this.COLS; c++) d.tiles.push({ c, r, sym: -1, state: 'up', fall: 0 });
     d.phase = 'idle'; d.phaseT = 0; d.phaseDur = 1.0; d.shuffleN = 0; d.cycle = 0;
     d.display = -1; d.safe = -1; d.decoy = false;
-    g.placeInCircle(g.W / 2, d.gy + (this.ROWS * this.TILE) / 2, 110);
+    // como no original: um em cada um dos 4 ladrilhos do meio
+    const cx = g.W / 2, cy = d.gy + (this.ROWS * this.TILE) / 2, h = this.TILE / 2;
+    const spawns = [[-h, -h], [h, -h], [h, h], [-h, h]];
+    g.players.forEach((p, i) => { p.x = cx + spawns[i % 4][0]; p.y = cy + spawns[i % 4][1]; p.dir = Math.PI / 2; });
     for (const p of g.players) Object.assign(p.data, { lock: 0, wind: 0, shoveT: 0, react: 0, fallT: -1, semChaoT: 0, target: null, misread: false, wander: null, wanderT: 0 });
   },
 
@@ -229,11 +233,15 @@ TN.registerMinigame({
   },
 
   // ---------------- 3D (câmera fixa) ----------------
-  // Grade de ladrilhos de metal sobre um poço escuro com borda zebrada. Ladrilhos que caem afundam no
-  // poço (y negativo) e voltam subindo; símbolos brilhantes em cima (✖ = duas barras, ■ = placa, ● = anel).
-  // Dois monitores altos nas laterais mostram o símbolo seguro e a barra do tempo.
-  camera: { pos: [480, 610, 830], target: [480, 0, 268], fov: 43 },
-  env: { bg: '#07060a', fog: [1000, 2200], ambient: 0.5, sun: 1.6, sunDir: [-0.25, 1, 0.45], sunColor: '#f1dcff' },
+  // Como no original (Stable Footing): um fosso de concreto fundo, sem chão em volta. A grade 8×6 de
+  // chapas de aço sobre pistões fica no meio do fosso, com um vão escuro até as paredes. Nas paredes
+  // laterais, dois dutos de ventilação redondos; no alto da parede do fundo, as três janelas gradeadas da
+  // sala de controle: as duas primeiras têm os monitores com o símbolo seguro, a terceira está quebrada.
+  // Ladrilhos que caem afundam no fosso (y negativo) e voltam subindo; símbolos brilhantes em cima
+  // (✖ = duas barras, ■ = placa, ● = anel). Escala: 1 m do original = 22,5 (ladrilho de 4 m = 90).
+  camera: { pos: [480, 330, 745], target: [480, 0, 318], fov: 66 },
+  env: { bg: '#050505', fog: [900, 2300], ambient: 0.55, sun: 1.1, sunDir: [-0.2, 1, 0.5], sunColor: '#e8e2d2' },
+  POCO: { x1: 60, x2: 900, z1: -10, z2: 665, topo: 288, fundo: -900 },
 
   // símbolo deitado no chão (em cima do ladrilho)
   sym3d(r, s, x, y, z, k = 1) {
@@ -257,56 +265,48 @@ TN.registerMinigame({
   },
 
   draw3d(g, r) {
-    const d = g.data, T = this.TILE, U = TN.util;
-    const W = this.COLS * T, H = this.ROWS * T, cx0 = d.gx + W / 2, cz0 = d.gy + H / 2, PIT = 420;
+    const d = g.data, T = this.TILE, P = this.POCO;
+    const W = this.COLS * T, H = this.ROWS * T, cx0 = d.gx + W / 2, cz0 = d.gy + H / 2;
     const lights = [];
-    // ---- pavilhão de celas em volta (sem chão: o piso abaixo deixa o poço aberto), poço, borda ----
-    const zf = d.gy - 90;
-    r.room(d.gx - 160, zf, d.gx + W + 160, d.gy + H + 60, { floor: false, windows: 0 });
-    for (let i = 0; i < 5; i++) {   // galeria de celas na parede do fundo: vão escuro + porta gradeada
-      const x = d.gx - 60 + (i + 0.5) * (W + 120) / 5;
-      r.box(x, 0, zf + 1, 96, 130, 3, '#07090a', { tex: false });
-      r.prop('grade', x, zf + 5, { w: 96, h: 130 });
-      r.label(x, 150, zf + 4, 'C-' + (11 + i), '#8f8a76', 10);
-    }
-    const outer = '#3e3c38', po = { rough: 0.95, tex: 'piso', texWorld: true };
-    r.box(cx0, -20, d.gy - 140, 1800, 20, 280 - 20, outer, po);
-    r.box(cx0, -20, d.gy + H + 160, 1800, 20, 300 + 20, outer, po);
-    r.box(d.gx - 300 - 10, -20, cz0, 600, 20, H + 20, outer, po);
-    r.box(d.gx + W + 300 + 10, -20, cz0, 600, 20, H + 20, outer, po);
-    // paredes internas do poço e fundo
-    r.box(cx0, -PIT, d.gy - 6, W + 12, PIT - 8, 12, '#16131c', { rough: 1 });
-    r.box(cx0, -PIT, d.gy + H + 6, W + 12, PIT - 8, 12, '#16131c', { rough: 1 });
-    r.box(d.gx - 6, -PIT, cz0, 12, PIT - 8, H, '#16131c', { rough: 1 });
-    r.box(d.gx + W + 6, -PIT, cz0, 12, PIT - 8, H, '#16131c', { rough: 1 });
-    r.plane(cx0, -PIT, cz0, W, H, '#1a0d24', { glow: true });
-    // borda zebrada (moldura)
-    const rim = (x, z, w, dd, n, alongX) => {
-      for (let k = 0; k < n; k++) {
-        const t = (k + 0.5) / n;
-        if (alongX) r.box(x - w / 2 + t * w, -2, z, w / n, 4, dd, k % 2 ? '#141414' : '#e0b400', { shadow: false });
-        else r.box(x, -2, z - dd / 2 + t * dd, w, 4, dd / n, k % 2 ? '#141414' : '#e0b400', { shadow: false });
+    // ---- fosso de concreto: as paredes descem até o fundo escuro ----
+    const conc = '#6d6a63', borda = '#7c786f', co = { rough: 0.95, tex: 'concreto' }, alt = P.topo - P.fundo;
+    r.box(cx0, P.fundo, P.z1 - 20, P.x2 - P.x1 + 80, alt, 40, conc, co);                          // fundo
+    r.box(P.x1 - 20, P.fundo, (P.z1 + P.z2) / 2, 40, alt, P.z2 - P.z1, conc, co);                // esquerda
+    r.box(P.x2 + 20, P.fundo, (P.z1 + P.z2) / 2, 40, alt, P.z2 - P.z1, conc, co);                // direita
+    r.box(cx0, P.fundo, P.z2 + 20, P.x2 - P.x1 + 80, 14 - P.fundo, 40, conc, co);               // frente: mureta baixa, perto da câmera
+    r.box(cx0, 14, P.z2 + 26, P.x2 - P.x1 + 120, 6, 56, borda, co);
+    // beiral no alto das paredes (a borda do fosso)
+    r.box(cx0, P.topo, P.z1 - 14, P.x2 - P.x1 + 60, 10, 50, borda, co);
+    for (const sx of [P.x1 - 14, P.x2 + 14]) r.box(sx, P.topo, (P.z1 + P.z2) / 2, 50, 10, P.z2 - P.z1, borda, co);
+    // manchas de umidade escorrendo
+    for (let k = 0; k < 6; k++) for (const sx of [P.x1 + 1, P.x2 - 1]) r.box(sx, -160 + (k % 3) * 40, 40 + k * 105, 2, 330, 14 + (k % 2) * 10, '#4a4842', { tex: false, shadow: false });
+    for (let k = 0; k < 7; k++) r.box(110 + k * 125, -200 + (k % 2) * 60, P.z1 + 1, 16, 300, 2, '#4a4842', { tex: false, shadow: false });
+    r.plane(cx0, P.fundo + 2, (P.z1 + P.z2) / 2, P.x2 - P.x1, P.z2 - P.z1, '#0a0909', { tex: false });
+    // ---- dutos de ventilação redondos nas paredes laterais (vent1/vent2 do original) ----
+    for (const side of [-1, 1]) {
+      const wx = side < 0 ? P.x1 : P.x2, vy = 172, vz = 215, R = 80;
+      r.tube(wx - side * 34, vy, vz, wx + side * 4, vy, vz, R + 10, '#6a4630', { metal: 0.5, rough: 0.7 });   // aro enferrujado
+      r.tube(wx - side * 35, vy, vz, wx - side * 30, vy, vz, R - 2, '#0b0c0c', { tex: false });              // boca escura
+      for (let k = -4; k <= 4; k++) {   // aletas horizontais
+        const y = vy + k * 16, half = Math.sqrt(Math.max(0, (R - 6) ** 2 - (k * 16) ** 2));
+        if (half > 4) r.beam(wx - side * 38, y, vz - half, wx - side * 38, y - 5, vz + half, 5, '#57504a', { metal: 0.6, rough: 0.5 });
       }
-    };
-    rim(cx0, d.gy - 10, W + 40, 16, 22, true);
-    rim(cx0, d.gy + H + 10, W + 40, 16, 22, true);
-    rim(d.gx - 10, cz0, 16, H, 12, false);
-    rim(d.gx + W + 10, cz0, 16, H, 12, false);
-    // ---- ladrilhos ----
+    }
+    // ---- três janelas da sala de controle no alto da parede do fundo ----
+    [213, 480, 747].forEach((x, i) => this.drawJanela3d(g, r, x, P.z1, i, lights));
+    // ---- grade de chapas de aço sobre pistões ----
     for (const t of d.tiles) {
       if (t.fall >= 1 && t.state === 'gone') continue;
       const x = d.gx + (t.c + 0.5) * T, z = d.gy + (t.r + 0.5) * T;
       const y = -t.fall * t.fall * 260;
-      const dark = t.fall > 0.5;
-      const col = dark ? '#2a2f38' : (t.c + t.r) % 2 ? '#4a5263' : '#55607a';
-      r.box(x, y - 10, z, T - 4, 10, T - 4, col, { metal: 0.55, rough: 0.45, rotX: t.fall * 0.35 * ((t.c % 2) ? 1 : -1), rotZ: t.fall * 0.25 });
-      if (t.sym >= 0 && t.fall < 0.5) this.sym3d(r, t.sym, x, y + 0.2, z);
+      const col = t.fall > 0.5 ? '#2a2f38' : (t.c + t.r) % 2 ? '#4c5562' : '#58616f';
+      r.box(x, y - 12, z, T - 6, 12, T - 6, col, { metal: 0.55, rough: 0.45, rotX: t.fall * 0.25 * ((t.c % 2) ? 1 : -1), rotZ: t.fall * 0.18 });
+      r.cyl(x, y - 272, z, 10, 260, '#3b3f44', { metal: 0.8, rough: 0.35 });   // pistão
+      if (t.sym >= 0 && t.fall < 0.5) this.sym3d(r, t.sym, x, y + 0.2, z, 1.6);
     }
-    // ---- monitores laterais com o símbolo seguro ----
-    for (const px of [d.gx / 2 + 4, g.W - d.gx / 2 - 4]) this.drawMonitor3d(g, r, px, cz0 - 70, 0, lights);
-    // ---- holofotes ----
-    lights.push([cx0 - 220, 260, cz0 - 40, '#ffe0c0', 0.9, 700], [cx0 + 220, 260, cz0 - 40, '#ffe0c0', 0.9, 700]);
-    if (d.phase === 'drop') lights.unshift([cx0, -120, cz0, '#c86bff', 1.6, 600]);
+    // ---- luzes: a lâmpada no alto do fosso (a OmniLight do original) e uma de serviço do lado da câmera ----
+    lights.push([cx0, 230, cz0 - 60, '#e4e0d4', 1.4, 900], [cx0, 280, P.z2 + 40, '#c9d0d8', 0.45, 700]);
+    if (d.phase === 'drop') lights.unshift([cx0, -160, cz0, '#c86bff', 1.6, 600]);
     for (const l of lights.slice(0, 6)) r.light(...l);
     // ---- jogadores ----
     for (const p of g.players) {
@@ -321,36 +321,44 @@ TN.registerMinigame({
     }
   },
 
-  drawMonitor3d(g, r, x, z, rot, lights) {
-    const d = g.data;
-    // pedestal e gabinete
-    r.box(x, 0, z, 40, 8, 40, '#22252b', { metal: 0.6 });
-    r.cyl(x, 8, z, 6, 70, '#3a3f47', { metal: 0.7, rough: 0.35 });
-    r.box(x, 70, z, 88, 150, 16, '#2b2f37', { metal: 0.5, rough: 0.5, rotY: rot });
-    const fx = Math.sin(rot) * 9, fz = Math.cos(rot) * 9;     // frente da tela (+z girado)
-    const sx = x + fx, sz = z + fz;
-    r.box(sx, 78, sz, 78, 134, 1, '#0b0e14', { rotY: rot });
-    r.box(sx, 220, sz - fz * 0.2, 88, 4, 2, d.phase === 'final' ? '#c86bff' : '#3a3344', { glow: true, rotY: rot });
+  // Janela gradeada da sala de controle: moldura de ferro, vão escuro e, atrás, a tela de um monitor.
+  // i = 0 e 1 mostram o símbolo (como as duas telas do original); i = 2 está quebrada (cacos e faísca).
+  drawJanela3d(g, r, x, zw, i, lights) {
+    const d = g.data, y0 = 96, wh = 132, ww = 128, z = zw + 2;
+    r.box(x, y0 - 9, z, ww + 22, wh + 18, 6, '#45372a', { metal: 0.5, rough: 0.7 });   // moldura enferrujada
+    r.box(x, y0, z + 3.5, ww, wh, 1, '#07090b', { tex: false });                      // vão escuro
+    r.box(x, y0 - 12, z + 8, ww + 30, 6, 16, '#7c786f', { tex: 'concreto' });          // peitoril
+    if (i === 2) {
+      for (let k = 0; k < 5; k++) r.beam(x - ww / 2 + 12 + k * 25, y0 + 12 + (k % 2) * 56, z + 5, x - ww / 2 + 30 + k * 22, y0 + wh - 18 - (k % 3) * 28, z + 5, 2, '#9aa7a8', { opacity: 0.6, shadow: false });
+      if (Math.sin(g.time * 7.3) > 0.93) { r.sphere(x + 20, y0 + 50, z + 8, 4, '#ffe8a0', { glow: true }); lights.push([x + 20, y0 + 50, z + 30, '#ffd890', 0.6, 160]); }
+      return;
+    }
+    for (let k = 1; k < 4; k++) r.tube(x - ww / 2 + k * ww / 4, y0, z + 7, x - ww / 2 + k * ww / 4, y0 + wh, z + 7, 1.8, '#3a3836', { metal: 0.6 });
+    const sz = z + 4.5;
+    r.box(x, y0 + wh - 8, sz, ww - 8, 3, 1, d.phase === 'final' ? '#c86bff' : '#2c2834', { glow: true });
     if (d.display >= 0) {
       const col = this.SYM_COLORS[d.display];
       const pulse = d.decoy ? 1 : 1 + Math.sin(g.time * 10) * 0.06;
-      // símbolo de mentira: apagado (cor escura) ; seguro: aceso e pulsando
-      this.symScreen(r, d.display, sx + Math.sin(rot) * 1.5, 170, sz + Math.cos(rot) * 1.5, 48 * pulse, col, { opacity: d.decoy ? 0.35 : 1, rotY: rot });
+      // símbolo de mentira: apagado; seguro: aceso e pulsando
+      this.symScreen(r, d.display, x, y0 + 74, sz, 64 * pulse, col, { opacity: d.decoy ? 0.35 : 1 });
       if (d.phase === 'final') {
         const k = TN.util.clamp(1 - d.phaseT / d.phaseDur, 0, 1);
-        r.box(sx + Math.sin(rot) * 1.5 - Math.cos(rot) * 30 * (1 - k), 96, sz + Math.cos(rot) * 1.5 + Math.sin(rot) * 30 * (1 - k), Math.max(1, 60 * k), 8, 1, '#c86bff', { glow: true, rotY: rot });
+        r.box(x - 50 * (1 - k), y0 + 12, sz, Math.max(1, 100 * k), 8, 1, '#c86bff', { glow: true });
       }
-      if (!d.decoy) lights.push([sx + fx * 3, 160, sz + fz * 3, col, 0.9, 260]);
+      if (!d.decoy) lights.push([x, y0 + 70, sz + 80, col, 0.9, 340]);
     }
     const label = d.display >= 0 ? (d.decoy ? 'EMBARALHANDO' : 'SEGURO') : d.phase === 'drop' ? 'CAIU' : 'AGUARDE';
     const lcol = d.display >= 0 ? (d.decoy ? '#888' : '#fff') : d.phase === 'drop' ? '#f55' : '#888';
-    r.label(sx, d.display >= 0 ? 118 : 150, sz, label, lcol, d.decoy ? 10 : 14);
+    r.label(x, d.display >= 0 ? y0 - 24 : y0 + 60, sz, label, lcol, d.decoy ? 10 : 14);
   },
 
   draw(g, c) {
     const d = g.data, T = this.TILE, D = TN.draw, U = TN.util;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);
     const W = this.COLS * T, H = this.ROWS * T;
+    // a grade (720×540) não cabe na tela de 960×540 com o HUD: desenha a lógica em escala, centrada
+    const K = 0.84, cy0 = d.gy + H / 2;
+    c.save(); c.translate(g.W / 2, 292); c.scale(K, K); c.translate(-g.W / 2, -cy0);
     // poço
     const gr = c.createRadialGradient(g.W / 2, d.gy + H / 2, 40, g.W / 2, d.gy + H / 2, W * 0.6);
     gr.addColorStop(0, '#000'); gr.addColorStop(1, '#16121c');
@@ -369,8 +377,6 @@ TN.registerMinigame({
       if (t.sym >= 0) this.drawSym(c, t.sym, cx, cy, 18 * s, this.SYM_COLORS[t.sym], 3);
       c.globalAlpha = 1;
     }
-    // painéis dos dois lados com o símbolo
-    for (const px of [d.gx / 2 + 2, g.W - d.gx / 2 - 2]) this.drawPanel(g, c, px, d.gy + H / 2);
     // jogadores: caindo (encolhendo) e vivos
     for (const p of g.players) {
       if (p.alive) continue;
@@ -381,6 +387,9 @@ TN.registerMinigame({
       c.globalAlpha = 1;
     }
     for (const p of g.alive()) g.drawPlayer(c, p, { flash: Math.hypot(p.vx, p.vy) > 40 || p.data.wind > 0 });
+    c.restore();
+    // painéis dos dois lados com o símbolo (fora da escala, nas margens)
+    for (const px of [92, g.W - 92]) this.drawPanel(g, c, px, 292);
   },
 
   drawPanel(g, c, x, y) {

@@ -29,19 +29,30 @@ TN.registerMinigame({
   TYPES: ['engrenagem', 'cano', 'cola', 'chapa', 'modulo'],
   NAMES: { engrenagem: 'ENGRENAGEM', cano: 'CANO', cola: 'COLA', chapa: 'CHAPA', modulo: 'MÓDULO' },
 
+  // Planta da oficina, medida no mapa original (sala quase quadrada de ~24×24 m vista de frente):
+  // 4 bancadas nos cantos, máquina central sólida (as peças também aparecem no tampo dela) e a
+  // esteira em U aberta para a parede esquerda (onde fica o ventilador), passando atrás e na frente da máquina.
+  BOUNDS: { x: 150, y: 40, w: 660, h: 540 },
+  MACHINE: { x: 345, y: 268, w: 270, h: 94 },
+  BELT_Y: [194, 413], BELT_X: 671, BELT_W: 34,
+  MACHINE_TOP: 38,
+
   init(g) {
-    const U = TN.util, a = g.arena, d = g.data;
+    const U = TN.util, d = g.data, B = this.BOUNDS;
     const BW = 128, BH = 54;
-    // bancadas nos 4 cantos (índice = id do jogador)
+    d.bounds = { ...B };
+    d.machine = { ...this.MACHINE };
+    // bancadas nos 4 cantos (índice = id do jogador): 0 e 1 no fundo, 2 e 3 na frente
     d.benches = [
-      { x: a.x + 14, y: a.y + 12 }, { x: a.x + a.w - BW - 14, y: a.y + 12 },
-      { x: a.x + 14, y: a.y + a.h - BH - 12 }, { x: a.x + a.w - BW - 14, y: a.y + a.h - BH - 12 },
+      { x: 191, y: 85 }, { x: 641, y: 85 }, { x: 191, y: 478 }, { x: 641, y: 478 },
     ].map((b, i) => ({ ...b, w: BW, h: BH, owner: i }));
-    // pontos de surgimento das peças (grade no meio da fábrica)
-    d.spots = [];
-    for (let r = 0; r < 3; r++) for (let k = 0; k < 6; k++) {
-      d.spots.push({ x: a.x + 205 + k * 94 + (r % 2) * 30 - 15, y: a.y + 115 + r * 92 });
-    }
+    // pontos de surgimento das peças: tampo da máquina (borda, ao alcance de quem encosta), esteira e chão
+    d.spots = [
+      ...[380, 480, 580].flatMap((x) => [{ x, y: 278 }, { x, y: 352 }]),
+      { x: 230, y: 194 }, { x: 360, y: 194 }, { x: 500, y: 194 }, { x: 620, y: 194 }, { x: 671, y: 300 },
+      { x: 300, y: 413 }, { x: 430, y: 413 }, { x: 560, y: 413 },
+      { x: 480, y: 118 }, { x: 480, y: 505 }, { x: 250, y: 300 }, { x: 750, y: 300 }, { x: 195, y: 380 }, { x: 765, y: 400 },
+    ];
     d.parts = [];
     d.respawns = [];          // tempos (g.time) em que nasce uma peça nova
     d.shots = [];             // rastros de tiro (só visual)
@@ -60,7 +71,8 @@ TN.registerMinigame({
     let bag = g.players.map((p) => p.data.recipe[0]);
     for (const s of U.shuffle(d.spots.slice()).slice(0, this.START_PARTS)) {
       if (!bag.length) bag = U.shuffle(this.TYPES.slice());
-      d.parts.push({ type: bag.pop(), x: s.x + U.rand(-8, 8), y: s.y + U.rand(-8, 8), rot: U.rand(0, 6.28) });
+      const alto = this.naMaquina(d, s.x, s.y);   // no tampo, só espalha ao longo da borda (continua ao alcance)
+      d.parts.push({ type: bag.pop(), x: s.x + U.rand(-8, 8), y: s.y + (alto ? 0 : U.rand(-8, 8)), rot: U.rand(0, 6.28) });
     }
   },
   // tipo a repor: o de maior demanda não atendida (quem precisa dele agora − no chão − nas mãos); sem
@@ -81,9 +93,16 @@ TN.registerMinigame({
     return TN.util.circleRect(p, { x: b.x - r, y: b.y - r, w: b.w + 2 * r, h: b.h + 2 * r });
   },
 
-  // impede o jogador de atravessar as bancadas
+  // peça em cima do tampo da máquina central?
+  naMaquina(d, x, y) {
+    const m = d.machine;
+    return !!m && x > m.x && x < m.x + m.w && y > m.y && y < m.y + m.h;
+  },
+
+  // impede o jogador de atravessar as bancadas e a máquina central
   solidBenches(g, p) {
-    for (const b of g.data.benches) {
+    const d = g.data;
+    for (const b of d.machine ? d.benches.concat([d.machine]) : d.benches) {
       if (!TN.util.circleRect(p, b)) continue;
       const nx = TN.util.clamp(p.x, b.x, b.x + b.w), ny = TN.util.clamp(p.y, b.y, b.y + b.h);
       let dx = p.x - nx, dy = p.y - ny, dd = Math.hypot(dx, dy);
@@ -94,7 +113,9 @@ TN.registerMinigame({
 
   dropPart(g, p) {
     if (!p.data.carry) return;
-    g.data.parts.push({ type: p.data.carry, x: p.x + Math.cos(p.dir) * 18, y: p.y + Math.sin(p.dir) * 18, rot: TN.util.rand(0, 6.28) });
+    const B = g.data.bounds || g.arena, U = TN.util;
+    const x = U.clamp(p.x + Math.cos(p.dir) * 18, B.x + 8, B.x + B.w - 8), y = U.clamp(p.y + Math.sin(p.dir) * 18, B.y + 8, B.y + B.h - 8);
+    g.data.parts.push({ type: p.data.carry, x, y, rot: U.rand(0, 6.28) });
     p.data.carry = null;
   },
 
@@ -123,7 +144,7 @@ TN.registerMinigame({
     for (const p of g.alive()) {
       const s = p.data;
       s.cd = Math.max(0, s.cd - dt); s.wrong = Math.max(0, s.wrong - dt); s.okFlash = Math.max(0, s.okFlash - dt);
-      g.movePlayer(p, this.SPEED, dt);
+      g.movePlayer(p, this.SPEED, dt, d.bounds);
       this.solidBenches(g, p);
       const near = this.nearBench(g, p);
       // AÇÃO: atirar / pegar arma / pegar peça
@@ -182,10 +203,58 @@ TN.registerMinigame({
   },
 
   // ------------------------------------------------------------------ bot
+  // o segmento (ax,ay)→(bx,by) cruza o retângulo m aumentado de `pad`?
+  cruza(m, pad, ax, ay, bx, by) {
+    const x0 = m.x - pad, x1 = m.x + m.w + pad, y0 = m.y - pad, y1 = m.y + m.h + pad;
+    let t0 = 0, t1 = 1;
+    const dx = bx - ax, dy = by - ay;
+    for (const [pp, q] of [[-dx, ax - x0], [dx, x1 - ax], [-dy, ay - y0], [dy, y1 - ay]]) {
+      if (Math.abs(pp) < 1e-9) { if (q < 0) return false; continue; }
+      const t = q / pp;
+      if (pp < 0) t0 = Math.max(t0, t); else t1 = Math.min(t1, t);
+      if (t0 > t1) return false;
+    }
+    return true;
+  },
+  // próximo ponto do caminho até (tx,ty) contornando a máquina central pelas quinas
+  // (caminho mais curto no grafo de visibilidade: jogador, 4 quinas afastadas e alvo)
+  rumo(g, p, tx, ty) {
+    const m = g.data.machine, pad = p.r - 2;
+    if (!m || !this.cruza(m, pad, p.x, p.y, tx, ty)) return { x: tx, y: ty };
+    const k = p.r + 12, U = TN.util;
+    const nos = [[p.x, p.y], [m.x - k, m.y - k], [m.x + m.w + k, m.y - k], [m.x + m.w + k, m.y + m.h + k], [m.x - k, m.y + m.h + k], [tx, ty]];
+    const N = nos.length, dist = Array(N).fill(1e9), ant = Array(N).fill(-1), feito = Array(N).fill(false);
+    dist[0] = 0;
+    for (let it = 0; it < N; it++) {
+      let u = -1;
+      for (let i = 0; i < N; i++) if (!feito[i] && (u < 0 || dist[i] < dist[u])) u = i;
+      if (u < 0 || dist[u] >= 1e9) break;
+      feito[u] = true;
+      for (let v = 0; v < N; v++) {
+        if (feito[v] || this.cruza(m, pad, nos[u][0], nos[u][1], nos[v][0], nos[v][1])) continue;
+        const c = dist[u] + U.dist(nos[u][0], nos[u][1], nos[v][0], nos[v][1]);
+        if (c < dist[v]) { dist[v] = c; ant[v] = u; }
+      }
+    }
+    if (ant[N - 1] < 0) return { x: tx, y: ty };
+    const cam = [];
+    for (let v = N - 1; v > 0; v = ant[v]) cam.unshift(v);
+    // o primeiro nó do caminho que ainda não foi alcançado
+    for (const v of cam) if (U.dist(p.x, p.y, nos[v][0], nos[v][1]) > 5) return { x: nos[v][0], y: nos[v][1] };
+    return { x: tx, y: ty };
+  },
+  // onde encostar para alcançar um alvo no tampo da máquina (ponto da borda mais próxima, do lado de fora)
+  encosto(g, p, x, y) {
+    const m = g.data.machine, k = p.r + 1;
+    const op = [[x, m.y - k, y - m.y], [x, m.y + m.h + k, m.y + m.h - y], [m.x - k, y, x - m.x], [m.x + m.w + k, y, m.x + m.w - x]];
+    op.sort((a, b) => a[2] - b[2]);
+    return { x: op[0][0], y: op[0][1] };
+  },
+
   bot(g, p, dt) {
     const U = TN.util, s = p.data, d = g.data, b = s.bot;
     let mx = 0, my = 0, wantA = false, wantB = false;
-    const go = (tx, ty) => { const n = U.norm(tx - p.x, ty - p.y); mx = n.x; my = n.y; };
+    const go = (tx, ty) => { const w = this.rumo(g, p, tx, ty), n = U.norm(w.x - p.x, w.y - p.y); mx = n.x; my = n.y; };
     const bench = d.benches[p.id], bcx = bench.x + bench.w / 2, bcy = p.id < 2 ? bench.y + bench.h + 10 : bench.y - 10;
     const enemies = g.alive().filter((o) => o !== p);
     if (s.hasGun) {
@@ -217,14 +286,26 @@ TN.registerMinigame({
           if (part.type !== need) continue;
           const dd = U.dist(p.x, p.y, part.x, part.y); if (dd < bd) { bd = dd; best = part; }
         }
-        if (best) { go(best.x, best.y); if (bd < this.PICK_R - 8) { wantA = true; mx *= 0.3; my *= 0.3; } }
-        else go(g.arena.x + g.arena.w / 2 + Math.cos(g.time + p.id) * 80, g.arena.y + g.arena.h / 2);
+        if (best) {
+          const alto = this.naMaquina(d, best.x, best.y), alvo = alto ? this.encosto(g, p, best.x, best.y) : best;
+          go(alvo.x, alvo.y);
+          if (bd < this.PICK_R - (alto ? 2 : 8)) { wantA = true; mx *= 0.3; my *= 0.3; }
+        }
+        else go(480 + Math.cos(g.time + p.id) * 160, p.id < 2 ? 225 : 395);
       }
       if (b.dodge > 0) {
         b.dodge -= dt;
         if (threat) { const n = U.norm(p.x - threat.x, p.y - threat.y); mx = -n.y * b.side; my = n.x * b.side; }
       }
     }
+    // destrava: se ficou empacado (ex.: dois bots disputando a mesma borda da máquina), anda de lado um pouco
+    const andou = Math.hypot(p.x - (b.lx ?? p.x), p.y - (b.ly ?? p.y));
+    b.lx = p.x; b.ly = p.y;
+    if (b.solta > 0) { b.solta -= dt; mx = b.sx; my = b.sy; }
+    else if ((mx || my) && andou < 0.4) {
+      b.preso = (b.preso || 0) + dt;
+      if (b.preso > 0.6) { b.preso = 0; b.solta = 0.45; const ang = U.rand(0, Math.PI * 2); b.sx = Math.cos(ang); b.sy = Math.sin(ang); }
+    } else b.preso = 0;
     // borda de botão: só "aperta" se não estava apertado no quadro anterior
     const a = wantA && !s.botPrevA, bb = wantB && !s.botPrevB;
     s.botPrevA = a; s.botPrevB = bb;
@@ -232,7 +313,7 @@ TN.registerMinigame({
   },
 
   // ------------------------------------------------------------------ 3D (câmera fixa)
-  camera: { pos: [480, 600, 950], target: [480, 0, 282], fov: 39 },
+  camera: { pos: [480, 420, 880], target: [480, 0, 300], fov: 44 },
   env: { ambient: 0.55, sun: 1.9, sunDir: [-0.3, 1, 0.45] },
 
   // cano horizontal (cilindro deitado) centrado em x,z, apontando para o ângulo `ang` da lógica
@@ -273,39 +354,110 @@ TN.registerMinigame({
     r.box(x - fx * 6 * k, y - 8 * k, z - fz * 6 * k, 5 * k, 8 * k, 5 * k, '#2b2f36', { rotY: -dir });
   },
 
-  draw3d(g, r) {
-    const a = g.arena, d = g.data, U = TN.util;
-    const blink = Math.round((0.5 + 0.5 * Math.sin(g.time * 7)) * 8) / 8; // quantizado: o motor guarda 1 material por opacidade
-    // oficina de trabalho prisional em volta + piso da fábrica
-    const zp = a.y - 60;   // parede do fundo da oficina
-    r.room(a.x - 90, zp, a.x + a.w + 90, a.y + a.h + 60, { estilo: 'oficina' });
-    const TX = a.w / 8, TZ = a.h / 4;
-    for (let i = 0; i < 8; i++) for (let j = 0; j < 4; j++) {
-      r.plane(a.x + TX * (i + 0.5), 0, a.y + TZ * (j + 0.5), TX - 2, TZ - 2, (i + j) % 2 ? '#2f343a' : '#2a2f34', { rough: 0.9 });
+  // esteira (decorativa, no nível do chão) de (x0,z0) a (x1,z1), alinhada a um eixo, com faixas zebradas dos lados
+  esteira3d(r, x0, z0, x1, z1, W, t) {
+    const hor = Math.abs(z1 - z0) < 1, len = hor ? Math.abs(x1 - x0) : Math.abs(z1 - z0);
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    r.plane(cx, 0.3, cz, hor ? len : W + 16, hor ? W + 16 : len, '#2b2724', { tex: 'metal', metal: 0.4 });   // canaleta
+    r.plane(cx, 0.6, cz, hor ? len : W, hor ? W : len, '#1a1918', { tex: false, rough: 0.8 });                // lona
+    // travessas da lona correndo (só depende do tempo: igual no host e nos clientes)
+    const passo = 22, off = (t * 40) % passo;
+    for (let s = off; s < len; s += passo) {
+      const px = hor ? Math.min(x0, x1) + s : cx, pz = hor ? cz : Math.min(z0, z1) + s;
+      r.plane(px, 0.8, pz, hor ? 3 : W - 4, hor ? W - 4 : 3, '#3a3734', { tex: false });
     }
-    // muretas da linha de montagem (fundo, laterais e frente) e tubulação na parede da oficina
-    r.box(480, 0, a.y - 12, a.w + 60, 40, 20, '#454c54', { metal: 0.3 });
-    r.box(a.x - 12, 0, a.y + a.h / 2, 20, 40, a.h + 4, '#454c54', { metal: 0.3 });
-    r.box(a.x + a.w + 12, 0, a.y + a.h / 2, 20, 40, a.h + 4, '#454c54', { metal: 0.3 });
-    r.box(480, 0, a.y + a.h + 10, a.w + 44, 16, 16, '#454c54', { metal: 0.3 });
-    r.beam(a.x - 90, 150, zp + 6, a.x + a.w + 90, 150, zp + 6, 9, '#6b7480', { metal: 0.8, rough: 0.3 });
-    r.beam(a.x - 90, 134, zp + 6, a.x + a.w + 90, 134, zp + 6, 6, '#8a5a2a', { metal: 0.6, rough: 0.4 });
-    for (let i = 0; i < 9; i++) r.box(a.x + 6 + i * (a.w - 12) / 8, 0, a.y - 1, 26, 4, 2, i % 2 ? '#111' : '#f5c400', { shadow: false });
-    // placa na parede da oficina
-    r.box(480, 92, zp + 1, 210, 26, 2, '#15181c');
-    r.label(480, 105, zp + 2, 'ESTOQUE DE PEÇAS', '#f5c400', 13);
-    // área de peças marcada no chão (faixas amarelas)
-    const sx0 = a.x + 160, sx1 = a.x + a.w - 160, sz0 = a.y + 80, sz1 = a.y + a.h - 80;
-    const ln = { opacity: 0.6, glow: true };
-    r.plane((sx0 + sx1) / 2, 0.5, sz0, sx1 - sx0, 3, '#f5c400', ln);
-    r.plane((sx0 + sx1) / 2, 0.5, sz1, sx1 - sx0, 3, '#f5c400', ln);
-    r.plane(sx0, 0.5, (sz0 + sz1) / 2, 3, sz1 - sz0, '#f5c400', ln);
-    r.plane(sx1, 0.5, (sz0 + sz1) / 2, 3, sz1 - sz0, '#f5c400', ln);
+    for (const sgn of [-1, 1]) {   // faixas de segurança zebradas
+      const ex = hor ? cx : cx + sgn * (W / 2 + 11), ez = hor ? cz + sgn * (W / 2 + 11) : cz;
+      r.plane(ex, 0.5, ez, hor ? len : 7, hor ? 7 : len, '#c9a200', { tex: false });
+      for (let s = 6; s < len; s += 18) {
+        const px = hor ? Math.min(x0, x1) + s : ex, pz = hor ? ez : Math.min(z0, z1) + s;
+        r.plane(px, 0.7, pz, hor ? 8 : 7, hor ? 7 : 8, '#141414', { tex: false });
+      }
+    }
+  },
+
+  draw3d(g, r) {
+    const d = g.data, B = d.bounds || this.BOUNDS, M = d.machine || this.MACHINE, t = r.time || g.time;
+    const blink = Math.round((0.5 + 0.5 * Math.sin(g.time * 7)) * 8) / 8; // quantizado: o motor guarda 1 material por opacidade
+    // oficina de trabalho prisional (tijolo) em volta; a frente fica aberta para a câmera
+    const X1 = B.x - 60, X2 = B.x + B.w + 60, Z1 = B.y - 66;
+    r.room(X1, Z1, X2, B.y + B.h + 40, { estilo: 'oficina', h: 280, props: false, lamps: 3, frente: 260 });
+    // piso de chapa xadrez em placas
+    const NX = 6, NZ = 5, TX = (X2 - X1) / NX, TZ = (B.y + B.h + 70 - Z1) / NZ;
+    for (let i = 0; i < NX; i++) for (let j = 0; j < NZ; j++) {
+      r.plane(X1 + TX * (i + 0.5), 0, Z1 + TZ * (j + 0.5), TX - 3, TZ - 3, (i + j) % 2 ? '#5b5e60' : '#55585a', { tex: 'metal', texWorld: true, metal: 0.45, rough: 0.6 });
+    }
+    // esteira em U: entra pela parede esquerda (embaixo do ventilador), passa atrás da máquina, desce pela
+    // direita e volta pela frente da máquina até a parede
+    const [BY0, BY1] = this.BELT_Y, BX = this.BELT_X, BW = this.BELT_W;
+    this.esteira3d(r, X1, BY0, BX + BW / 2, BY0, BW, t);
+    this.esteira3d(r, X1, BY1, BX + BW / 2, BY1, BW, -t);
+    this.esteira3d(r, BX, BY0 + BW / 2 + 1, BX, BY1 - BW / 2 - 1, BW, t);
+    // boca da esteira na parede esquerda (cortina de tiras)
+    for (const bz of [BY0, BY1]) {
+      r.box(X1 + 4, 0, bz, 10, 70, BW + 30, '#3b3632', { metal: 0.5 });
+      r.box(X1 + 10, 6, bz, 3, 54, BW + 6, '#0b0b0b', { tex: false });
+      for (let k = 0; k < 5; k++) r.box(X1 + 13, 8, bz - BW / 2 + 3 + k * (BW - 6) / 4, 1, 50, 6, '#6f7d73', { opacity: 0.7, tex: false });
+    }
+    // máquina central de montagem (sólida; as peças também aparecem no tampo)
+    const mcx = M.x + M.w / 2, mcz = M.y + M.h / 2, MT = this.MACHINE_TOP;
+    r.box(mcx, 0, mcz, M.w - 10, 8, M.h - 10, '#1f1d1b');                                       // rodapé escuro
+    r.box(mcx, 6, mcz, M.w, MT - 6, M.h, '#7d5c49', { tex: 'metal', metal: 0.45, rough: 0.7 });  // corpo enferrujado
+    r.box(mcx, MT, mcz, M.w + 6, 3, M.h + 6, '#8a6b55', { tex: 'metal', metal: 0.5, rough: 0.6 }); // tampo
+    for (let k = 0; k < 3; k++) {   // grelhas de ventilação na face da frente
+      const vx = M.x + 50 + k * 42;
+      for (let l = 0; l < 3; l++) r.box(vx, 14 + l * 7, M.y + M.h + 0.6, 34, 3, 1, '#0d0d0d', { tex: false });
+    }
+    r.box(M.x + M.w - 48, 10, M.y + M.h + 0.6, 50, 22, 1.2, '#6a4c3c', { metal: 0.5 });            // portinhola
+    r.box(M.x + M.w - 30, 18, M.y + M.h + 1.4, 4, 6, 1, '#cfc7b8', { metal: 0.8 });
+    r.tube(mcx - 20, 4, M.y + M.h + 2, mcx - 20, 4, BY1 - BW / 2 - 12, 3, '#9a9890', { metal: 0.6 });   // trilho até a esteira
+    // ventilador grande na parede esquerda, entre as duas pontas da esteira
+    const fz = (BY0 + BY1) / 2, fy = 150;
+    r.tube(X1 + 2, fy, fz, X1 + 16, fy, fz, 74, '#6b4a36', { metal: 0.5, rough: 0.6 });
+    r.tube(X1 + 14, fy, fz, X1 + 17, fy, fz, 64, '#101010', { tex: false });
+    for (let k = 0; k < 5; k++) {
+      const ang = t * 7 + k * Math.PI * 2 / 5;
+      r.beam(X1 + 20, fy, fz, X1 + 22, fy + Math.sin(ang) * 58, fz + Math.cos(ang) * 58, 14, '#8a8f8c', { metal: 0.6 });
+    }
+    r.sphere(X1 + 24, fy, fz, 10, '#2a2a2a', { metal: 0.6 });
+    for (let k = 0; k < 4; k++) r.tube(X1 + 26, fy - 70, fz - 60 + k * 40, X1 + 26, fy + 70, fz - 60 + k * 40, 1.5, '#3a3a38', { metal: 0.6 });   // grade
+    // portão de carga enrolável na parede esquerda, no fundo, e paletes encostados
+    r.box(X1 + 3, 0, B.y + 40, 6, 190, 120, '#4a4e4c', { tex: 'metal', metal: 0.5 });
+    for (let k = 0; k < 12; k++) r.box(X1 + 7, 8 + k * 15, B.y + 40, 2, 3, 116, '#2f3230', { tex: false });
+    for (let k = 0; k < 4; k++) r.box(X1 + 26, k * 12, B.y + 118, 40, 9, 70, '#7a5a3a', { tex: 'madeira' });
+    // guichê do guarda na parede do fundo (vidro gradeado) com bancada embaixo
+    const gx = 410;
+    r.box(gx, 70, Z1 + 1, 150, 90, 4, '#2e2f2c', { metal: 0.5 });
+    r.box(gx, 76, Z1 + 3, 138, 78, 2, '#0e1a1f', { tex: false });
+    for (let k = 0; k < 9; k++) r.tube(gx - 64 + k * 16, 76, Z1 + 6, gx - 64 + k * 16, 154, Z1 + 6, 1.4, '#55534e', { metal: 0.6 });
+    r.box(gx, 0, Z1 + 20, 170, 36, 34, '#5a4a38');
+    r.box(gx, 36, Z1 + 20, 176, 4, 38, '#3d3b37', { metal: 0.5 });
+    // placa da oficina
+    r.box(640, 120, Z1 + 1, 220, 30, 2, '#15181c');
+    r.label(640, 135, Z1 + 3, 'OFICINA 3 · COTA: 1 ARMA', '#f5c400', 12);
+    // cano grosso no alto da parede direita, com suportes, e radiador embaixo
+    r.tube(X2 - 12, 190, Z1, X2 - 12, 190, B.y + B.h + 40, 9, '#6b4a36', { metal: 0.6 });
+    r.tube(X2 - 26, 172, Z1, X2 - 26, 172, B.y + B.h + 40, 6, '#58483c', { metal: 0.6 });
+    for (let k = 0; k < 4; k++) r.box(X2 - 14, 160, B.y + 60 + k * 150, 8, 40, 8, '#2c2c2a', { metal: 0.5 });
+    for (let k = 0; k < 10; k++) r.box(X2 - 8, 6, B.y + 330 + k * 9, 8, 46, 5, '#a8a49a', { metal: 0.6 });
+    // carrinho de peças encostado na parede direita
+    const tx = X2 - 30, tz = B.y + 250;
+    for (const [dx, dz] of [[-12, -26], [12, -26], [-12, 26], [12, 26]]) {
+      r.box(tx + dx, 4, tz + dz, 3, 60, 3, '#5d5f5c', { metal: 0.6 });
+      r.cyl(tx + dx, 0, tz + dz, 4, 4, '#111', { tex: false });
+    }
+    for (const hy of [22, 60]) r.box(tx, hy, tz, 30, 3, 58, '#6b6f6a', { metal: 0.55 });
+    this.part3d(r, 'cano', tx, 63, tz - 10, 1, 1.2);
+    this.part3d(r, 'engrenagem', tx, 25, tz + 12, 1, 0.4);
+    // painel de cota na frente (as 5 lâmpadas vermelhas do original): acende em verde o progresso do líder
+    const lider = Math.max(0, ...g.players.filter((p) => p.alive).map((p) => p.data.prog || 0));
+    r.box(480, 0, B.y + B.h + 34, 300, 22, 26, '#c9c4b6', { tex: 'tinta' });
+    for (let k = 0; k < 5; k++) r.box(400 + k * 40, 22, B.y + B.h + 34, 28, 3, 18, k < lider ? '#38d86a' : '#e02020', { glow: true });
     // luz quente de teto sobre as bancadas
-    r.light(a.x + 200, 230, a.y + 120, '#ffd9a8', 0.85, 620);
-    r.light(a.x + a.w - 200, 230, a.y + 120, '#ffd9a8', 0.85, 620);
-    r.light(a.x + 200, 230, a.y + a.h - 100, '#ffd9a8', 0.75, 620);
-    r.light(a.x + a.w - 200, 230, a.y + a.h - 100, '#ffd9a8', 0.75, 620);
+    r.light(255, 230, 150, '#ffd9a8', 0.85, 620);
+    r.light(705, 230, 150, '#ffd9a8', 0.85, 620);
+    r.light(255, 230, 470, '#ffd9a8', 0.75, 620);
+    r.light(705, 230, 470, '#ffd9a8', 0.75, 620);
 
     // bancadas
     for (const b of d.benches) {
@@ -341,7 +493,7 @@ TN.registerMinigame({
     }
 
     // peças no chão
-    for (const part of d.parts) this.part3d(r, part.type, part.x, 0, part.y, 1.25, part.rot);
+    for (const part of d.parts) this.part3d(r, part.type, part.x, this.naMaquina(d, part.x, part.y) ? this.MACHINE_TOP + 3 : 0, part.y, 1.25, part.rot);
 
     // tiros: rajada (feixe + leque) e clarão do cano
     for (const sh of d.shots) {
@@ -460,14 +612,19 @@ TN.registerMinigame({
   },
 
   draw(g, c) {
-    const a = g.arena, D = TN.draw, d = g.data;
+    const D = TN.draw, d = g.data, B = d.bounds || this.BOUNDS, M = d.machine || this.MACHINE;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);
-    D.floor(c, a.x, a.y, a.w, a.h, { tile: 44, a: '#23272c', b: '#272c32' });
-    // área de peças marcada no chão
-    c.strokeStyle = 'rgba(245,196,0,0.35)'; c.lineWidth = 2; c.setLineDash([10, 8]);
-    c.strokeRect(a.x + 160, a.y + 80, a.w - 320, a.h - 160); c.setLineDash([]);
-    D.text(c, 'ESTOQUE DE PEÇAS', a.x + a.w / 2, a.y + 68, { size: 12, color: 'rgba(245,196,0,0.6)', align: 'center' });
-    c.strokeStyle = '#555'; c.lineWidth = 6; c.strokeRect(a.x - 3, a.y - 3, a.w + 6, a.h + 6);
+    // a planta é mais alta que a tela: o 2D de reserva desenha em escala vertical
+    c.save(); c.translate(0, 34); c.scale(1, (g.H - 40) / (B.h + 10)); c.translate(0, -B.y + 5);
+    D.floor(c, B.x, B.y, B.w, B.h, { tile: 44, a: '#23272c', b: '#272c32' });
+    // esteira em U e máquina central
+    const [BY0, BY1] = this.BELT_Y, BW = this.BELT_W;
+    c.fillStyle = '#1a1918';
+    c.fillRect(B.x, BY0 - BW / 2, this.BELT_X + BW / 2 - B.x, BW); c.fillRect(B.x, BY1 - BW / 2, this.BELT_X + BW / 2 - B.x, BW);
+    c.fillRect(this.BELT_X - BW / 2, BY0, BW, BY1 - BY0);
+    c.fillStyle = '#7d5c49'; c.fillRect(M.x, M.y, M.w, M.h);
+    c.strokeStyle = '#111'; c.lineWidth = 2; c.strokeRect(M.x, M.y, M.w, M.h);
+    c.strokeStyle = '#555'; c.lineWidth = 6; c.strokeRect(B.x - 3, B.y - 3, B.w + 6, B.h + 6);
     for (const b of d.benches) this.drawBench(g, c, b);
     for (const part of d.parts) {
       c.fillStyle = 'rgba(0,0,0,0.35)'; c.beginPath(); c.ellipse(part.x + 2, part.y + 9, 11, 4, 0, 0, Math.PI * 2); c.fill();
@@ -512,6 +669,7 @@ TN.registerMinigame({
         this.drawPart(c, s.carry, hx, hy, 0.9);
       }
     }
+    c.restore();
   },
 
   drawBench(g, c, b) {

@@ -16,16 +16,27 @@ TN.registerMinigame({
 
   // ---- constantes (original: 30 s por turno, empurrão 15, até ×1,5 pelas costas) ----
   SPEED: 175, SUB_TIME: 18, GRAB: 30, SHOVE: 520, SHOVE_LOCK: 0.5, BACK_BONUS: 1.5,
-  CORE_R: 52, PAD_W: 76, PAD_H: 60,
+  // arena redonda do original (raio 13 m ≈ 230 px): plataforma segura quadrada no MEIO (8,2 m ≈ 124 px),
+  // piso em íris de 16 lâminas que recolhem para a borda, seis bancos baixos encostados na parede com os
+  // itens em cima (12 vagas) e dois armários altos no fundo
+  ARENA_R: 230, PAD_W: 124, PAD_H: 124, BANCO_H: 30,
+  // bancos e armários (centro relativo ao meio da arena; w = largura em x, d = profundidade em z)
+  BANCOS: [{ dx: 149, dz: -99, w: 83, d: 27 }, { dx: 122, dz: 104, w: 27, d: 83 }, { dx: -3, dz: -190, w: 83, d: 27 },
+    { dx: -159, dz: -89, w: 27, d: 83 }, { dx: -157, dz: 75, w: 83, d: 27 }, { dx: 3, dz: 160, w: 83, d: 27 }],
+  ARMARIOS: [{ dx: -88, dz: -172, w: 60, d: 40, h: 78 }, { dx: 88, dz: -172, w: 60, d: 40, h: 78 }],
   ITEMS: ['CHAVE INGLESA', 'CANECA', 'LÂMPADA', 'PATINHO', 'CONE', 'DISQUETE'],
 
   init(g) {
     const d = g.data, a = g.arena;
     d.cx = a.x + a.w / 2; d.cy = a.y + a.h / 2;
     const pw = this.PAD_W, ph = this.PAD_H;
-    d.pads = [[-160, 0], [160, 0], [0, -122], [0, 122]].map(([ox, oy]) => ({ x: d.cx + ox - pw / 2, y: d.cy + oy - ph / 2, w: pw, h: ph }));
+    d.pads = [{ x: d.cx - pw / 2, y: d.cy - ph / 2, w: pw, h: ph }];   // uma só, no meio (como a SafePlatform)
+    // obstáculos sólidos (retângulos no chão) e vagas dos itens: duas em cima de cada banco
+    d.solidos = this.BANCOS.concat(this.ARMARIOS).map((b) => ({ x: d.cx + b.dx - b.w / 2, y: d.cy + b.dz - b.d / 2, w: b.w, h: b.d }));
+    d.vagas = [];
+    for (const b of this.BANCOS) for (const s of [-1, 1]) d.vagas.push(b.w > b.d ? { x: d.cx + b.dx + s * 20, y: d.cy + b.dz } : { x: d.cx + b.dx, y: d.cy + b.dz + s * 20 });
     d.items = []; d.sub = 0; d.batches = []; d.banner = null; d.open = 0;
-    g.placeInCircle(d.cx, d.cy, 200);
+    g.placeInCircle(d.cx, d.cy, 95);
     for (const p of g.players) Object.assign(p.data, { hold: null, lock: 0, fall: 0 });
     this.newSub(g);
   },
@@ -43,23 +54,31 @@ TN.registerMinigame({
     const kinds = [];
     for (let i = 0; i < n - 1; i++) kinds.push(d.target);
     for (let i = 0; i < n + 2; i++) { let k; do k = U.randInt(0, this.ITEMS.length - 1); while (k === d.target); kinds.push(k); }
-    for (const kind of kinds) {
-      let x, y, tries = 0;
-      do {
-        x = U.rand(a.x + 26, a.x + a.w - 26); y = U.rand(a.y + 26, a.y + a.h - 26); tries++;
-      } while (tries < 200 && (U.dist(x, y, d.cx, d.cy) < 150 || d.pads.some((pd) => U.circleRect({ x, y }, pd, 26)) ||
-        d.items.some((it) => U.dist(x, y, it.x, it.y) < 50) || g.alive().some((p) => U.dist(x, y, p.x, p.y) < 60)));
-      d.items.push({ kind, x, y, r: 14, holder: null, vx: 0, vy: 0, bob: U.rand(0, 6) });
-    }
+    // cada item vai para uma vaga sorteada em cima dos bancos (h = altura em que está apoiado)
+    const vagas = U.shuffle(d.vagas.slice());
+    kinds.forEach((kind, i) => {
+      const v = vagas[i % vagas.length];
+      d.items.push({ kind, x: v.x, y: v.y, h: this.BANCO_H, r: 14, holder: null, vx: 0, vy: 0, bob: U.rand(0, 6) });
+    });
     g.message(`ALVO: ${this.ITEMS[d.target]}`, 1.6, '#c77dff');
     g.sfx('go');
   },
 
+  // dentro da parede redonda e fora dos bancos e armários
+  prender(g, p) {
+    const d = g.data, U = TN.util, R = this.ARENA_R - p.r, dc = U.dist(p.x, p.y, d.cx, d.cy);
+    if (dc > R) { p.x = d.cx + (p.x - d.cx) / dc * R; p.y = d.cy + (p.y - d.cy) / dc * R; }
+    for (const b of d.solidos) {
+      if (!U.circleRect(p, b, p.r)) continue;
+      const dl = p.x - (b.x - p.r), dr = (b.x + b.w + p.r) - p.x, dt = p.y - (b.y - p.r), db = (b.y + b.h + p.r) - p.y, m = Math.min(dl, dr, dt, db);
+      if (m === dl) p.x = b.x - p.r; else if (m === dr) p.x = b.x + b.w + p.r; else if (m === dt) p.y = b.y - p.r; else p.y = b.y + b.h + p.r;
+    }
+  },
   onPad(g, p) { return g.data.pads.some((pd) => TN.util.inRect(p.x, p.y, pd)); },
   drop(g, p, vx = 0, vy = 0) {
     const it = p.data.hold;
     if (!it) return;
-    it.holder = null; it.x = p.x; it.y = p.y + 4; it.vx = vx; it.vy = vy;
+    it.holder = null; it.x = p.x; it.y = p.y + 4; it.vx = vx; it.vy = vy; it.h = 0;
     p.data.hold = null;
   },
 
@@ -76,12 +95,11 @@ TN.registerMinigame({
       const pd = p.data;
       pd.lock -= dt;
       const stunned = Math.hypot(p.vx, p.vy) > 40;
-      if (stunned || !playing) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt); p.input = save; }
-      else g.movePlayer(p, this.SPEED, dt);
+      // sem o retângulo da arena: quem prende é a parede redonda (prender)
+      if (stunned || !playing) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt, null); p.input = save; }
+      else g.movePlayer(p, this.SPEED, dt, null);
       g.decayPush(p, dt, 6);
-      // núcleo central é sólido
-      const dc = U.dist(p.x, p.y, d.cx, d.cy), md = this.CORE_R + p.r;
-      if (dc < md && dc > 0) { p.x = d.cx + (p.x - d.cx) / dc * md; p.y = d.cy + (p.y - d.cy) / dc * md; }
+      this.prender(g, p);
       if (!playing || stunned) continue;
       // AÇÃO: pega o item mais próximo (mãos vazias)
       if (p.input.aPressed && !pd.hold) {
@@ -114,15 +132,15 @@ TN.registerMinigame({
       }
     }
     U.separate(g.alive());
+    for (const p of g.alive()) this.prender(g, p);
     // itens: seguem quem segura; soltos deslizam um pouco
     for (const it of d.items) {
       it.bob += dt * 4;
       if (it.holder) { it.x = it.holder.x + Math.cos(it.holder.dir) * 20; it.y = it.holder.y + Math.sin(it.holder.dir) * 20; continue; }
       it.x += it.vx * dt; it.y += it.vy * dt;
       const k = Math.max(0, 1 - 6 * dt); it.vx *= k; it.vy *= k;
-      it.x = U.clamp(it.x, a.x + it.r, a.x + a.w - it.r); it.y = U.clamp(it.y, a.y + it.r, a.y + a.h - it.r);
-      const dc = U.dist(it.x, it.y, d.cx, d.cy), md = this.CORE_R + it.r;
-      if (dc < md && dc > 0) { it.x = d.cx + (it.x - d.cx) / dc * md; it.y = d.cy + (it.y - d.cy) / dc * md; }
+      const dc = U.dist(it.x, it.y, d.cx, d.cy), md = this.ARENA_R - it.r;
+      if (dc > md) { it.x = d.cx + (it.x - d.cx) / dc * md; it.y = d.cy + (it.y - d.cy) / dc * md; }
     }
     for (const p of g.players) if (!p.alive) p.data.fall += dt;
   },
@@ -196,7 +214,10 @@ TN.registerMinigame({
   },
 
   // ---------- desenho 3D (câmera fixa) ----------
-  camera: { pos: [480, 560, 840], target: [480, 0, 268], fov: 41 },
+  // Arena redonda no meio do refeitório, vista de cima e de frente (o original olha de lado, com a mesma
+  // inclinação): parede circular de 16 lados com o degrau de fora, piso em íris, plataforma no meio,
+  // bancos de concreto com os itens, armários no fundo e o painel do alvo pendurado sobre a plataforma.
+  camera: { pos: [480, 560, 840], target: [480, 0, 262], fov: 40 },
   env: { bg: '#08070b', fog: [1100, 2600], ambient: 0.5, sun: 1.8, sunDir: [-0.3, 1, 0.55], sunColor: '#ffe6d0' },
   PIT: 420,
 
@@ -251,75 +272,82 @@ TN.registerMinigame({
   },
 
   draw3d(g, r) {
-    const a = g.arena, d = g.data, t = g.time, PIT = this.PIT;
+    const d = g.data, t = g.time, PIT = this.PIT, R = this.ARENA_R, cx = d.cx, cz = d.cy;
     const warn = d.phase === 'play' && d.timer < 3 && Math.floor(t * 6) % 2 === 0;
-    // fundo do poço e entorno
     // refeitório em volta (sem chão do r.room: o piso de caquinho abaixo deixa o poço aberto)
-    r.room(a.x - 90, a.y - 70, a.x + a.w + 90, a.y + a.h + 60, { estilo: 'refeitorio', floor: false });
-    for (const [px, pz, pw, ph] of [[480, a.y - 400, 1800, 800], [480, a.y + a.h + 400, 1800, 800], [a.x - 400, a.y + a.h / 2, 800, a.h], [a.x + a.w + 400, a.y + a.h / 2, 800, a.h]]) r.plane(px, -1, pz, pw, ph, '#4e241d', { tex: 'caquinho', texWorld: true });
+    r.room(cx - 470, cz - R - 90, cx + 470, cz + R + 40, { estilo: 'refeitorio', floor: false });
+    for (const [px, pz, pw, ph] of [[cx, cz - R - 600, 2400, 1000], [cx, cz + R + 600, 2400, 1000], [cx - R - 700, cz, 1200, 2 * R + 220], [cx + R + 700, cz, 1200, 2 * R + 220]]) r.plane(px, -1, pz, pw, ph, '#4e241d', { tex: 'caquinho', texWorld: true });
+    // fundo do poço: triturador com rolos dentados e grade vermelha brilhando
+    r.disc(cx, -PIT, cz, R + 10, '#1e1416', { rough: 0.9 });
     if (d.open > 0) {
-      // fundo do poço: triturador com rolos dentados e grade vermelha brilhando
-      r.plane(a.x + a.w / 2, -PIT, a.y + a.h / 2, a.w, a.h, '#1e1416', { rough: 0.9 });
-      for (let k = 1; k < 8; k++) r.plane(a.x + (a.w * k) / 8, -PIT + 0.5, a.y + a.h / 2, 3, a.h, '#ff2a2a', { glow: true, opacity: 0.6 });
+      for (let k = -3; k <= 3; k++) r.plane(cx + k * 60, -PIT + 0.5, cz, 3, 2 * Math.sqrt(R * R - (k * 60) ** 2), '#ff2a2a', { glow: true, opacity: 0.6 });
       for (let k = 0; k < 4; k++) {
-        const rz = a.y + 50 + k * 105, ph = t * 6 * (k % 2 ? 1 : -1);
-        r.cyl(a.x, -PIT + 22, rz, 22, a.w, '#4a4d55', { rotZ: -Math.PI / 2, metal: 0.8, rough: 0.35, sides: 10 });
-        for (let s = 0; s < 6; s++) r.box(a.x + 70 + s * 150, -PIT + 22 + Math.sin(ph + s) * 22, rz + Math.cos(ph + s) * 22, 10, 8, 8, '#8a8f99', { metal: 0.9 });
+        const rz = cz - 165 + k * 110, half = Math.sqrt(R * R - (rz - cz) ** 2), ph = t * 6 * (k % 2 ? 1 : -1);
+        r.cyl(cx - half, -PIT + 22, rz, 22, 2 * half, '#4a4d55', { rotZ: -Math.PI / 2, metal: 0.8, rough: 0.35, sides: 10 });
+        for (let s = 0; s < 4; s++) r.box(cx - half + 40 + s * (2 * half - 80) / 3, -PIT + 22 + Math.sin(ph + s) * 22, rz + Math.cos(ph + s) * 22, 10, 8, 8, '#8a8f99', { metal: 0.9 });
       }
-      r.light(d.cx, -PIT + 120, d.cy, '#ff2a2a', 2.5 * d.open, 900);
+      r.light(cx, -PIT + 120, cz, '#ff2a2a', 2.5 * d.open, 900);
     }
-    // frestas do alçapão: vermelho piscando nos 3 s finais
-    if (d.open <= 0) r.plane(a.x + a.w / 2, -0.6, a.y + a.h / 2, a.w, a.h, warn ? '#ff2a2a' : '#050506', warn ? { glow: true } : {});
-    // piso em placas que despencam quando o chão se abre
-    const T = 55;
-    for (let i = 0; i * T < a.w; i++) for (let j = 0; j * T < a.h; j++) {
-      const x0 = a.x + i * T, z0 = a.y + j * T, w = Math.min(T, a.x + a.w - x0), h = Math.min(T, a.y + a.h - z0);
-      const tx = x0 + w / 2, tz = z0 + h / 2, s = this.sink(g, tx, tz);
-      if (s >= PIT - 10) continue;
-      r.box(tx, -6 - s, tz, w - 3, 6, h - 3, (i + j) % 2 ? '#2e2a36' : '#2a2631', { rough: 0.85, rotX: s ? Math.sin(i * 3.1 + j) * s * 0.0012 : 0 });
+    // frestas da íris: vermelho piscando nos 3 s finais
+    if (d.open <= 0) r.disc(cx, -0.6, cz, R, warn ? '#ff2a2a' : '#050506', warn ? { glow: true } : {});
+    // piso em íris: 16 lâminas que recolhem para baixo da parede (e afundam um pouco) quando o chão abre
+    const N = 16, bw = 2 * R * Math.sin(Math.PI / N) + 4, ease = d.open * d.open;
+    for (let i = 0; i < N; i++) {
+      const an = (i + 0.5) / N * Math.PI * 2, rr = R / 2 + ease * (R + 10);
+      r.box(cx + Math.cos(an) * rr, -6 - (i % 2) * 0.4 - ease * 30, cz + Math.sin(an) * rr, R, 6, bw, i % 2 ? '#2e2a36' : '#2a2631', { rotY: -an, rough: 0.85 });
     }
-    // paredes que descem até o fundo do poço + faixa de perigo
-    const H = 34, Wd = 14;
-    r.box(a.x + a.w / 2, -PIT, a.y - Wd / 2, a.w + Wd * 2, H + PIT, Wd, '#45404d', { metal: 0.25 });
-    r.box(a.x + a.w / 2, -PIT, a.y + a.h + Wd / 2, a.w + Wd * 2, H * 0.6 + PIT, Wd, '#45404d', { metal: 0.25 });
-    r.box(a.x - Wd / 2, -PIT, a.y + a.h / 2, Wd, H + PIT, a.h, '#45404d', { metal: 0.25 });
-    r.box(a.x + a.w + Wd / 2, -PIT, a.y + a.h / 2, Wd, H + PIT, a.h, '#45404d', { metal: 0.25 });
-    for (let i = 0; i < 22; i++) r.box(a.x + 20 + i * 40, 10, a.y - 0.5, 20, 14, 1.5, i % 2 ? '#111' : '#f5c400', { shadow: false });
-    // luzes de emergência nas paredes laterais (giram em vermelho nos 3 s finais / chão aberto)
-    for (const lx of [a.x - 4, a.x + a.w + 4]) {
+    // parede redonda (16 lados) que desce até o fundo do poço, com faixa de perigo e o degrau de fora
+    const WR = R + 8, sl = 2 * WR * Math.tan(Math.PI / N) + 2;
+    for (let i = 0; i < N; i++) {
+      const an = i / N * Math.PI * 2, x = cx + Math.cos(an) * WR, z = cz + Math.sin(an) * WR;
+      r.box(x, -PIT, z, 16, PIT + 46, sl, '#45404d', { rotY: -an, metal: 0.25 });
+      r.box(cx + Math.cos(an) * (WR - 8.5), 30, cz + Math.sin(an) * (WR - 8.5), 1.5, 10, sl - 4, i % 2 ? '#111' : '#f5c400', { rotY: -an, shadow: false, tex: false });
+      r.box(cx + Math.cos(an) * (WR + 40), 0, cz + Math.sin(an) * (WR + 40), 64, 16, 2 * (WR + 72) * Math.tan(Math.PI / N) + 2, '#3b3742', { rotY: -an, metal: 0.2 });
+    }
+    // luzes de emergência na parede (giram em vermelho nos 3 s finais / chão aberto)
+    for (const an of [Math.PI, 0, -Math.PI / 2]) {
       const on = warn || d.open > 0;
-      r.box(lx, 36, a.y + a.h / 2, 10, 10, 18, on ? '#ff2a2a' : '#3a1414', on ? { glow: true } : {});
+      r.box(cx + Math.cos(an) * (WR - 10), 40, cz + Math.sin(an) * (WR - 10), 10, 10, 18, on ? '#ff2a2a' : '#3a1414', on ? { glow: true, rotY: -an } : { rotY: -an });
     }
-    // plataformas seguras: colunas que ficam de pé quando o chão some
+    // bancos de concreto (os itens ficam em cima) e armários altos no fundo; descem até o fundo do poço
+    for (const b of this.BANCOS) {
+      r.box(cx + b.dx, -PIT, cz + b.dz, b.w, PIT + this.BANCO_H - 4, b.d, '#6e6b63', { tex: 'concreto' });
+      r.box(cx + b.dx, this.BANCO_H - 4, cz + b.dz, b.w + 4, 4, b.d + 4, '#7c7e79', { metal: 0.5, rough: 0.4 });
+    }
+    for (const b of this.ARMARIOS) {
+      r.box(cx + b.dx, -PIT, cz + b.dz, b.w, PIT + b.h, b.d, '#5d6a6c', { metal: 0.5 });
+      r.box(cx + b.dx, 6, cz + b.dz + b.d / 2 + 0.5, 2, b.h - 12, 1, '#2a2e30', { tex: false });
+      for (const s of [-1, 1]) r.box(cx + b.dx + s * 6, b.h * 0.5, cz + b.dz + b.d / 2 + 1, 2, 10, 2, '#b9bcb6', { metal: 0.8 });
+    }
+    // plataforma segura no meio: coluna que fica de pé quando a íris abre
     const padGlow = d.phase === 'play' && d.timer < 5 ? 0.6 + 0.4 * Math.sin(t * 10) : 0.85;
     for (const pd of d.pads) {
       const px = pd.x + pd.w / 2, pz = pd.y + pd.h / 2;
       r.box(px, -PIT, pz, pd.w, PIT + 3, pd.h, '#1d3325', { rough: 0.8 });
       r.plane(px, 3.1, pz, pd.w, pd.h, '#46e27b', { glow: true, opacity: padGlow });
-      r.plane(px, 3.3, pz, pd.w - 7, pd.h - 7, '#16301f', { rough: 0.6, emissive: '#06200e' });
-      for (let k = 12; k < pd.w - 6; k += 12) r.plane(pd.x + k, 3.5, pz, 1.5, pd.h - 12, '#46e27b', { glow: true, opacity: 0.35 });
+      r.plane(px, 3.3, pz, pd.w - 9, pd.h - 9, '#16301f', { rough: 0.6, emissive: '#06200e' });
+      for (let k = 14; k < pd.w - 6; k += 14) r.plane(pd.x + k, 3.5, pz, 1.5, pd.h - 14, '#46e27b', { glow: true, opacity: 0.35 });
     }
-    // núcleo central: coluna com faixa de perigo e holograma do item-alvo girando
-    const R = this.CORE_R;
-    r.cyl(d.cx, -PIT, d.cy, R + 6, PIT + 14, '#2a2733', { metal: 0.5, rough: 0.5, sides: 12 });
-    r.cyl(d.cx, 8, d.cy, R + 7, 6, '#f5c400', { sides: 12 });
-    for (let k = 0; k < 12; k += 2) { const an = (k + 0.5) / 12 * Math.PI * 2; r.box(d.cx + Math.cos(an) * (R + 6.5), 7.9, d.cy + Math.sin(an) * (R + 6.5), 4, 6.2, 22, '#111', { rotY: -an }); }
-    r.cyl(d.cx, 14, d.cy, R, 6, '#1d1430', { metal: 0.4, rough: 0.4, emissive: '#1a0830' });
-    r.ring(d.cx, 20.2, d.cy, R - 6, R - 1, '#c77dff', { glow: true });
-    r.cone(d.cx, 92, d.cy, 34, 70, '#c77dff', { glow: true, opacity: 0.1, rotX: Math.PI, shadow: false });
-    if (d.target !== undefined) this.drawItem3d(r, d.target, d.cx, 66 + Math.sin(t * 2) * 3, d.cy, 1.9, t * 1.2, { emissive: '#3a1660' });
-    r.label(d.cx, 122, d.cy, 'ALVO', '#c77dff', 12);
-    r.light(d.cx, 110, d.cy, '#c77dff', 0.9, 320);
+    // painel do alvo pendurado no fundo, sobre os armários (como o relógio pendurado do original)
+    const PY = 100, PZ = cz - 140;
+    for (const s of [-1, 1]) r.beam(cx + s * 40, PY + 60, PZ, cx + s * 40, 700, PZ, 1.5, '#1b1b1b');
+    r.box(cx, PY, PZ, 110, 62, 14, '#2a2733', { metal: 0.5 });
+    r.box(cx, PY + 5, PZ + 7.5, 98, 52, 1, '#1d1430', { glow: true });
+    if (d.target !== undefined) this.drawItem3d(r, d.target, cx, PY + 14 + Math.sin(t * 2) * 2, PZ + 18, 1.5, t * 1.2, { emissive: '#3a1660' });
+    const frac = d.phase === 'play' ? Math.max(0, d.timer / this.SUB_TIME) : 0;
+    r.box(cx + 78, PY + 22, PZ, 44, 22, 12, '#2a2733', { metal: 0.5 });   // relógio do turno
+    if (frac > 0) r.box(cx + 78 - 17 * (1 - frac), PY + 27, PZ + 6.5, 34 * frac, 12, 1, d.timer < 5 ? '#ff3030' : '#c77dff', { glow: true });
+    r.light(cx, PY - 20, PZ + 40, '#c77dff', 0.9, 320);
     // lâmpadas do teto
-    r.light(260, 280, 200, '#ffd9a8', 0.8, 720);
-    r.light(700, 280, 380, '#ffd9a8', 0.8, 720);
-    // itens soltos (afundam junto com o chão)
+    r.light(cx - 200, 300, cz - 80, '#ffd9a8', 0.8, 720);
+    r.light(cx + 200, 300, cz + 80, '#ffd9a8', 0.8, 720);
+    // itens soltos (em cima dos bancos, ou no chão afundando junto com a íris)
     for (const it of d.items) if (!it.holder) {
-      const s = this.sink(g, it.x, it.y);
+      const s = it.h ? 0 : this.sink(g, it.x, it.y);
       if (s >= PIT - 20) continue;
-      const tgt = it.kind === d.target;
-      if (tgt && !s) r.ring(it.x, 0.6, it.y, 16, 20, '#c77dff', { glow: true, opacity: 0.5 + 0.3 * Math.sin(it.bob) });
-      this.drawItem3d(r, it.kind, it.x, 1 + Math.sin(it.bob) * 1.5 - s, it.y, 1.4, it.bob * 0.3, tgt ? { emissive: '#2a1040' } : {});
+      const tgt = it.kind === d.target, y0 = (it.h || 0) + 1;
+      if (tgt && !s) r.ring(it.x, y0 - 0.4, it.y, 16, 20, '#c77dff', { glow: true, opacity: 0.5 + 0.3 * Math.sin(it.bob) });
+      this.drawItem3d(r, it.kind, it.x, y0 + Math.sin(it.bob) * 1.5 - s, it.y, 1.4, it.bob * 0.3, tgt ? { emissive: '#2a1040' } : {});
     }
     // jogadores: quem cai despenca no poço girando
     for (const p of g.players) {
@@ -389,14 +417,19 @@ TN.registerMinigame({
   draw(g, c) {
     const a = g.arena, D = TN.draw, d = g.data, U = TN.util;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);
-    D.floor(c, a.x, a.y, a.w, a.h, { tile: 44, a: '#24212b', b: '#28252f' });
-    // chão se abrindo (fora das plataformas)
+    // arena redonda (um pouco menor na tela, para não encostar na faixa de status)
+    const R = this.ARENA_R;
+    c.save(); c.translate(d.cx, d.cy + 10); c.scale(0.9, 0.9); c.translate(-d.cx, -d.cy);
+    c.fillStyle = '#26232d'; c.beginPath(); c.arc(d.cx, d.cy, R, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = 'rgba(0,0,0,0.35)'; c.lineWidth = 1;
+    for (let i = 0; i < 16; i++) { const an = i / 16 * Math.PI * 2; c.beginPath(); c.moveTo(d.cx, d.cy); c.lineTo(d.cx + Math.cos(an) * R, d.cy + Math.sin(an) * R); c.stroke(); }
+    // chão se abrindo (íris)
     if (d.open > 0) {
-      c.save(); c.globalAlpha = d.open * 0.92; c.fillStyle = '#040405'; c.fillRect(a.x, a.y, a.w, a.h); c.restore();
-      c.strokeStyle = `rgba(255,60,60,${0.5 * d.open})`; c.lineWidth = 2;
-      for (let x = a.x; x < a.x + a.w; x += 44) { c.beginPath(); c.moveTo(x, a.y); c.lineTo(x, a.y + a.h); c.stroke(); }
+      c.save(); c.globalAlpha = d.open * 0.92; c.fillStyle = '#040405'; c.beginPath(); c.arc(d.cx, d.cy, R * d.open, 0, Math.PI * 2); c.fill(); c.restore();
     }
-    c.strokeStyle = '#555'; c.lineWidth = 6; c.strokeRect(a.x - 3, a.y - 3, a.w + 6, a.h + 6);
+    c.strokeStyle = '#555'; c.lineWidth = 8; c.beginPath(); c.arc(d.cx, d.cy, R + 4, 0, Math.PI * 2); c.stroke();
+    // bancos e armários
+    for (const b of d.solidos) { c.fillStyle = '#6e6b63'; c.fillRect(b.x, b.y, b.w, b.h); c.strokeStyle = '#3a3833'; c.lineWidth = 2; c.strokeRect(b.x, b.y, b.w, b.h); }
     // plataformas seguras
     for (const pad of d.pads) {
       c.fillStyle = '#16301f'; c.fillRect(pad.x, pad.y, pad.w, pad.h);
@@ -404,13 +437,6 @@ TN.registerMinigame({
       c.strokeStyle = 'rgba(70,226,123,0.25)'; c.lineWidth = 1;
       for (let k = 10; k < pad.w; k += 10) { c.beginPath(); c.moveTo(pad.x + k, pad.y + 4); c.lineTo(pad.x + k, pad.y + pad.h - 4); c.stroke(); }
     }
-    // núcleo central com o painel do alvo
-    c.fillStyle = '#111'; c.beginPath(); c.arc(d.cx, d.cy, this.CORE_R + 6, 0, Math.PI * 2); c.fill();
-    D.hazardStripes(c, d.cx - this.CORE_R - 6, d.cy + this.CORE_R - 2, (this.CORE_R + 6) * 2, 0, 8);
-    c.fillStyle = '#1d1430'; c.strokeStyle = '#c77dff'; c.lineWidth = 3;
-    c.beginPath(); c.arc(d.cx, d.cy, this.CORE_R, 0, Math.PI * 2); c.fill(); c.stroke();
-    D.text(c, 'ALVO', d.cx, d.cy - 32, { size: 11, color: '#c77dff', align: 'center' });
-    if (d.target !== undefined) this.drawIcon(c, d.target, d.cx, d.cy + 2, 1.5);
     // itens soltos
     for (const it of d.items) if (!it.holder) {
       const glow = it.kind === d.target;
@@ -432,6 +458,12 @@ TN.registerMinigame({
         this.drawIcon(c, it.kind, it.x, it.y, 0.85);
       }
     }
+    c.restore();
+    // painel do alvo (pendurado sobre a plataforma no 3D; aqui num canto)
+    c.fillStyle = '#1d1430'; c.strokeStyle = '#c77dff'; c.lineWidth = 3;
+    c.beginPath(); c.roundRect(a.x + 4, a.y + 4, 92, 80, 8); c.fill(); c.stroke();
+    D.text(c, 'ALVO', a.x + 50, a.y + 18, { size: 11, color: '#c77dff', align: 'center' });
+    if (d.target !== undefined) this.drawIcon(c, d.target, a.x + 50, a.y + 50, 1.5);
     // faixa de status
     const t = d.phase === 'play' ? d.timer : 0;
     D.text(c, `TURNO ${d.sub}`, a.x, 52, { size: 16, color: '#c77dff' });

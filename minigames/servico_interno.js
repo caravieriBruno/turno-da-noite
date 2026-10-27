@@ -1,13 +1,16 @@
+(function () {
 // SERVIÇO INTERNO — inspirado em "INSIDE JOB" (knife_at_the_office) de Machine Party.
 // Fase 1: todos revistam os móveis do escritório (segurar AÇÃO 1 s). Quem completar a N-ésima busca acha a seringa (+1).
 // Fase 2: as luzes apagam e, 3 s depois, começa uma contagem de 30 s. O portador infecta quem estiver perto (+1 por
 // infecção); o infectado fica congelado 5 s e depois caça também, 1,25× mais rápido. Quem escapar ganha +1.
+// Cache da navegação dos bots e das paredes (derivados das constantes; não fazem parte do estado da rodada)
+const NAV = {}; let PAREDES = null;
 TN.registerMinigame({
   id: 'servico_interno',
   title: 'SERVIÇO INTERNO',
   inspiredBy: 'Inside Job (knife_at_the_office)',
   tagline: 'REVISTE. CACE. ESCONDA-SE.',
-  brief: ['Revistem o escritório: segure AÇÃO junto aos móveis.', 'Quem achar a seringa infecta os outros.', 'Infectados voltam e caçam também.', 'Escape por 30 s no escuro.'],
+  brief: ['Revistem as salas da administração: segure AÇÃO junto aos móveis.', 'Quem achar a seringa infecta os outros.', 'Infectados voltam e caçam também.', 'Escape por 30 s no escuro.'],
   controls: { move: 'andar', a: 'revistar (segurar) / infectar' },
   icon: '✚',
   color: '#9be15d',
@@ -23,18 +26,37 @@ TN.registerMinigame({
   LIGHT_R: 95, LIGHT_R_INF: 122,
   ARENA: { x: 20, y: 44, w: 920, h: 480 },   // sala maior que a arena padrão do motor
 
-  // Móveis: [tipo, x, y, w, h]. Todos são sólidos e podem ser revistados uma vez.
-  LAYOUT: [
-    // parede de cima
-    ['armario', 60, 52, 50, 30], ['armario', 120, 52, 50, 30], ['estante', 300, 52, 90, 28], ['impressora', 470, 52, 60, 34],
-    ['estante', 620, 52, 90, 28], ['armario', 800, 52, 50, 30], ['armario', 860, 52, 50, 30],
-    // parede de baixo
-    ['sofa', 70, 484, 110, 34], ['bebedouro', 282, 484, 34, 34], ['estante', 420, 490, 90, 28], ['armario', 640, 488, 50, 30], ['sofa', 760, 484, 120, 34],
-    // mesas de trabalho (com cadeira): duas fileiras, com o meio da sala aberto
-    ['mesa', 148, 170, 84, 46], ['mesa', 328, 170, 84, 46], ['mesa', 548, 170, 84, 46], ['mesa', 728, 170, 84, 46],
-    ['mesa', 148, 340, 84, 46], ['mesa', 728, 340, 84, 46],
+  // Planta da ala administrativa, como o escritório de Inside Job: várias salas em volta de um saguão, ligadas
+  // por portas. Em cima: diretoria (A), arquivo (B), prontuários (C) e secretaria (D), com portas A↔B e C↔D;
+  // embaixo: sala de visitas (E), almoxarifado (F) e copa (G), com porta F↔G; no meio, o saguão com a mesa de
+  // reunião e dois pilares. Paredes sólidas: [x, y, w, h] (10 de espessura; as portas são vãos de 60 a 70).
+  WALLS: [
+    // linha de cima (y 186): portas 150–220, 330–400, 560–630, 740–810
+    [20, 186, 130, 10], [220, 186, 110, 10], [400, 186, 160, 10], [630, 186, 110, 10], [810, 186, 130, 10],
+    // divisórias de cima: A|B (porta y 100–160), B|C, C|D (porta y 100–160)
+    [245, 44, 10, 56], [245, 160, 10, 26], [475, 44, 10, 142], [705, 44, 10, 56], [705, 160, 10, 26],
+    // linha de baixo (y 376): portas 220–290, 450–520, 680–750
+    [20, 376, 200, 10], [290, 376, 160, 10], [520, 376, 160, 10], [750, 376, 190, 10],
+    // divisórias de baixo: E|F, F|G (porta y 430–490)
+    [325, 386, 10, 138], [635, 386, 10, 44], [635, 490, 10, 34],
+    // pilares do saguão
+    [292, 272, 24, 24], [644, 272, 24, 24],
   ],
-  SPAWNS: [[100, 280], [290, 280], [670, 280], [850, 280]],
+  // Nomes das salas (plaquinhas no 3D): [texto, x, y]
+  SALAS: [['DIRETORIA', 132, 60], ['ARQUIVO', 365, 60], ['PRONTUÁRIOS', 595, 60], ['SECRETARIA', 827, 60],
+    ['VISITAS', 172, 400], ['ALMOXARIFADO', 485, 400], ['COPA', 790, 400]],
+  // Móveis: [tipo, x, y, w, h]. Todos são sólidos e podem ser revistados uma vez (2 ou 3 por sala).
+  LAYOUT: [
+    ['mesa', 50, 76, 84, 46], ['armario', 185, 52, 50, 30],                       // A diretoria
+    ['estante', 265, 52, 90, 28], ['mesa', 370, 96, 84, 46],                      // B arquivo
+    ['impressora', 500, 52, 60, 34], ['estante', 600, 52, 90, 28],                // C prontuários
+    ['armario', 730, 52, 50, 30], ['mesa', 830, 96, 84, 46],                      // D secretaria
+    ['mesa', 430, 262, 100, 52], ['bebedouro', 30, 300, 34, 34], ['vaso', 900, 300, 30, 30],   // saguão
+    ['sofa', 40, 484, 110, 34], ['armario', 250, 488, 50, 30],                    // E visitas
+    ['estante', 420, 490, 90, 28], ['mesa', 355, 410, 84, 46],                    // F almoxarifado
+    ['sofa', 780, 484, 120, 34], ['impressora', 866, 400, 60, 34],                // G copa
+  ],
+  SPAWNS: [[100, 286], [370, 236], [590, 336], [860, 286]],   // no saguão
 
   init(g) {
     const U = TN.util, d = g.data;
@@ -75,7 +97,7 @@ TN.registerMinigame({
   },
   // empurra o jogador para fora dos móveis (colisão círculo x retângulo)
   collide(g, p) {
-    for (const f of g.data.furniture) {
+    for (const f of this.solidos(g)) {
       const nx = Math.max(f.x, Math.min(p.x, f.x + f.w)), ny = Math.max(f.y, Math.min(p.y, f.y + f.h));
       const dx = p.x - nx, dy = p.y - ny, dd = Math.hypot(dx, dy);
       if (dd >= p.r) continue;
@@ -88,6 +110,11 @@ TN.registerMinigame({
     const a = g.arena;
     p.x = TN.util.clamp(p.x, a.x + p.r, a.x + a.w - p.r);
     p.y = TN.util.clamp(p.y, a.y + p.r, a.y + a.h - p.r);
+  },
+  // tudo o que é sólido: móveis (do estado) e paredes (constantes)
+  solidos(g) {
+    if (!PAREDES) PAREDES = this.WALLS.map(([x, y, w, h]) => ({ x, y, w, h, wall: true }));
+    return g.data.furniture.concat(PAREDES);
   },
   isHunter(p) { return p.data.infected && p.data.frozen <= 0; },
 
@@ -190,40 +217,128 @@ TN.registerMinigame({
     if (d.phase === 'hunt' && g.players.every((p) => p.data.infected)) this.endRound(g, 'TODOS INFECTADOS');
   },
 
+  // ---------- navegação dos bots entre as salas ----------
+  // Grade de 10 px sobre a arena: uma célula é livre se o boneco (raio 16 + folga) cabe nela sem tocar parede
+  // nem móvel. Paredes e móveis nunca mudam de lugar, então a grade é calculada uma vez (cache do arquivo,
+  // fora do estado da rodada). Os bots fazem uma busca em largura (BFS) a partir de onde estão e seguem o
+  // caminho até o alvo, mirando algumas células à frente.
+  nav() {
+    if (NAV.free) return NAV;
+    const A = this.ARENA, C = NAV.C = 10, cols = NAV.cols = Math.floor(A.w / C), rows = NAV.rows = Math.floor(A.h / C);
+    const rects = this.WALLS.map(([x, y, w, h]) => ({ x, y, w, h })).concat(this.LAYOUT.map(([, x, y, w, h]) => ({ x, y, w, h })));
+    const free = NAV.free = new Uint8Array(cols * rows), R = 17;
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+      const x = A.x + (i + 0.5) * C, y = A.y + (j + 0.5) * C;
+      if (x < A.x + 16 || x > A.x + A.w - 16 || y < A.y + 16 || y > A.y + A.h - 16) continue;
+      free[j * cols + i] = rects.every((f) => Math.hypot(x - TN.util.clamp(x, f.x, f.x + f.w), y - TN.util.clamp(y, f.y, f.y + f.h)) >= R) ? 1 : 0;
+    }
+    // células de onde dá para revistar cada móvel (lado livre mais perto)
+    NAV.serve = this.LAYOUT.map(([, x, y, w, h]) => {
+      const f = { x, y, w, h }, out = [];
+      for (let k = 0; k < cols * rows; k++) {
+        if (!free[k]) continue;
+        const q = { x: A.x + ((k % cols) + 0.5) * C, y: A.y + (Math.floor(k / cols) + 0.5) * C, r: 16 };
+        if (this.rectGap(q, f) < this.REACH - 3) out.push(k);
+      }
+      return out;
+    });
+    return NAV;
+  },
+  cell(x, y) {
+    const N = this.nav(), A = this.ARENA, C = N.C;
+    const i0 = TN.util.clamp(Math.floor((x - A.x) / C), 0, N.cols - 1), j0 = TN.util.clamp(Math.floor((y - A.y) / C), 0, N.rows - 1);
+    if (N.free[j0 * N.cols + i0]) return j0 * N.cols + i0;
+    let best = -1, bd = 1e9;   // encostado num móvel: a célula livre mais perto
+    for (let dj = -4; dj <= 4; dj++) for (let di = -4; di <= 4; di++) {
+      const i = i0 + di, j = j0 + dj;
+      if (i < 0 || j < 0 || i >= N.cols || j >= N.rows || !N.free[j * N.cols + i]) continue;
+      if (di * di + dj * dj < bd) { bd = di * di + dj * dj; best = j * N.cols + i; }
+    }
+    return best;
+  },
+  centro(k) { const N = this.nav(), A = this.ARENA; return { x: A.x + ((k % N.cols) + 0.5) * N.C, y: A.y + (Math.floor(k / N.cols) + 0.5) * N.C }; },
+  // BFS (8 vizinhos, sem cortar quina) a partir de uma ou mais células; devolve a distância em células (−1 = não alcança)
+  bfs(fontes) {
+    const N = this.nav(), cols = N.cols, rows = N.rows, dist = new Int16Array(cols * rows).fill(-1), fila = new Int32Array(cols * rows);
+    let a = 0, b = 0;
+    for (const k of fontes) if (k >= 0 && dist[k] < 0) { dist[k] = 0; fila[b++] = k; }
+    while (a < b) {
+      const k = fila[a++], i = k % cols, j = (k - i) / cols;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        if (!di && !dj) continue;
+        const ni = i + di, nj = j + dj;
+        if (ni < 0 || nj < 0 || ni >= cols || nj >= rows) continue;
+        const nk = nj * cols + ni;
+        if (!N.free[nk] || dist[nk] >= 0) continue;
+        if (di && dj && (!N.free[j * cols + ni] || !N.free[nj * cols + i])) continue;
+        dist[nk] = dist[k] + 1; fila[b++] = nk;
+      }
+    }
+    return dist;
+  },
+  // direção para seguir de (p) até a célula alvo, dado o campo de distâncias a partir de p: refaz o caminho
+  // de trás para a frente e mira a célula ~4 passos à frente do bot
+  rumo(p, dist, alvo) {
+    const N = this.nav(), cols = N.cols, caminho = [alvo];
+    let k = alvo;
+    while (dist[k] > 0 && caminho.length < 400) {
+      const i = k % cols, j = (k - i) / cols;
+      let prox = -1;
+      for (let dj = -1; dj <= 1 && prox < 0; dj++) for (let di = -1; di <= 1; di++) {
+        const ni = i + di, nj = j + dj, nk = nj * cols + ni;
+        if (ni < 0 || nj < 0 || ni >= cols || nj >= N.rows) continue;
+        if (dist[nk] === dist[k] - 1 && (!(di && dj) || (N.free[j * cols + ni] && N.free[nj * cols + i]))) { prox = nk; break; }
+      }
+      if (prox < 0) break;
+      k = prox; caminho.push(k);
+    }
+    const n = caminho.length, mira = this.centro(caminho[Math.max(0, n - 1 - 4)]);
+    return TN.util.norm(mira.x - p.x, mira.y - p.y);
+  },
+
   // ---------- bot ----------
   bot(g, p, dt) {
-    const U = TN.util, d = g.data, pd = p.data, a = g.arena;
+    const U = TN.util, d = g.data, pd = p.data;
     if (pd.frozen > 0 || d.phase === 'end') return { x: 0, y: 0 };
-    // detecção de "preso" (encostado em móvel): se mal andou em 0,6 s, dá um passo de lado
+    // detecção de "preso" (encostado em parede ou móvel): se mal andou em 0,6 s, dá um passo de lado
     pd.bStuckT = (pd.bStuckT || 0) + dt;
     if (pd.bStuckT > 0.6) {
       const moved = U.dist(p.x, p.y, pd.bLastX ?? p.x, pd.bLastY ?? p.y);
-      if (moved < 10 && !pd.searchF) { pd.bSide = { x: U.rand(-1, 1), y: U.rand(-1, 1), t: 0.5 }; pd.bTarget = null; }
+      if (moved < 10 && !pd.searchF) { pd.bSide = { x: U.rand(-1, 1), y: U.rand(-1, 1), t: 0.35 }; pd.bThink = 0; }
       pd.bLastX = p.x; pd.bLastY = p.y; pd.bStuckT = 0;
     }
     if (pd.bSide && pd.bSide.t > 0) { pd.bSide.t -= dt; return { x: pd.bSide.x, y: pd.bSide.y }; }
+    pd.bThink = (pd.bThink || 0) - dt;
+    const pensa = pd.bThink <= 0 || !pd.bDir;
+    if (pensa) pd.bThink = U.rand(0.12, 0.2);
 
-    // fase 1: vai até o móvel não revistado mais perto (evita o que outro bot já escolheu) e segura AÇÃO
+    // fase 1: vai até o móvel não revistado mais perto PELO CAMINHO (evita o que outro bot já escolheu) e segura AÇÃO
     if (d.phase === 'search') {
-      if (!pd.bTarget || pd.bTarget.searched) {
-        let best = null, bs = 1e9;
-        for (const f of d.furniture) {
-          if (f.searched) continue;
-          const taken = g.players.some((o) => o !== p && o.data.bTarget === f);
-          const s = this.rectGap(p, f) + (taken ? 220 : 0) + U.rand(0, 60);
-          if (s < bs) { bs = s; best = f; }
-        }
-        pd.bTarget = best;
+      const N = this.nav();
+      const f = pd.bTarget != null ? d.furniture[pd.bTarget] : null;
+      if (f && !f.searched && this.rectGap(p, f) < this.REACH - 3) { pd.bDir = null; return { x: 0, y: 0, a: true }; }
+      if (!pensa && f && !f.searched) return { x: pd.bDir.x, y: pd.bDir.y };
+      const dist = this.bfs([this.cell(p.x, p.y)]);
+      let best = null, bs = 1e9, bk = -1;
+      for (const o of d.furniture) {
+        if (o.searched) continue;
+        let dk = -1, dmin = 1e9;
+        for (const k of N.serve[o.i]) if (dist[k] >= 0 && dist[k] < dmin) { dmin = dist[k]; dk = k; }
+        if (dk < 0) continue;
+        const taken = g.players.some((q) => q !== p && q.data.bTarget === o.i);
+        const s = dmin * N.C + (taken ? 220 : 0) + (o.i === pd.bTarget ? -30 : U.rand(0, 60));
+        if (s < bs) { bs = s; best = o; bk = dk; }
       }
-      const f = pd.bTarget;
-      if (!f) return { x: 0, y: 0 };
-      if (this.rectGap(p, f) < this.REACH - 3) return { x: 0, y: 0, a: true };
-      const nx = U.clamp(p.x, f.x, f.x + f.w), ny = U.clamp(p.y, f.y, f.y + f.h);
-      const n = U.norm(nx - p.x, ny - p.y);
-      return { x: n.x, y: n.y };
+      if (!best) return { x: 0, y: 0 };
+      pd.bTarget = best.i;
+      if (dist[bk] <= 1) {   // já na porta do móvel: encosta direto
+        const nx = U.clamp(p.x, best.x, best.x + best.w), ny = U.clamp(p.y, best.y, best.y + best.h);
+        pd.bDir = U.norm(nx - p.x, ny - p.y);
+      } else pd.bDir = this.rumo(p, dist, bk);
+      return { x: pd.bDir.x, y: pd.bDir.y };
     }
 
-    // fase 2, infectado: persegue o sobrevivente mais perto e ataca ao alcance
+    // fase 2, infectado: persegue pelo caminho o sobrevivente mais perto e ataca ao alcance
     if (pd.infected) {
       let prey = null, bd = 1e9;
       for (const o of g.players) {
@@ -232,28 +347,28 @@ TN.registerMinigame({
         if (dd < bd) { bd = dd; prey = o; }
       }
       if (!prey) return { x: 0, y: 0 };
-      const n = U.norm(prey.x - p.x, prey.y - p.y);
       const want = d.phase === 'hunt' && bd < this.INFECT_RANGE - 4 && pd.cd <= 0;
       const press = want && !pd.bPrevA; pd.bPrevA = press;
-      return { x: n.x, y: n.y, a: press };
+      if (bd < 70) pd.bDir = U.norm(prey.x - p.x, prey.y - p.y);
+      else if (pensa) pd.bDir = this.rumo(p, this.bfs([this.cell(p.x, p.y)]), this.cell(prey.x, prey.y));
+      return { x: pd.bDir.x, y: pd.bDir.y, a: press };
     }
 
-    // fase 2, sobrevivente: testa 16 direções e escolhe a que deixa mais longe dos caçadores
-    // sem bater em móveis ou paredes (assim não fica encurralado num canto)
+    // fase 2, sobrevivente: testa 16 direções e escolhe a que deixa mais longe dos caçadores PELO CAMINHO
+    // (distância andando, que conta as paredes), sem bater em paredes ou móveis
     const hunters = g.players.filter((o) => o.data.infected && o.data.frozen < 1.5);
     if (!hunters.length) return { x: 0, y: 0 };
-    pd.bThink = (pd.bThink || 0) - dt;
-    if (pd.bThink <= 0 || !pd.bDir) {
-      pd.bThink = U.rand(0.12, 0.25);
+    if (pensa) {
+      const N = this.nav(), dh = this.bfs(hunters.map((h) => this.cell(h.x, h.y)));
+      const livre = (x, y) => { const k = this.cell(x, y); return k >= 0 && N.free[k] && U.dist(x, y, this.centro(k).x, this.centro(k).y) < N.C ? k : -1; };
       let best = null, bs = -1e9;
       for (let k = 0; k < 16; k++) {
         const an = (k / 16) * Math.PI * 2, cx = Math.cos(an), cy = Math.sin(an);
         let s = 0;
-        for (const step of [35, 90]) {
-          const q = { x: p.x + cx * step, y: p.y + cy * step, r: p.r };
-          if (q.x < a.x + p.r || q.x > a.x + a.w - p.r || q.y < a.y + p.r || q.y > a.y + a.h - p.r) s -= step === 35 ? 400 : 120;
-          else if (d.furniture.some((f) => this.rectGap(q, f) < 2)) s -= step === 35 ? 400 : 80;
-          for (const h of hunters) s += Math.min(260, U.dist(q.x, q.y, h.x, h.y)) * (step === 90 ? 1 : 0.5);
+        for (const step of [30, 80]) {
+          const kk = livre(p.x + cx * step, p.y + cy * step);
+          if (kk < 0) { s -= step === 30 ? 600 : 150; continue; }
+          s += Math.min(300, (dh[kk] < 0 ? 300 : dh[kk] * N.C)) * (step === 80 ? 1 : 0.5);
         }
         if (pd.bDir) s += (cx * pd.bDir.x + cy * pd.bDir.y) * 40;  // inércia: evita tremer
         s += U.rand(0, 25);
@@ -268,7 +383,9 @@ TN.registerMinigame({
   // Escritório em corte: parede do fundo com janelas noturnas e luminárias, paredes laterais, mureta na frente.
   // Móveis revistáveis em 3D (mesas com monitor aceso, arquivos, estantes, sofás...). Quando as luzes apagam,
   // o ambiente vai ao breu e cada jogador leva uma lanterna (r.light) — verde e maior para os infectados.
-  camera: { pos: [480, 720, 880], target: [480, 0, 290], fov: 41 },
+  // câmera alta e fechada (quase planta, como a vista de cima do original) para enxergar dentro de todas as salas
+  camera: { pos: [480, 900, 720], target: [480, 0, 292], fov: 37 },
+  WALL_H: 58,
   env: { bg: '#0a0c10', ambient: 0.65, sun: 1.7, sunDir: [-0.3, 1, 0.5], sunColor: '#fff1dc' },
 
   furniture3d(r, f, hi, dark) {
@@ -326,6 +443,20 @@ TN.registerMinigame({
     else if (hi && !dark) r.plane(cx, 0.4, cz, w + 10, h + 10, '#ffd23f', { glow: true, opacity: 0.35 });
   },
 
+  // divisórias da ala: meia-parede pintada (baixa, para a câmera de cima enxergar dentro das salas), faixa
+  // escura no topo como na planta do original, batentes nas portas e plaquinha com o nome de cada sala
+  paredes3d(r, dark) {
+    const WH = this.WALL_H;
+    for (const [x, y, w, h] of this.WALLS) {
+      const cx = x + w / 2, cz = y + h / 2, pilar = w === h;
+      r.box(cx, 0, cz, w, WH * 0.55, h, pilar ? '#7a776c' : '#8e8873', { tex: 'tinta' });
+      r.box(cx, WH * 0.55, cz, w, WH * 0.45, h, '#6c6a60', { tex: 'concreto' });
+      r.box(cx, WH, cz, w + 1, 3, h + 1, '#17181a', { tex: false });
+      if (!pilar) r.box(cx, 0, cz, w + 2, 7, h + 2, '#2b2622');
+    }
+    if (!dark) for (const [txt, x, y] of this.SALAS) r.label(x, 4, y + (y > 300 ? 0 : 0), txt, '#c9c2a8', 10);
+  },
+
   draw3d(g, r) {
     const a = g.arena, d = g.data, U = TN.util;
     const dark = d.phase !== 'search';
@@ -334,10 +465,13 @@ TN.registerMinigame({
     // ---- sala da administração: taco, meia-parede de madeira, janelas com persiana; mureta na frente ----
     // (sem pendentes do r.room: ficariam pendurados sobre os móveis; as luminárias de parede apagam no breu)
     r.room(a.x, a.y, a.x + a.w, a.y + a.h, { estilo: 'escritorio', h: 130, windows: 4, lamps: 0, props: false });
-    r.plane(a.x + a.w / 2, 0.3, a.y + 197, a.w - 140, 58, '#5a2626', { rough: 1, tex: 'tecido' });    // tapete do corredor
+    // saguão com passadeira gasta; copa com piso de azulejo
+    r.plane(480, 0.3, 286, 820, 120, '#4a2a26', { rough: 1, tex: 'tecido' });
+    r.plane(792, 0.4, 455, 290, 134, '#7d8580', { tex: 'azulejo', texWorld: true });
     r.box(a.x + a.w / 2, 0, a.y + a.h + 8, a.w + 32, 18, 16, '#6e4f33', { tex: 'madeira' });
     r.box(a.x + a.w / 2, 18, a.y + a.h + 8, a.w + 32, 2, 18, '#2a2f36');
-    for (const lx of [130, 480, 830]) r.box(lx, 116, a.y + 2, 60, 5, 6, dark ? '#2a2a2a' : '#fff4dc', dark ? {} : { glow: true });
+    for (const lx of [132, 365, 595, 827]) r.box(lx, 116, a.y + 2, 50, 5, 6, dark ? '#2a2a2a' : '#fff4dc', dark ? {} : { glow: true });
+    this.paredes3d(r, dark);
     // ---- móveis ----
     const hi = new Set();
     if (d.phase === 'search') for (const p of g.players) { const f = this.reachable(g, p); if (f) hi.add(f); }
@@ -488,8 +622,9 @@ TN.registerMinigame({
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);
     D.floor(c, a.x, a.y, a.w, a.h, { tile: 40, a: '#2a3340', b: '#2e3846' });
     c.strokeStyle = '#59616c'; c.lineWidth = 8; c.strokeRect(a.x - 4, a.y - 4, a.w + 8, a.h + 8);
-    // tapete do corredor central
-    c.fillStyle = 'rgba(120,40,40,0.18)'; c.fillRect(a.x + 70, a.y + 168, a.w - 140, 58);
+    // passadeira do saguão e divisórias das salas
+    c.fillStyle = 'rgba(120,40,40,0.18)'; c.fillRect(70, 226, 820, 120);
+    c.fillStyle = '#59616c'; for (const [x, y, w, h] of this.WALLS) c.fillRect(x, y, w, h);
     const hi = new Set();
     if (d.phase === 'search') for (const p of g.players) { const f = this.reachable(g, p); if (f) hi.add(f); }
     for (const f of d.furniture) this.drawFurniture(c, f, hi.has(f));
@@ -566,3 +701,4 @@ TN.registerMinigame({
     }
   },
 });
+})();

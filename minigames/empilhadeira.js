@@ -20,16 +20,16 @@ TN.registerMinigame({
   //      curva máxima) e o garfo pega num raio maior (GRAB). ----
   MAX_SPEED: 215, REVERSE: 0.6, PEDAL_RATE: 8, STEER_RATE: 8, STEER_BACK: 3, TURN: 3.4, GIRO_MIN: 0.35,
   FORK: 34, CRATE_R: 14, GRAB: 34, PEGA_CD: 0.6, FIRST_TIME: 30, MIN_TIME: 10, MAX_SUBS: 9,
-  HIT_MIN: 40, HIT_STRONG: 150, ZONE_W: 170, ZONE_H: 130,
+  HIT_MIN: 40, HIT_STRONG: 150, ZONE_W: 166, ZONE_H: 150,
+  // Pátio de carga como no original: quase quadrado (53,6 × 58,6 u → 620 × 560 px) e docas quadradas
+  // (14,4 × 13 u) afastadas dos cantos, com os centros a ±180 px do meio nos dois eixos.
+  AREA: { x: 170, y: 20, w: 620, h: 560 }, DOCA_DX: 180, DOCA_DY: 180,
 
   init(g) {
-    const a = g.arena, d = g.data, U = TN.util;
-    // zonas nos 4 cantos (índice = id do jogador)
-    const zw = this.ZONE_W, zh = this.ZONE_H;
-    const corners = [
-      { x: a.x, y: a.y }, { x: a.x + a.w - zw, y: a.y },
-      { x: a.x, y: a.y + a.h - zh }, { x: a.x + a.w - zw, y: a.y + a.h - zh },
-    ];
+    const a = this.AREA, d = g.data, U = TN.util;
+    // docas nos 4 cantos (índice = id do jogador), recuadas das grades como no original
+    const zw = this.ZONE_W, zh = this.ZONE_H, mx = a.x + a.w / 2, my = a.y + a.h / 2;
+    const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sy]) => ({ x: mx + sx * this.DOCA_DX - zw / 2, y: my + sy * this.DOCA_DY - zh / 2 }));
     d.zones = g.players.map((p) => ({ ...corners[p.id], w: zw, h: zh, owner: p, active: true, count: 0 }));
     // caixas: 2 × jogadores, no meio do galpão
     d.crates = [];
@@ -118,7 +118,7 @@ TN.registerMinigame({
   },
 
   update(g, dt) {
-    const U = TN.util, d = g.data, a = g.arena;
+    const U = TN.util, d = g.data, a = this.AREA;
     const playing = d.phase === 'play';
     if (playing) {
       d.timer -= dt;
@@ -315,8 +315,9 @@ TN.registerMinigame({
   },
 
   // ---------- 3D (câmera fixa) ----------
-  camera: { pos: [480, 600, 950], target: [480, 0, 282], fov: 39 },
-  env: { ambient: 0.55, sun: 1.9, sunDir: [-0.35, 1, 0.5] },
+  // como a câmera do original: alta, centrada, ~38° para baixo, vendo a grade do fundo e o monitor
+  camera: { pos: [480, 560, 1010], target: [480, 0, 268], fov: 40 },
+  env: { ambient: 0.5, sun: 1.6, sunDir: [-0.2, 1, 0.35] },
 
   // cilindro deitado centrado em x,z, eixo apontando para o ângulo `ang` da lógica (rodas, tubos)
   hcyl(r, x, y, z, len, rad, ang, color, o = {}) {
@@ -332,7 +333,7 @@ TN.registerMinigame({
   },
 
   // empilhadeira low-poly: chassi na cor do jogador, contrapeso, mastro, garfos, rodas e santantônio
-  forklift3d(r, p) {
+  forklift3d(r, p, semMotorista = false) {
     const dead = !p.alive, col = dead ? '#3a3a3a' : p.color, c = Math.cos(p.dir), sn = Math.sin(p.dir);
     const L = (f, s) => [p.x + c * f - sn * s, p.y + sn * f + c * s];
     const rot = -p.dir;
@@ -360,6 +361,7 @@ TN.registerMinigame({
     q = L(-14, 0);
     r.sphere(q[0], 66, q[1], 3.2, dead ? '#331010' : '#ffb02e', { glow: true });
     // motorista sentado (ou caído ao lado se a empilhadeira foi eliminada)
+    if (semMotorista) return;
     if (!dead) {
       q = L(-8, 0);
       r.character({ x: q[0], y: q[1], dir: p.dir, alive: true, color: p.color, label: p.label, r: 16 }, { pose: 'drive', y: 1, key: 'drv' + p.id });
@@ -370,47 +372,107 @@ TN.registerMinigame({
   },
 
   draw3d(g, r) {
-    const a = g.arena, d = g.data;
-    // almoxarifado da oficina em volta
-    const zp = a.y - 60;   // parede do fundo
-    r.room(a.x - 90, zp, a.x + a.w + 90, a.y + a.h + 60, { estilo: 'oficina', props: false });
-    const TX = a.w / 8, TZ = a.h / 4;
-    for (let i = 0; i < 8; i++) for (let j = 0; j < 4; j++) {
-      r.plane(a.x + TX * (i + 0.5), 0, a.y + TZ * (j + 0.5), TX - 2, TZ - 2, (i + j) % 2 ? '#30333a' : '#2b2e33', { rough: 0.95 });
+    const a = this.AREA, d = g.data, t = r.time || 0;
+    const x1 = a.x, x2 = a.x + a.w, z1 = a.y, z2 = a.y + a.h, mx = a.x + a.w / 2, mz = a.y + a.h / 2;
+    // almoxarifado da cadeia: galpão escuro e alto, o pátio de carga cercado no meio
+    r.room(x1 - 330, z1 - 470, x2 + 330, z2 + 60, { estilo: 'subsolo', h: 560, lamps: 4, floor: '#262725' });
+    // piso de concreto do pátio de carga, em placas
+    const TX = a.w / 6, TZ = a.h / 6;
+    for (let i = 0; i < 6; i++) for (let j = 0; j < 6; j++) {
+      r.plane(x1 + TX * (i + 0.5), 0, z1 + TZ * (j + 0.5), TX - 2, TZ - 2, (i * 7 + j * 3) % 4 ? '#34352f' : '#2f302b', { rough: 0.95, tex: 'concreto' });
     }
-    // muretas (fundo, laterais e frente) e prateleiras com caixas encostadas na parede do almoxarifado
-    r.box(480, 0, a.y - 12, a.w + 60, 40, 20, '#454c54', { metal: 0.3 });
-    r.box(a.x - 12, 0, a.y + a.h / 2, 20, 40, a.h + 4, '#454c54', { metal: 0.3 });
-    r.box(a.x + a.w + 12, 0, a.y + a.h / 2, 20, 40, a.h + 4, '#454c54', { metal: 0.3 });
-    r.box(480, 0, a.y + a.h + 10, a.w + 44, 16, 16, '#454c54', { metal: 0.3 });
-    for (let i = 0; i < 9; i++) r.box(a.x + 6 + i * (a.w - 12) / 8, 0, a.y - 1, 26, 4, 2, i % 2 ? '#111' : '#f5c400', { shadow: false });
-    for (const lx of [a.x + 60, a.x + 300, a.x + a.w - 300, a.x + a.w - 60]) {
-      const zs = zp + 18;
-      for (const sx of [-68, 68]) r.box(lx + sx, 0, zs, 4, 104, 28, '#3d3b37', { metal: 0.5 });   // montantes
-      r.box(lx, 0, zs, 140, 4, 30, '#5a3d1e', { tex: 'madeira' });
-      r.box(lx, 70, zs, 140, 4, 30, '#5a3d1e', { tex: 'madeira' });
-      for (const k of [-45, 0, 45]) { r.box(lx + k, 4, zs - 2, 30, 30, 24, '#8a5f30'); if (k) r.box(lx + k * 0.6, 74, zs - 2, 28, 26, 24, '#7a542b'); }
+    r.plane(mx, -0.5, mz, a.w + 30, a.h + 30, '#1c1d1b', { tex: false });   // vão escuro na borda do piso
+    // guarda-corpo de tubo nos fundos e nas laterais (a frente fica aberta para a câmera)
+    const GRADE = '#4a4d4f', gz = z1 - 14, gx1 = x1 - 14, gx2 = x2 + 14;
+    const corrimao = (ax, az, bx, bz) => {
+      const n = Math.max(1, Math.round(Math.hypot(bx - ax, bz - az) / 62));
+      for (let i = 0; i <= n; i++) { const px = ax + (bx - ax) * i / n, pz = az + (bz - az) * i / n; r.tube(px, 0, pz, px, 52, pz, 2.6, GRADE, { metal: 0.6 }); }
+      for (const hy of [26, 52]) r.tube(ax, hy, az, bx, hy, bz, 2.4, GRADE, { metal: 0.6 });
+      r.box((ax + bx) / 2, 0, (az + bz) / 2, Math.abs(bx - ax) + 6, 6, Math.abs(bz - az) + 6, '#2a2b2a');   // rodapé
+    };
+    corrimao(gx1, gz, gx2, gz);
+    corrimao(gx1, gz, gx1, z2 + 10);
+    corrimao(gx2, gz, gx2, z2 + 10);
+    r.box(mx, 0, z2 + 14, a.w + 34, 10, 10, '#2a2b2a');   // beirada da frente
+    for (let i = 0; i < 16; i++) r.box(x1 + 20 + i * (a.w - 40) / 15, 10, z2 + 19.5, 18, 3, 1, i % 2 ? '#111' : '#d9a800', { tex: false });
+    // tubulação no piso (dois feixes de 3 canos com desvio em diagonal, como no original) e grelhas nas pontas
+    const CANO = '#3b3e3c';
+    const feixe = (pts) => {
+      for (const off of [-9, 0, 9]) for (let i = 0; i + 1 < pts.length; i++) {
+        const [ax, az] = pts[i], [bx, bz] = pts[i + 1], len = Math.hypot(bx - ax, bz - az), nx = -(bz - az) / len, nz = (bx - ax) / len;
+        r.tube(ax + nx * off, 3.5, az + nz * off, bx + nx * off, 3.5, bz + nz * off, 3.4, CANO, { metal: 0.5 });
+      }
+    };
+    feixe([[mx - 10, z1 + 34], [mx - 10, mz - 70], [mx + 60, mz - 18], [x2 - 4, mz - 18]]);
+    feixe([[x1 + 4, mz + 4], [mx - 60, mz + 4], [mx + 10, mz + 66], [mx + 10, z2 - 34]]);
+    const grelha = (x, z, w, h) => {
+      r.plane(x, 0.6, z, w, h, '#151615', { tex: false });
+      for (let k = 0; k < Math.floor(h / 7); k++) r.box(x, 0, z - h / 2 + 4 + k * 7, w - 6, 2, 2, '#4b4e4c', { metal: 0.6 });
+    };
+    grelha(mx, z1 + 20, 110, 28);
+    grelha(mx, z2 - 22, 130, 32);
+    grelha(mx - 150, mz - 50, 150, 26);
+    grelha(mx + 150, mz + 44, 150, 26);
+    // estantes altas de caixas fora da grade (laterais e fileiras ao fundo)
+    const estante = (cx, cz, comp, eixoX, alt, semente) => {
+      const L = eixoX ? [comp, 46] : [46, comp], nv = Math.round(alt / 66);
+      for (const s of [-1, 1]) for (const k of [-1, 1]) {
+        const px = cx + (eixoX ? s * comp / 2 : k * 20), pz = cz + (eixoX ? k * 20 : s * comp / 2);
+        r.box(px, 0, pz, 5, alt, 5, '#3c4a5a', { metal: 0.55 });
+      }
+      for (let n = 0; n < nv; n++) {
+        const y = 6 + n * 66;
+        r.box(cx, y, cz, L[0], 4, L[1], '#8a5a26', { metal: 0.3 });
+        const nc = Math.floor(comp / 44);
+        for (let c = 0; c < nc; c++) {
+          if ((c * 5 + n * 3 + semente) % 7 === 0) continue;   // vão sem caixa
+          const o = -comp / 2 + 24 + c * (comp - 48) / Math.max(1, nc - 1), sz = 30 + ((c + n + semente) % 3) * 4;
+          r.box(eixoX ? cx + o : cx, y + 4, eixoX ? cz : cz + o, sz, sz * 0.8, sz, (c + n + semente) % 3 ? '#9c6c38' : '#b4844a');
+        }
+      }
+    };
+    for (const s of [-1, 1]) {
+      const ex = s < 0 ? x1 - 90 : x2 + 90;
+      estante(ex, z1 + 120, 230, false, 330, 1 + s);
+      estante(ex, z1 + 380, 230, false, 330, 4 + s);
     }
-    // corredor central tracejado
-    for (let x = a.x + this.ZONE_W + 30; x < a.x + a.w - this.ZONE_W - 20; x += 46) r.plane(x + 11, 0.4, a.y + a.h / 2, 24, 4, '#f5c400', { glow: true, opacity: 0.4 });
-    // luzes
-    r.light(a.x + 220, 240, a.y + 110, '#ffd9a8', 0.8, 640);
-    r.light(a.x + a.w - 220, 240, a.y + 110, '#ffd9a8', 0.8, 640);
-    r.light(a.x + 220, 240, a.y + a.h - 90, '#ffd9a8', 0.7, 640);
-    r.light(a.x + a.w - 220, 240, a.y + a.h - 90, '#ffd9a8', 0.7, 640);
-    // zonas de entrega
+    for (let i = 0; i < 5; i++) estante(mx - 260 + i * 130, z1 - 230, 300, false, 260, i);
+    // caixas soltas e uma empilhadeira parada ao fundo (estoque do almoxarifado)
+    for (const [bx, bz, br] of [[mx - 140, z1 - 70, 0.3], [mx - 110, z1 - 92, -0.2], [mx + 80, z1 - 64, 0.5], [mx + 170, z1 - 96, 0.1], [mx + 120, z1 - 120, -0.4]]) this.crate3d(r, bx, 0, bz, br);
+    this.forklift3d(r, { x: mx - 220, y: z1 - 100, dir: -0.6, alive: true, color: '#c9a227', label: '', data: { crate: null } }, true);
+    // monitor de contagem suspenso no fundo, no meio da grade
+    // (baixo o bastante para não ficar atrás do placar de turno no alto da tela)
+    const my = 46;
+    for (const s of [-1, 1]) r.box(mx + s * 40, 0, gz - 24, 10, my + 16, 10, '#2c2f31', { metal: 0.6 });
+    r.box(mx, my + 10, gz - 24, 170, 84, 18, '#232628', { metal: 0.5 });
+    r.box(mx, my + 18, gz - 14.5, 150, 66, 1, '#c8d0cc', { glow: true });
+    r.label(mx, my + 66, gz - 12, 'ALMOXARIFADO', '#2a3030', 11);
+    r.label(mx, my + 42, gz - 12, `TURNO ${d.sub}`, '#2a3030', 18);
+    // luzes (frias, de galpão), uma por quadrante
+    for (const [lx, lz] of [[mx - 170, mz - 150], [mx + 170, mz - 150], [mx - 170, mz + 160], [mx + 170, mz + 160]]) r.light(lx, 300, lz, '#bfe0e8', 0.75, 700);
+    // docas: moldura preta, quadriculado, luz da cor do dono e painel com grelhas e visor na frente
     for (const z of d.zones) {
       const col = z.active ? z.owner.color : '#555', cx = z.x + z.w / 2, cz = z.y + z.h / 2;
-      r.plane(cx, 0.5, cz, z.w - 4, z.h - 4, col, { opacity: z.active ? 0.2 : 0.08 });
+      r.plane(cx, 0.4, cz, z.w + 14, z.h + 14, '#0b0c0c', { tex: false });
+      r.plane(cx, 0.5, cz, z.w - 6, z.h - 6, '#2c302f', { tex: 'piso' });
+      r.plane(cx, 0.6, cz, z.w - 6, z.h - 6, col, { opacity: z.active ? 0.22 : 0.06, glow: true });
+      for (let k = 1; k < 5; k++) {
+        r.plane(z.x + 3 + k * (z.w - 6) / 5, 0.7, cz, 1.5, z.h - 10, '#5a5f5c', { tex: false, opacity: 0.6 });
+        r.plane(cx, 0.7, z.y + 3 + k * (z.h - 6) / 5, z.w - 10, 1.5, '#5a5f5c', { tex: false, opacity: 0.6 });
+      }
       const lo = { glow: z.active, opacity: z.active ? 0.9 : 0.5 };
       r.plane(cx, 0.8, z.y + 4, z.w - 8, 4, col, lo);
       r.plane(cx, 0.8, z.y + z.h - 4, z.w - 8, 4, col, lo);
       r.plane(z.x + 4, 0.8, cz, 4, z.h - 8, col, lo);
       r.plane(z.x + z.w - 4, 0.8, cz, 4, z.h - 8, col, lo);
-      // poste com lâmpada no canto externo
-      const px = z.x < 480 ? z.x + 10 : z.x + z.w - 10, pz = z.y < a.y + a.h / 2 ? z.y + 10 : z.y + z.h - 10;
-      r.cyl(px, 0, pz, 2.5, 52, '#22262b', { metal: 0.6 });
-      r.sphere(px, 55, pz, 5, z.active ? col : '#2a2a2a', { glow: true });
+      // painel na frente da doca: grelha | visor | grelha
+      const pz = z.y + z.h + 22;
+      grelha(cx - 56, pz, 46, 22); grelha(cx + 56, pz, 46, 22);
+      r.box(cx, 0, pz, 52, 3, 24, '#050606', { tex: false });
+      // luz de sinalização no canto externo da doca (gira como giroflex)
+      const px = z.x < mx ? z.x - 2 : z.x + z.w + 2, pzz = z.y < mz ? z.y - 2 : z.y + z.h + 2;
+      r.cyl(px, 0, pzz, 3, 34, '#22262b', { metal: 0.6 });
+      r.sphere(px, 38, pzz, 5.5, z.active ? (Math.sin(t * 5 + z.owner.id) > 0 ? col : '#2a2a2a') : '#2a2a2a', { glow: true });
     }
     // empilhadeiras (mortas primeiro)
     for (const p of g.players) if (!p.alive) this.forklift3d(r, p);
@@ -430,16 +492,16 @@ TN.registerMinigame({
   // placares fixos na tela: turno, tempo, caixas e contagem de cada zona
   drawOverlay(g, c) {
     if (!g.uses3d || !g.uses3d()) return;
-    const a = g.arena, D = TN.draw, d = g.data, U = TN.util;
+    const D = TN.draw, d = g.data, U = TN.util;
     for (const z of d.zones) {
       const col = z.active ? z.owner.color : '#777';
-      const top = z.y < a.y + a.h / 2;
-      // fora da arena: as de cima na parede do fundo, as de baixo abaixo da mureta da frente
-      const s = TN.R3.project(z.x + z.w / 2, top ? 70 : 0, top ? a.y - 4 : a.y + a.h + 24);
-      const y = U.clamp(top ? s.y : s.y + 16, 82, g.H - 14);
-      c.fillStyle = 'rgba(8,10,13,0.7)'; c.fillRect(s.x - 46, y - 13, 92, 26);
-      c.fillStyle = col; c.fillRect(s.x - 46, y - 13, 4, 26);
-      D.text(c, z.active ? `${z.owner.label}  ${z.count}` : `${z.owner.label} ✖`, s.x + 2, y, { size: 18, color: col, align: 'center' });
+      // no visor do painel na frente de cada doca (como o contador do original)
+      const s = TN.R3.project(z.x + z.w / 2, 0, z.y + z.h + 22);
+      const y = U.clamp(s.y, 82, g.H - 14), W = 128;
+      c.fillStyle = 'rgba(8,10,13,0.78)'; c.fillRect(s.x - W / 2, y - 12, W, 24);
+      c.fillStyle = col; c.fillRect(s.x - W / 2, y - 12, 4, 24);
+      D.text(c, z.owner.label, s.x - W / 2 + 9, y, { size: 13, color: col, maxWidth: 80 });
+      D.text(c, z.active ? `${z.count}` : '✖', s.x + W / 2 - 8, y, { size: 18, color: col, align: 'right' });
     }
     const t = d.phase === 'play' ? d.timer : 0;
     c.fillStyle = 'rgba(8,10,13,0.65)'; c.fillRect(g.W / 2 - 200, 38, 400, 30);
@@ -489,8 +551,11 @@ TN.registerMinigame({
   },
 
   draw(g, c) {
-    const a = g.arena, D = TN.draw, d = g.data, U = TN.util;
+    const a = this.AREA, A = g.arena, D = TN.draw, d = g.data, U = TN.util;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);
+    // o pátio (620 × 560) é mais fundo que a tela: desenha em escala dentro de g.arena
+    const k = A.h / a.h;
+    c.save(); c.translate(A.x + A.w / 2 - (a.x + a.w / 2) * k, A.y - a.y * k); c.scale(k, k);
     D.floor(c, a.x, a.y, a.w, a.h, { tile: 55, a: '#2a2c2f', b: '#2e3134' });
     // faixas de corredor
     c.strokeStyle = 'rgba(245,196,0,0.25)'; c.lineWidth = 3; c.setLineDash([16, 12]);
@@ -516,14 +581,15 @@ TN.registerMinigame({
       const ly = top ? z.y + z.h + 14 : z.y - 14;
       D.text(c, z.active ? `${z.owner.label}  ${z.count}` : `${z.owner.label} ✖`, z.x + z.w / 2, ly, { size: 18, color: col, align: 'center' });
     }
+    c.restore();
     // faixa de status abaixo do HUD: turno + tempo
     const t = d.phase === 'play' ? d.timer : 0;
-    D.text(c, `TURNO ${d.sub}`, a.x, 52, { size: 16, color: '#ffb02e' });
+    D.text(c, `TURNO ${d.sub}`, A.x, 52, { size: 16, color: '#ffb02e' });
     D.text(c, U.formatTime(t), g.W / 2, 52, { size: 24, color: t < 5 && d.phase === 'play' ? '#f55' : '#fff', align: 'center' });
-    D.text(c, `CAIXAS: ${d.crates.filter((cr) => !cr.removed).length}`, a.x + a.w, 52, { size: 14, color: '#aaa', align: 'right' });
+    D.text(c, `CAIXAS: ${d.crates.filter((cr) => !cr.removed).length}`, A.x + A.w, 52, { size: 14, color: '#aaa', align: 'right' });
     if (d.banner) {
-      D.panel(c, g.W / 2 - 220, a.y + a.h / 2 - 26, 440, 52, { stroke: d.banner.color });
-      D.text(c, d.banner.text, g.W / 2, a.y + a.h / 2, { size: 22, color: d.banner.color, align: 'center' });
+      D.panel(c, g.W / 2 - 220, A.y + A.h / 2 - 26, 440, 52, { stroke: d.banner.color });
+      D.text(c, d.banner.text, g.W / 2, A.y + A.h / 2, { size: 22, color: d.banner.color, align: 'center' });
     }
   },
 });

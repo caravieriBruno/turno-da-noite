@@ -157,8 +157,9 @@ TN.registerMinigame({
 
   // ------------------------------------------------------------------ 3D (câmera fixa)
   // Palco de frente: X = lógica x, Z = profundidade (os bancos ficam em Z = p.y), Y = altura.
-  camera: { pos: [488, 196, 1110], target: [488, 128, 370], fov: 36 },
-  env: { bg: '#07090c', fog: [900, 2200], ambient: 0.45, sun: 1.1, sunDir: [-0.35, 1, 0.8], sunColor: '#ffe2c0' },
+  // como no original: câmera baixa vinda do canto da sala (um pouco à esquerda), lente fechada
+  camera: { pos: [330, 185, 1150], target: [492, 140, 330], fov: 34 },
+  env: { bg: '#0b0a09', fog: [1000, 2400], ambient: 0.5, sun: 0.9, sunDir: [-0.35, 1, 0.8], sunColor: '#ffe2c0' },
   S3: 1.75,           // escala dos personagens
   STOOL_H: 64,        // altura do assento do banquinho
   DIR3: 0.95,         // sentados olhando para o fiscal, meio virados para a câmera
@@ -172,23 +173,79 @@ TN.registerMinigame({
     return { x: x + (lx * cs - lz * sn) * S, y: oy + ly * S, z: z + (lx * sn + lz * cs) * S };
   },
 
+  // Fumódromo da cadeia, como a salinha do Smoke Break: armários de manutenção numerados sobre radiadores
+  // à esquerda; ventilador grande, placa de proibido fumar, alarme e tomada com fiação à direita; caixa de
+  // ventilação, caixote, carretel de cabo e pedaços de cano no chão.
+  WALL_Z: 240,
+  sala3d(r, t) {
+    const WZ = this.WALL_Z, F = WZ + 1;
+    r.room(-60, WZ, 1000, 640, { estilo: 'cela', bars: false, windows: 0, h: 380, paintH: 150,
+      paint: '#4f4c42', top: '#8a8273', floor: '#232526', lamps: 0 });
+    // manchas de infiltração e reboco caído na parede
+    for (const [mx, my, mw, mh] of [[60, 250, 120, 70], [470, 300, 90, 50], [960, 230, 80, 120], [330, 170, 60, 40]]) r.box(mx, my, F, mw, mh, 1, '#5d574b', { tex: 'concreto' });
+    // ---- armários de manutenção numerados (001, 002, 003) sobre radiadores ----
+    r.tube(-60, 26, F + 10, 600, 26, F + 10, 4, '#8c8f8c', { metal: 0.6 });   // cano dos radiadores
+    for (let i = 0; i < 3; i++) {
+      const lx = 120 + i * 190;
+      r.box(lx, 108, F, 128, 152, 6, '#3b2f25', { metal: 0.4 });                 // moldura enferrujada
+      r.box(lx, 114, F + 4, 116, 140, 3, '#1a1714', { tex: false });           // vão com veneziana
+      for (let k = 0; k < 8; k++) r.box(lx + 20, 122 + k * 16, F + 6, 70, 3, 2, '#5a3f2c', { metal: 0.4 });
+      r.box(lx - 22, 116, F + 8, 62, 134, 4, '#a7aaa5', { metal: 0.55, rough: 0.4 });   // porta de chapa aberta
+      r.box(lx - 22, 214, F + 10.5, 46, 22, 1, '#d9dbd4', { tex: false });       // etiqueta
+      r.label(lx - 22, 225, F + 12, '00' + (i + 1), '#1d1f22', 15);
+      r.box(lx + 6, 160, F + 10.5, 4, 26, 4, '#6b6f6a', { metal: 0.8 });          // puxador
+      // radiador de aletas
+      for (let k = 0; k < 9; k++) r.box(lx - 44 + k * 11, 6, F + 12, 8, 92, 14, '#c9c9c2', { metal: 0.5, rough: 0.5 });
+      r.box(lx, 96, F + 12, 104, 4, 16, '#b3b3ab', { metal: 0.5 });
+    }
+    // ---- ventilador grande na parede (gira devagar) ----
+    const fx = 790, fy = 215, fr = 92;
+    r.cyl(fx, fy, F, fr + 6, 3, '#0d0d0c', { rotX: Math.PI / 2, tex: false });   // fundo escuro do duto
+    for (let k = 0; k < 20; k++) {   // aro enferrujado da carcaça
+      const a = k * Math.PI * 2 / 20;
+      r.box(fx + Math.cos(a) * (fr + 6), fy + Math.sin(a) * (fr + 6) - 15, F, 30, 30, 20, '#6a3f2b', { metal: 0.5 });
+    }
+    for (let k = 0; k < 5; k++) r.box(fx, fy, F + 8, 34, fr - 8, 3, '#8b8e8c', { rotZ: t * 2.2 + k * Math.PI * 2 / 5, metal: 0.6 });
+    r.cyl(fx, fy, F + 4, 16, 10, '#2f2f2c', { rotX: Math.PI / 2, metal: 0.6 });
+    for (const a of [0, Math.PI / 2]) r.box(fx, fy, F + 17, 4, fr + 10, 2, '#4a3a30', { rotZ: a, metal: 0.5 });   // grade em cruz
+    for (const a of [Math.PI, -Math.PI / 2]) r.box(fx, fy, F + 17, 4, fr + 10, 2, '#4a3a30', { rotZ: a, metal: 0.5 });
+    // ---- placa PROIBIDO FUMAR (no fumódromo), alarme de incêndio e tomada ----
+    const sx = 935, sy = 200;
+    r.box(sx, sy, F, 74, 96, 3, '#e6e2d6', { tex: false });
+    r.cyl(sx, sy + 40, F + 2, 24, 2, '#c3201a', { rotX: Math.PI / 2, tex: false });
+    r.cyl(sx, sy + 40, F + 3, 18, 2, '#e6e2d6', { rotX: Math.PI / 2, tex: false });
+    r.box(sx, sy + 40, F + 5.5, 5, 24, 1, '#c3201a', { rotZ: Math.PI / 4, tex: false });
+    r.box(sx, sy + 40, F + 5.5, 5, 24, 1, '#c3201a', { rotZ: -3 * Math.PI / 4, tex: false });
+    r.box(sx - 6, sy + 38, F + 4.5, 22, 4, 1, '#f4f4f0', { tex: false });   // cigarro riscado
+    r.label(sx, sy + 12, F + 6, 'PROIBIDO FUMAR', '#c3201a', 9);
+    r.box(sx, 132, F, 18, 22, 6, '#b3170f');                                // alarme de incêndio
+    r.box(sx, 138, F + 3.5, 10, 8, 1, '#f1e9d0', { tex: false });
+    r.box(sx - 10, 14, F, 22, 16, 3, '#bdb9ab');                            // tomada
+    r.beam(sx - 10, 16, F + 4, sx - 40, 1, F + 40, 1.6, '#1a1a1a');         // fiação até a extensão
+    r.beam(sx - 40, 1, F + 40, sx - 90, 1, F + 52, 1.6, '#1a1a1a');
+    r.box(sx - 100, 0, F + 54, 26, 6, 12, '#d8d4c6', { rotY: 0.3 });
+    r.beam(sx - 110, 1, F + 58, sx - 160, 1, F + 50, 1.6, '#1a1a1a');
+    // ---- caixa de ventilação enferrujada sob o ventilador, com grelha ----
+    r.box(790, 0, F + 36, 190, 66, 70, '#6b4b36', { metal: 0.35 });
+    for (let k = 0; k < 6; k++) r.box(790, 14 + k * 8, F + 71.5, 160, 3.5, 1, '#151312', { tex: false });
+    // ---- caixote, carretel de cabo e pedaços de cano no chão ----
+    r.box(430, 0, F + 42, 56, 52, 56, '#7b5534', { tex: 'madeira', rotY: 0.15 });
+    r.beam(404, 4, F + 18, 456, 48, F + 66, 4, '#5e3f25');
+    r.cyl(250, 0, F + 30, 26, 70, '#1e1e1e', { rough: 0.9 });               // carretel com faixa zebrada
+    for (const y of [0, 64]) r.cyl(250, y, F + 30, 31, 6, '#2b2b2b', { metal: 0.4 });
+    for (let k = 0; k < 3; k++) r.cyl(250, 14 + k * 18, F + 30, 26.6, 5, k % 2 ? '#141414' : '#c9a100', { tex: false });
+    // brilho vermelho perto do ventilador (como a luz do timer do original)
+    r.light(fx, fy + 40, F + 60, '#ff3a20', 0.5, 260);
+    r.tube(20, 9, F + 225, 60, 9, F + 250, 9, '#6f7472', { metal: 0.6 });
+    r.tube(70, 9, F + 238, 100, 9, F + 214, 10, '#7a7e7b', { metal: 0.6 });
+  },
+
   draw3d(g, r) {
     const d = g.data, S = this.S3, SH = this.STOOL_H, Z = this.FLOOR_Y - 70, oy = SH - 20 * S, dir = this.DIR3;
     const t = g.time;
-    // ---- fumódromo do pátio: muro com arame farpado ao fundo, guarita à esquerda ----
-    r.yard(-60, 204, 1020, 640, { quadra: false, guarita: 'esquerda', postes: 0, h: 300 });
-    // faixa de segurança no chão, à frente dos bancos
-    for (let i = 0; i < 26; i++) r.box(-40 + i * 40 + 10, 0.4, 470, 20, 1, 8, i % 2 ? '#141414' : '#c9a100', { shadow: false });
-    // ---- placa ÁREA DE FUMANTES ----
-    r.box(560, 196, 207, 190, 48, 4, '#2a1d0f', { emissive: '#1a0d00' });
-    r.box(560, 196, 209, 186, 3, 2, '#ff9f43', { glow: true });
-    r.box(560, 241, 209, 186, 3, 2, '#ff9f43', { glow: true });
-    r.label(560, 228, 212, 'ÁREA DE FUMANTES', '#ffcf8a', 15);
-    // ---- postes de vapor de sódio atrás dos bancos (a cabeça do poste fica sobre lx) ----
-    for (const lx of [215, 595]) {
-      r.prop('poste', lx - 52, 232);
-      r.light(lx, 225, 380, '#ffb870', 2.0, 560);
-    }
+    this.sala3d(r, t);
+    // luz quente sobre os bancos e fria sobre o fiscal
+    for (const lx of [215, 595]) r.light(lx, 250, 380, '#ffc48a', 1.8, 560);
     r.light(862, 230, 400, '#cfe0ff', 0.8, 420);
     // ---- bancos, cinzeiros e fumantes ----
     for (const p of g.players) {

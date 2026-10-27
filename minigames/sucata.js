@@ -21,35 +21,38 @@ TN.registerMinigame({
   HIT_PUSH: 420, THROW_PUSH: 590, STUN: 0.6, PICK_R: 38, FALL_T: 0.55,
   HURRY_AT: 45, HARD_END: 110,
 
+  // ---- mapa (o do original: 4 pilares redondos em 2×2 sobre o poço da casa de máquinas, de raio 6 m e a 26 m
+  //      um do outro). O raio dá a mesma área das antigas chapas de 290 × 150; o vão entre pilares vizinhos
+  //      (156 px) fica no alcance do arremesso, já o vão na diagonal não (como no original, que é bem mais largo).
+  //      Com menos de 4 jogadores os pilares sobrando ficam vazios, só de cenário. ----
+  PLAT_R: 110, PLAT_GAP: 310, CX: 480, CZ: 282,
+  // ordem dos pilares: fundo-esq., fundo-dir., frente-dir., frente-esq.; 2 jogadores ficam lado a lado na frente
+  SLOTS: [[-1, -1], [1, -1], [1, 1], [-1, 1]],
+  slotsFor(n) { return n === 2 ? [3, 2] : n === 3 ? [0, 3, 2] : [0, 1, 2, 3].slice(0, n); },
+  slotPos(i) { const [sx, sz] = this.SLOTS[i], h = this.PLAT_GAP / 2; return { x: this.CX + sx * h, y: this.CZ + sz * h }; },
+
   init(g) {
     const d = g.data, n = g.playerCount;
-    // plataformas: 2×2 para 4 jogadores, em fila para 2 ou 3
-    d.plats = [];
-    if (n === 4) {
-      for (let i = 0; i < 4; i++) d.plats.push({ x: i % 2 ? 555 : 115, y: i < 2 ? 92 : 318, w: 290, h: 150 });
-    } else {
-      const w = n === 3 ? 240 : 300, gap = n === 3 ? 80 : 200, x0 = 480 - (n * w + (n - 1) * gap) / 2;
-      for (let i = 0; i < n; i++) d.plats.push({ x: x0 + i * (w + gap), y: 160, w, h: 200 });
-    }
-    d.plats.forEach((pl, i) => Object.assign(pl, { owner: g.players[i].id, over: 0, dead: false, fallT: 0, shakeT: 0 }));
+    d.plats = this.slotsFor(n).map((s, i) => ({ ...this.slotPos(s), r: this.PLAT_R, slot: s, owner: g.players[i].id, over: 0, dead: false, fallT: 0, shakeT: 0 }));
     d.cubes = []; d.nextCubeId = 1;
     d.nextDrop = 1.2;
     g.players.forEach((p, i) => {
       const pl = d.plats[i];
-      p.x = pl.x + pl.w / 2; p.y = pl.y + pl.h / 2; p.dir = Math.PI / 2;
+      p.x = pl.x; p.y = pl.y; p.dir = Math.PI / 2;
       p.data = { held: -1, stun: 0, falling: 0 };
     });
   },
 
   // ---------- auxiliares ----------
+  // plataformas redondas: (pl.x, pl.y) é o centro e pl.r o raio
   platAt(g, x, y, pad = 0) {
-    return g.data.plats.find((pl) => !pl.dead && x >= pl.x - pad && x <= pl.x + pl.w + pad && y >= pl.y - pad && y <= pl.y + pl.h + pad) || null;
+    return g.data.plats.find((pl) => !pl.dead && Math.hypot(x - pl.x, y - pl.y) <= pl.r + pad) || null;
   },
   platOf(g, p) { return g.data.plats.find((pl) => pl.owner === p.id); },
   cubeById(g, id) { return g.data.cubes.find((cb) => cb.id === id) || null; },
   countOn(g, pl) {
     let n = 0;
-    for (const cb of g.data.cubes) if (cb.state === 'ground' && cb.x >= pl.x && cb.x <= pl.x + pl.w && cb.y >= pl.y && cb.y <= pl.y + pl.h) n++;
+    for (const cb of g.data.cubes) if (cb.state === 'ground' && Math.hypot(cb.x - pl.x, cb.y - pl.y) <= pl.r) n++;
     return n;
   },
   newCube(g, x, y, z, state) {
@@ -84,7 +87,8 @@ TN.registerMinigame({
       for (const pl of d.plats) {
         const owner = g.players.find((o) => o.id === pl.owner);
         if (pl.dead || !owner.alive || d.cubes.length >= this.MAX_CUBES) continue;
-        this.newCube(g, U.rand(pl.x + 22, pl.x + pl.w - 22), U.rand(pl.y + 22, pl.y + pl.h - 22), this.DROP_Z, 'drop');
+        const an = U.rand(0, Math.PI * 2), rr = (pl.r - 22) * Math.sqrt(Math.random());   // ponto sorteado no disco
+        this.newCube(g, pl.x + Math.cos(an) * rr, pl.y + Math.sin(an) * rr, this.DROP_Z, 'drop');
       }
       g.sfx('whoosh');
     }
@@ -103,7 +107,7 @@ TN.registerMinigame({
       if (pd.stun > 0) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt, null); p.input = save; }
       else g.movePlayer(p, this.SPEED, dt, null);
       g.decayPush(p, dt, 5);
-      p.x = U.clamp(p.x, 4, g.W - 4); p.y = U.clamp(p.y, 38, g.H - 4);
+      p.x = U.clamp(p.x, -200, g.W + 200); p.y = U.clamp(p.y, -200, g.H + 260);   // (fora das plataformas ele cai antes)
 
       if (pd.stun <= 0 && p.input.aPressed) {
         const held = this.cubeById(g, pd.held);
@@ -174,10 +178,10 @@ TN.registerMinigame({
         if (pl.over >= this.COLLAPSE_T) {
           pl.dead = true; pl.fallT = 0;
           g.sfx('boom'); g.shake(10);
-          g.particles(pl.x + pl.w / 2, pl.y + pl.h / 2, '#8a8f96', 40, 300);
+          g.particles(pl.x, pl.y, '#8a8f96', 40, 300);
           for (const p of g.alive()) {
             if (p.data.falling > 0) continue;
-            if (p.x >= pl.x - 2 && p.x <= pl.x + pl.w + 2 && p.y >= pl.y - 2 && p.y <= pl.y + pl.h + 2) {
+            if (Math.hypot(p.x - pl.x, p.y - pl.y) <= pl.r + 2) {
               p.data.falling = this.FALL_T; this.dropHeld(g, p); g.popup('DESABOU!', p.x, p.y - 40, '#f55');
             }
           }
@@ -192,46 +196,53 @@ TN.registerMinigame({
     if (pd.falling > 0 || pd.stun > 0) return { x: 0, y: 0 };
     const home = this.platAt(g, p.x, p.y) || this.platOf(g, p);
     const M = 28;
-    const inside = (x, y) => ({ x: U.clamp(x, home.x + M, home.x + home.w - M), y: U.clamp(y, home.y + M, home.y + home.h - M) });
+    const inside = (x, y, m = M) => {   // ponto mais próximo dentro do disco (com margem)
+      const dx = x - home.x, dy = y - home.y, dd = Math.hypot(dx, dy), lim = home.r - m;
+      return dd <= lim ? { x, y } : { x: home.x + (dx / dd) * lim, y: home.y + (dy / dd) * lim };
+    };
     const pulse = (want) => { const v = want && !pd.bPrevA; pd.bPrevA = v; return v; };
     let goal = null, act = false, face = null;
 
     const held = this.cubeById(g, pd.held);
     if (held) {
-      // mira a plataforma rival com mais cubos (para fazer desabar)
-      let target = null, bc = -1;
-      for (const pl of d.plats) {
-        if (pl.dead || pl === home) continue;
-        const cnt = this.countOn(g, pl) + U.rand(0, 0.9);
-        if (cnt > bc) { bc = cnt; target = pl; }
+      // mira a plataforma rival com mais cubos (para fazer desabar); a escolha vale para o cubo inteiro
+      // (sortear a cada quadro entre rivais empatados deixava o bot indeciso, sem nunca arremessar)
+      if (!pd.bAim || pd.bAim.cube !== held.id || !d.plats.some((pl) => pl.slot === pd.bAim.slot && !pl.dead)) {
+        let best = null, bc = -1;
+        for (const pl of d.plats) {
+          if (pl.dead || pl === home) continue;
+          const cnt = this.countOn(g, pl) + U.rand(0, 0.9);
+          if (cnt > bc) { bc = cnt; best = pl; }
+        }
+        pd.bAim = { cube: held.id, slot: best ? best.slot : -1, ox: U.rand(-0.4, 0.4), oy: U.rand(-0.4, 0.4), wait: U.rand(0.35, 1.1) };
       }
+      const target = d.plats.find((pl) => pl.slot === pd.bAim.slot && !pl.dead && pl !== home) || null;
       if (target) {
-        // ponto de mira com erro (sorteado ao pegar o cubo) e um tempinho de "pontaria" antes de arremessar
-        if (!pd.bAim || pd.bAim.cube !== held.id) pd.bAim = { cube: held.id, ox: U.rand(-0.45, 0.45), oy: U.rand(-0.45, 0.45), wait: U.rand(0.35, 1.1) };
-        const T = { x: target.x + target.w * (0.5 + pd.bAim.ox), y: target.y + target.h * (0.5 + pd.bAim.oy) };
+        // ponto de mira com erro e um tempinho de "pontaria" antes de arremessar; arremessa da beirada
+        const T = { x: target.x + target.r * pd.bAim.ox, y: target.y + target.r * pd.bAim.oy };
         const n = U.norm(T.x - p.x, T.y - p.y);
-        goal = inside(T.x - n.x * this.THROW_DIST, T.y - n.y * this.THROW_DIST);
+        goal = inside(T.x - n.x * this.THROW_DIST, T.y - n.y * this.THROW_DIST, 16);
         if (U.dist(p.x, p.y, goal.x, goal.y) < 14) {
           pd.bAim.wait -= dt;
           if (pd.bAim.wait > 0) return { x: 0, y: 0 };   // parado mirando
           face = n; act = true;                           // vira e arremessa no mesmo quadro
         }
-      } else { // não sobrou rival: joga no vazio mais perto
-        const out = [{ x: -1, y: 0, d: p.x - home.x }, { x: 1, y: 0, d: home.x + home.w - p.x }, { x: 0, y: -1, d: p.y - home.y }, { x: 0, y: 1, d: home.y + home.h - p.y }].sort((a, b) => a.d - b.d)[0];
-        face = out; act = true;
+      } else { // não sobrou rival: joga no vazio, para fora do pilar
+        const dx = p.x - home.x, dy = p.y - home.y;
+        face = Math.hypot(dx, dy) > 4 ? U.norm(dx, dy) : { x: 0, y: 1 }; act = true;
       }
     } else {
       // pega o cubo no chão mais perto da própria plataforma
       let best = null, bd = 1e9;
       for (const cb of d.cubes) {
-        if (cb.state !== 'ground' || cb.x < home.x || cb.x > home.x + home.w || cb.y < home.y || cb.y > home.y + home.h) continue;
+        if (cb.state !== 'ground' || Math.hypot(cb.x - home.x, cb.y - home.y) > home.r) continue;
         const dd = U.dist(p.x, p.y, cb.x, cb.y);
         if (dd < bd) { bd = dd; best = cb; }
       }
       if (best) { goal = inside(best.x, best.y); if (bd < this.PICK_R - 8) act = true; }
       else {
         if (!pd.bWander || U.chance(0.01)) pd.bWander = { x: U.rand(-40, 40), y: U.rand(-25, 25) };
-        goal = inside(home.x + home.w / 2 + pd.bWander.x, home.y + home.h / 2 + pd.bWander.y);
+        goal = inside(home.x + pd.bWander.x, home.y + pd.bWander.y);
       }
     }
     // foge das sombras de cubos que estão caindo
@@ -262,63 +273,87 @@ TN.registerMinigame({
   },
 
   // ---------- 3D (câmera fixa) ----------
-  // Plataformas de chapa sobre pilares num abismo escuro (névoa engole o fundo). Borda acesa na cor do dono,
-  // marcador de cubos (6 luzes), sucata caindo do alto com anel vermelho de aviso no chão, plataforma
-  // tremendo/avermelhando antes de desabar e despencando (y negativo) com o pilar.
-  camera: { pos: [480, 660, 820], target: [480, -20, 282], fov: 41 },
-  env: { bg: '#04060a', fog: [850, 1500], ambient: 0.75, sun: 2.3, sunDir: [-0.35, 1, 0.45], sunColor: '#ffe6c8' },
+  // Pilares redondos e altos (caixas d'água velhas da casa de máquinas da cadeia) sobre o poço, como no
+  // original. O topo tem os anéis concêntricos do original, que aqui são o marcador de cubos: acendem de
+  // dentro para fora (verde → vermelho) e piscam acima do limite. A borda acende na cor do dono. Ao desabar,
+  // a prensa da oficina desce sobre o pilar e o tampo despenca no poço.
+  camera: { pos: [480, 396, 730], target: [480, 0, 396], fov: 50 },
+  env: { bg: '#161922', fog: [700, 1700], ambient: 0.75, sun: 2.1, sunDir: [-0.2, 1, 0.35], sunColor: '#dfe9ea' },
+  RING_COLORS: ['#3cff5a', '#9dff3c', '#e6ff3c', '#ffd23c', '#ff8a2c', '#ff2a2a'],
+
+  // um pilar: corpo enferrujado com cintas e nervuras, tampo e os anéis (cnt = cubos; -1 = sem dono)
+  drawPillar(g, r, x, z, y, R, cnt, over, tilt) {
+    r.cyl(x, y - 900, z, R + 8, 886, '#4a4239', { metal: 0.45, rough: 0.7 });
+    for (let k = 0; k < 4; k++) r.cyl(x, y - 70 - k * 150, z, R + 12, 16, '#2c2925', { metal: 0.6 });
+    for (let k = 0; k < 10; k++) {
+      const an = (k / 10) * Math.PI * 2 + 0.2;
+      r.box(x + Math.cos(an) * (R + 10), y - 640, z + Math.sin(an) * (R + 10), 8, 620, 8, '#3a342e', { rotY: -an, metal: 0.5 });
+    }
+    r.cyl(x, y - 16, z, R + 13, 16, '#37322c', { metal: 0.55, rough: 0.5, ...tilt });   // tampo
+    r.disc(x, y + 0.3, z, R + 2, '#26231f', { ...tilt });
+    if (tilt.rotZ) return;
+    const pisca = over > 0 && Math.floor(g.time * 5) % 2 === 0;   // pisca a 0,1 s, como o alarme do original
+    for (let i = 0; i < this.LIMIT + 1; i++) {
+      const ri = R * (0.16 + 0.135 * i), on = i < cnt;
+      const col = on ? (over > 0 || cnt > this.LIMIT ? (pisca ? '#5a0a0a' : '#ff2a2a') : this.RING_COLORS[i]) : '#5f5b53';
+      r.ring(x, y + 0.6, z, ri, ri + R * 0.075, col, on ? { glow: true } : { tex: false });
+    }
+    r.disc(x, y + 0.6, z, R * 0.07, cnt > 0 ? this.RING_COLORS[0] : '#5f5b53', cnt > 0 ? { glow: true } : { tex: false });
+  },
 
   draw3d(g, r) {
     const U = TN.util, d = g.data;
     const q = (v) => Math.round(U.clamp(v, 0, 1) * 10) / 10;
     const lights = [];
-    // ---- ferro-velho do pátio: laje de cimento em volta de um fosso, com sucata encostada no muro ----
-    const PX0 = 16, PX1 = 944, PZ0 = 20, PZ1 = 540, lj = '#3b3934';
-    r.yard(-60, -60, 1020, 580, { floor: false });
-    r.plane(480, 0, (PZ0 - 700) / 2, 2600, PZ0 + 700, lj);
-    r.plane((PX0 - 1200) / 2, 0, 900, PX0 + 1200, 1800, lj);
-    r.plane((PX1 + 2160) / 2, 0, 900, 2160 - PX1, 1800, lj);
-    r.plane(480, 0, (PZ1 + 1800) / 2, PX1 - PX0, 1800 - PZ1, lj);
-    for (const [x, z, w, dd] of [[480, PZ0, PX1 - PX0, 10], [480, PZ1, PX1 - PX0, 10], [PX0, (PZ0 + PZ1) / 2, 10, PZ1 - PZ0], [PX1, (PZ0 + PZ1) / 2, 10, PZ1 - PZ0]]) r.box(x, -700, z, w, 700, dd, '#2a2926');
-    for (let k = 0; k < 15; k++) r.box(PX0 + 30 + k * 62, -2, PZ1 + 8, 30, 3, 6, k % 2 ? '#141414' : '#c9a400', { shadow: false });
-    for (const [x, z, n] of [[-25, 0, 'pneu'], [-5, -30, 'tambor'], [985, 10, 'tambor'], [960, -32, 'pneu'], [990, 70, 'pneu']]) r.prop(n, x, z, { rotY: x * 0.01 });
-    // ---- abismo: fundo distante e vigas perdidas na névoa ----
-    r.plane(480, -700, 280, 3000, 2400, '#0a0e14');
-    for (const [x, z] of [[20, 40], [940, 40], [480, 10], [250, 0], [710, 0]]) r.box(x, -700, z, 18, 640, 18, '#1a1f26', { metal: 0.5 });
-    // ---- plataformas ----
+    const CX = this.CX, CZ = this.CZ, R = this.PLAT_R, H = this.PLAT_GAP / 2;
+    // ---- o poço da casa de máquinas: paredão do fundo, escada de manutenção no meio, canos e caldeiras ----
+    r.plane(CX, -900, CZ, 3200, 2600, '#0b0d12');
+    r.box(CX, -900, CZ - H - R - 150, 1500, 900, 30, '#2b2a2c', { metal: 0.3 });
+    for (let k = 0; k < 5; k++) r.box(CX - 600 + k * 300, -900, CZ - H - R - 130, 90, 900, 20, '#34312d', { metal: 0.5 });
+    for (const y of [-40, -110, -200]) r.tube(CX - 760, y, CZ - H - R - 120, CX + 760, y, CZ - H - R - 120, 9, '#4d4038', { metal: 0.5 });
+    // escada/passarela de manutenção entre os pilares, do fundo até a frente
+    const z0 = CZ - H - R - 120, z1 = CZ + H + R + 260, ly = -34;
+    for (const s of [-1, 1]) r.box(CX + s * 24, ly, (z0 + z1) / 2, 6, 6, z1 - z0, '#3d3833', { metal: 0.6 });
+    for (let z = z0 + 10; z < z1; z += 32) r.box(CX, ly + 1, z, 48, 3, 5, '#2f2b27', { metal: 0.6 });
+    for (const s of [-1, 1]) r.tube(CX + s * 44, -70, z0, CX + s * 44, -70, z1, 7, '#39443f', { metal: 0.5 });
+    // canos e vigas dos lados, em várias profundidades (somem na névoa)
+    for (const s of [-1, 1]) {
+      for (let k = 0; k < 5; k++) {
+        const x = CX + s * (H + R + 70 + k * 46), y = -50 - k * 55;
+        r.tube(x, y, CZ - H - R - 120, x, y, CZ + H + R + 300, 7 + (k % 2) * 4, k % 2 ? '#4d4038' : '#3b3f3c', { metal: 0.5 });
+      }
+      for (const zz of [CZ - H, CZ + H]) r.tube(CX + s * (H + R + 6), -60, zz, CX + s * 700, -60, zz, 10, '#4a3b30', { metal: 0.5 });   // canos que saem dos pilares
+      r.tube(CX + s * 640, -170, CZ - 260, CX + s * 640, -170, CZ + 120, 48, '#3e3a35', { metal: 0.5 });   // caldeira
+      r.box(CX + s * 640, -260, CZ - 70, 70, 90, 50, '#2c2925', { metal: 0.5 });
+      for (let k = 0; k < 4; k++) r.box(CX + s * 560, -400, CZ - 300 + k * 230, 14, 400, 14, '#262421', { metal: 0.5 });   // pilaretes
+    }
+    // ---- pilares: os de jogo e, com menos de 4 jogadores, os que sobram (vazios) ----
     const platY = (pl) => (pl.dead ? -0.5 * 900 * pl.fallT * pl.fallT : 0);
+    const usados = new Set(d.plats.map((pl) => pl.slot));
+    for (let s = 0; s < 4; s++) if (!usados.has(s)) { const c = this.slotPos(s); this.drawPillar(g, r, c.x, c.y, 0, R, 0, 0, {}); }
     for (const pl of d.plats) {
       if (pl.dead && pl.fallT > 1.4) continue;
       const owner = g.players.find((o) => o.id === pl.owner);
       const cnt = this.countOn(g, pl);
       const sh = pl.over > 0 ? Math.sin(g.time * 70) * 3 : 0;
-      const y = platY(pl), cx = pl.x + pl.w / 2 + sh, cz = pl.y + pl.h / 2;
+      const y = platY(pl), cx = pl.x + sh, cz = pl.y;
       const tilt = pl.dead ? { rotZ: pl.fallT * 0.5, rotX: pl.fallT * 0.25 } : {};
-      r.box(cx, y - 26, cz, pl.w, 26, pl.h, '#4a525c', { metal: 0.55, rough: 0.5, ...tilt });
-      r.cyl(cx, y - 700, cz, 30, 674, '#262b31', { metal: 0.5, sides: 8 });
-      if (pl.dead) continue;
-      // juntas da chapa e faixas zebradas nas bordas de cima e de baixo
-      for (let x = pl.x + 58; x < pl.x + pl.w - 10; x += 58) r.plane(x + sh, 0.2, cz, 1.5, pl.h - 12, '#30353c');
-      r.plane(cx, 0.2, cz, pl.w, 1.5, '#30353c');
-      const n = 10, sw = pl.w / n;
-      for (let k = 0; k < n; k++) for (const ez of [pl.y + 3, pl.y + pl.h - 3]) r.box(pl.x + sh + (k + 0.5) * sw, 0, ez, sw, 1, 6, k % 2 ? '#141414' : '#f5c400', { shadow: false });
+      this.drawPillar(g, r, cx, cz, y, pl.r, cnt, pl.over, tilt);
+      // prensa da oficina: desce de cima e esmaga o tampo quando a plataforma desaba
+      if (pl.dead) {
+        // (só aparece perto do tampo: lá no alto, colada na câmera, ela taparia a tela)
+        const t = pl.fallT, yp = t < 0.1 ? 150 * (1 - t / 0.1) : t < 0.45 ? 0 : (t - 0.45) * 600;   // desce, esmaga, sobe
+        if (yp < 150) {
+          r.box(cx, yp + 8, cz, pl.r * 1.4, 34, pl.r * 1.4, '#4a443d', { metal: 0.6, rough: 0.5 });
+          r.box(cx, yp, cz, pl.r * 1.5, 8, pl.r * 1.5, '#c9a400', { metal: 0.4 });
+          r.box(cx, yp + 42, cz, 22, 90, 22, '#2f2b27', { metal: 0.6 });
+        }
+        continue;
+      }
       // borda acesa na cor do dono
-      const bc = owner.alive ? owner.color : '#555555';
-      r.box(cx, -6, pl.y - 1, pl.w + 4, 4, 2, bc, { glow: true });
-      r.box(cx, -6, pl.y + pl.h + 1, pl.w + 4, 4, 2, bc, { glow: true });
-      r.box(pl.x - 1 + sh, -6, cz, 2, 4, pl.h + 4, bc, { glow: true });
-      r.box(pl.x + pl.w + 1 + sh, -6, cz, 2, 4, pl.h + 4, bc, { glow: true });
-      // alerta de sobrecarga
-      if (pl.over > 0 || cnt > this.LIMIT) {
-        r.plane(cx, 0.5, cz, pl.w, pl.h, '#ff2828', { glow: true, opacity: q(0.15 + 0.15 * Math.sin(g.time * 30)) });
-        lights.unshift([cx, 60, cz, '#ff3020', 1.2 + Math.sin(g.time * 30) * 0.6, 320]);
-      }
-      // marcador de cubos (6 luzes) no canto de trás e nome do dono
-      for (let i = 0; i < this.LIMIT + 1; i++) {
-        const on = i < cnt;
-        r.box(pl.x + pl.w - 14 - i * 12 + sh, 0, pl.y + 14, 9, on ? 4 : 2, 9, on ? (cnt > this.LIMIT ? '#ff3333' : '#d98b3a') : '#2a2e34', on ? { glow: true } : {});
-      }
-      r.label(pl.x + 22, 8, pl.y + 14, owner.label, owner.alive ? owner.color : '#777', 13);
+      r.ring(cx, 0.8, cz, pl.r + 3, pl.r + 9, owner.alive ? owner.color : '#555555', { glow: true });
+      if (pl.over > 0 || cnt > this.LIMIT) lights.unshift([cx, 60, cz, '#ff3020', 1.2 + Math.sin(g.time * 30) * 0.6, 320]);
+      r.label(cx, 2, cz + pl.r + 22, owner.label, owner.alive ? owner.color : '#777', 13);
     }
     // ---- cubos ----
     for (const cb of d.cubes) {
@@ -339,7 +374,7 @@ TN.registerMinigame({
       }
     }
     // ---- luzes de trabalho (uma por plataforma) ----
-    for (const pl of d.plats) if (!pl.dead) lights.push([pl.x + pl.w / 2, 240, pl.y + pl.h / 2, '#ffd9a8', 1.0, 480]);
+    for (const pl of d.plats) if (!pl.dead) lights.push([pl.x, 240, pl.y, '#d6ecee', 1.0, 480]);
     for (const l of lights.slice(0, 6)) r.light(...l);
     // ---- jogadores ----
     for (const p of g.players) {
@@ -365,6 +400,9 @@ TN.registerMinigame({
       const an = (k / 24) * Math.PI * 2;
       c.beginPath(); c.moveTo(g.W / 2 + Math.cos(an) * 30, g.H / 2 + Math.sin(an) * 30); c.lineTo(g.W / 2 + Math.cos(an) * 700, g.H / 2 + Math.sin(an) * 700); c.stroke();
     }
+    // o 2×2 de pilares passa da altura da tela: encolhe o mundo para caber abaixo do HUD
+    const ext = this.PLAT_GAP / 2 + this.PLAT_R + 30, k2 = Math.min(1, (g.H - 44) / (2 * ext));
+    c.save(); c.translate(this.CX, 44 + (g.H - 44) / 2); c.scale(k2, k2); c.translate(-this.CX, -this.CZ);
     for (const cb of d.cubes) if (cb.state === 'void') { // cubos sumindo no vazio
       const k = Math.max(0, 1 - cb.voidT / 0.7);
       c.globalAlpha = k; this.drawCube(c, cb, cb.x, cb.y, 0.4 + 0.6 * k); c.globalAlpha = 1;
@@ -376,22 +414,19 @@ TN.registerMinigame({
       if (pl.dead) { k = 1 - pl.fallT / 0.9; if (k <= 0) continue; }
       const cnt = this.countOn(g, pl);
       const sh = pl.over > 0 ? Math.sin(g.time * 70) * 3 : 0;
-      c.save(); c.translate(pl.x + pl.w / 2 + sh, pl.y + pl.h / 2); c.scale(k, k); c.globalAlpha = Math.max(0, k);
-      const x = -pl.w / 2, y = -pl.h / 2;
-      c.fillStyle = 'rgba(0,0,0,0.5)'; c.fillRect(x + 8, y + 10, pl.w, pl.h);           // sombra
-      D.floor(c, x, y, pl.w, pl.h, { tile: 30, a: '#3a4048', b: '#353b42' });
-      if (pl.over > 0 || cnt > this.LIMIT) { c.fillStyle = `rgba(255,40,40,${0.15 + 0.15 * Math.sin(g.time * 30)})`; c.fillRect(x, y, pl.w, pl.h); }
-      D.hazardStripes(c, x, y, pl.w, 6, 7); D.hazardStripes(c, x, y + pl.h - 6, pl.w, 6, 7);
-      c.strokeStyle = owner.alive ? owner.color : '#555'; c.lineWidth = 3; c.strokeRect(x, y, pl.w, pl.h);
-      c.restore(); c.globalAlpha = 1;
-      if (!pl.dead) {
-        D.text(c, owner.label, pl.x + 8, pl.y + 18, { size: 13, color: owner.alive ? owner.color : '#777' });
-        // contador de cubos (vermelho acima do limite)
-        for (let i = 0; i < this.LIMIT + 1; i++) {
-          c.fillStyle = i < cnt ? (cnt > this.LIMIT ? '#f33' : '#d98b3a') : 'rgba(255,255,255,0.12)';
-          c.fillRect(pl.x + pl.w - 14 - i * 12, pl.y + 12, 9, 9);
-        }
+      c.save(); c.translate(pl.x + sh, pl.y); c.scale(k, k); c.globalAlpha = Math.max(0, k);
+      const R = pl.r;
+      c.fillStyle = 'rgba(0,0,0,0.5)'; c.beginPath(); c.arc(8, 10, R + 6, 0, Math.PI * 2); c.fill();   // sombra
+      c.fillStyle = '#3a3530'; c.beginPath(); c.arc(0, 0, R + 6, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#26231f'; c.beginPath(); c.arc(0, 0, R, 0, Math.PI * 2); c.fill();
+      // anéis do marcador de cubos (acendem de dentro para fora)
+      for (let i = 0; i < this.LIMIT + 1; i++) {
+        c.strokeStyle = i < cnt ? (pl.over > 0 || cnt > this.LIMIT ? '#f33' : this.RING_COLORS[i]) : 'rgba(255,255,255,0.18)';
+        c.lineWidth = R * 0.075; c.beginPath(); c.arc(0, 0, R * (0.2 + 0.135 * i), 0, Math.PI * 2); c.stroke();
       }
+      c.strokeStyle = owner.alive ? owner.color : '#555'; c.lineWidth = 4; c.beginPath(); c.arc(0, 0, R + 4, 0, Math.PI * 2); c.stroke();
+      c.restore(); c.globalAlpha = 1;
+      if (!pl.dead) D.text(c, owner.label, pl.x, pl.y + pl.r + 22, { size: 13, color: owner.alive ? owner.color : '#777', align: 'center' });
     }
     // cubos no chão, sombras de queda
     for (const cb of d.cubes) if (cb.state === 'ground') this.drawCube(c, cb, cb.x, cb.y, 1);
@@ -413,5 +448,6 @@ TN.registerMinigame({
     for (const cb of d.cubes) {
       if (cb.state === 'drop' || cb.state === 'air' || cb.state === 'held') this.drawCube(c, cb, cb.x, cb.y - cb.z * 0.6, cb.state === 'held' ? 0.8 : 1 + cb.z / 500);
     }
+    c.restore();
   },
 });

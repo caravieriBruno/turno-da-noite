@@ -28,11 +28,17 @@ TN.registerMinigame({
   SONAR_R: 120, SONAR_TIME: 2.0, REVEAL: 1.4,
   // cães de guarda: soltos aos 5 s, avançam com a curva da antiga colheitadeira; latem a cada LATIDO_LONGE..PERTO s
   CAES_DELAY: 5, CAES_V0: 16, CAES_V1: 56, CAES_PERTO: 80, LATIDO_LONGE: 1.6, LATIDO_PERTO: 0.35,
+  // campo no formato do original (16 × 80 m: estreito e comprido). Na escala das minas (3,5 m = 78 px) a
+  // largura dá 360 px; o comprimento ficou em 1180 px (o original daria ~1800, que a câmera fixa não lê).
+  CAMPO: { y0: 95, y1: 455, goalX: 1250 },
+  VAN_W: 64,
 
   init(g) {
-    const U = TN.util, a = g.arena, d = g.data;
+    const U = TN.util, a = g.arena, d = g.data, C = this.CAMPO;
     d.startX = a.x + 30;                       // coluna de largada
-    d.goalX = a.x + a.w - 64;                  // linha da van (passou = chegou)
+    d.goalX = C.goalX;                         // linha da van (passou = chegou)
+    d.endX = C.goalX + this.VAN_W;             // fim do campo (a van fica entre goalX e endX)
+    d.fy0 = C.y0; d.fy1 = C.y1;                // laterais do campo (cercas)
     d.midX = (d.startX + d.goalX) / 2;
     d.mines = this.makeMines(g);
     d.scorch = []; d.trail = []; d.rings = [];
@@ -40,7 +46,7 @@ TN.registerMinigame({
     d.firstDone = false; d.vanSeats = 0;
     d.seed = U.randInt(1, 1e6);                // semente dos tufos de mato (decoração gerada no draw)
     g.players.forEach((p, i) => {
-      p.x = d.startX; p.y = a.y + a.h * (i + 0.5) / g.players.length; p.dir = 0;
+      p.x = d.startX; p.y = d.fy0 + (d.fy1 - d.fy0) * (i + 0.5) / g.players.length; p.dir = 0;
       Object.assign(p.data, { active: true, done: false, lives: this.LIVES, hurt: false, half: false, fuse: 0, inv: 0, mordido: false,
         sonarT: 0, prox: 1, lastMx: 1, lastMy: 0, trailAcc: 0, distSinceSonar: 999, caution: U.rand(0.7, 1.3), noise: 0, noiseT: 0 });
     });
@@ -49,7 +55,7 @@ TN.registerMinigame({
   // Amostragem tipo Poisson-disc (dardos com distância mínima) na faixa entre a largada e a van.
   makeMines(g) {
     const U = TN.util, a = g.arena, d = g.data, mines = [];
-    const x0 = a.x + 95, x1 = d.goalX - 40, y0 = a.y + 16, y1 = a.y + a.h - 16;
+    const x0 = a.x + 95, x1 = d.goalX - 40, y0 = d.fy0 + 16, y1 = d.fy1 - 16;
     for (let tries = 0; tries < 4000; tries++) {
       const m = { x: U.rand(x0, x1), y: U.rand(y0, y1) };
       if (mines.every((o) => (o.x - m.x) ** 2 + (o.y - m.y) ** 2 >= this.SPACING ** 2)) mines.push(m);
@@ -59,6 +65,8 @@ TN.registerMinigame({
   },
 
   active(g) { return g.players.filter((p) => p.data.active); },
+  // área andável: da largada (a.x) até o fim da van, entre as cercas
+  limites(g) { const d = g.data; return { x: g.arena.x, y: d.fy0, w: d.endX - g.arena.x, h: d.fy1 - d.fy0 }; },
   // distância (em x) entre o jogador e a matilha; 999 enquanto os cães estão presos
   gapCaes(g, p) { return g.data.caes.on ? p.x - g.data.caes.x : 999; },
 
@@ -130,8 +138,9 @@ TN.registerMinigame({
       } else b.sonarT = 0;
       const ox = p.x, oy = p.y;
       const spd = this.SPEED * (b.lives < this.LIVES ? this.HURT_MULT : 1);
-      if (sonar) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt); p.input = save; }
-      else g.movePlayer(p, spd, dt);
+      const lim = this.limites(g);
+      if (sonar) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt, lim); p.input = save; }
+      else g.movePlayer(p, spd, dt, lim);
       g.decayPush(p, dt, 7);
       const mx = p.x - ox, my = p.y - oy, moved = Math.hypot(mx, my);
       if (moved > 0.5) { b.lastMx = mx / moved; b.lastMy = my / moved; }
@@ -201,12 +210,12 @@ TN.registerMinigame({
       if (dist > 95 || dx > 30) continue;
       const w = (95 - dist) / 95;
       fx += (dx / dist) * w * 1.2;
-      fy += (Math.abs(dy) < 4 ? (p.y < a.y + a.h / 2 ? 1 : -1) : Math.sign(dy)) * w * 2.6;
+      fy += (Math.abs(dy) < 4 ? (p.y < (d.fy0 + d.fy1) / 2 ? 1 : -1) : Math.sign(dy)) * w * 2.6;
     }
     if (b.laneY === undefined) b.laneY = p.y;
     fy += U.clamp((b.laneY - p.y) / 150, -0.4, 0.4);   // cada bot prefere a própria faixa (evita bolo)
-    if (p.y < a.y + 30) fy += 0.8;
-    if (p.y > a.y + a.h - 30) fy -= 0.8;
+    if (p.y < d.fy0 + 30) fy += 0.8;
+    if (p.y > d.fy1 - 30) fy -= 0.8;
     b.noiseT -= dt;
     if (b.noiseT <= 0) { b.noiseT = U.rand(0.6, 1.6); b.noise = U.rand(-0.35, 0.35); }
     fy += b.noise;
@@ -216,51 +225,89 @@ TN.registerMinigame({
   },
 
   // ---------------- 3D (câmera fixa) ----------------
-  // Campo minado à noite visto pelas costas: a câmera fica 260 atrás da largada (x=70), baixa, olhando
-  // ao longo do campo até a van no horizonte; muro com holofotes nas laterais; os cães não aparecem
-  // (só os dois em cima de quem foi mordido).
-  camera: { pos: [-190, 230, 275], target: [460, 0, 275], fov: 48 },
-  env: { bg: '#05070a', fog: [1400, 2600], ambient: 0.42, sun: 0.9, sunDir: [0.35, 1, -0.5], sunColor: '#a9c1ff', hemiSky: '#6f86b0', hemiGround: '#1a140c' },
+  // Terreno baldio entre o muro da cadeia e a cerca de fora, visto pelas costas como no original: a
+  // câmera fica atrás do rombo no muro (a largada), alta, olhando ao longo do corredor estreito até a van
+  // no portão da cerca; cercas de arame nas laterais, entulho, árvores secas e a placa de aviso; os cães
+  // não aparecem (só os dois em cima de quem foi mordido).
+  camera: { pos: [-330, 295, 275], target: [560, 0, 275], fov: 44 },
+  env: { bg: '#05070a', fog: [1500, 2900], ambient: 0.42, sun: 0.9, sunDir: [0.35, 1, -0.5], sunColor: '#a9c1ff', hemiSky: '#6f86b0', hemiGround: '#1a140c' },
 
-  draw3d(g, r) {
-    const U = TN.util, a = g.arena, d = g.data;
-    const q = (v) => Math.round(U.clamp(v, 0, 1) * 10) / 10;           // opacidade em degraus (poucos materiais)
-    const fx0 = a.x + 70, fieldW = d.goalX - fx0;
-    // ---- chão ----
-    // terreno entre os muros do pátio (o muro de trás fica atrás da câmera); sem o
-    // holofote do pátio, que lavaria as minas e os rótulos ao passar
-    r.yard(a.x - 320, a.y - 70, a.x + a.w + 160, a.y + a.h + 60, { quadra: false, holofote: false });
-    for (let i = 0; i < 9; i++) r.plane(fx0 + fieldW / 2, 0, a.y + (a.h / 9) * (i + 0.5), fieldW, a.h / 9 + 0.5, i % 2 ? '#3d3424' : '#352d1f', { rough: 1 });
-    // tufos de mato (mesma semente do 2D)
+  // muro da cadeia com o rombo da largada, cercas, entulho, árvores secas, placa e morros ao fundo
+  drawTerreno3d(g, r) {
+    const a = g.arena, d = g.data, y0 = d.fy0, y1 = d.fy1, cy = (y0 + y1) / 2, fx0 = a.x + 70, fieldW = d.goalX - fx0;
     let s = d.seed;
     const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
-    for (let i = 0; i < 70; i++) {
-      const x = fx0 + rnd() * (fieldW - 6), z = a.y + 4 + rnd() * (a.h - 8), sz = 3 + rnd() * 4;
-      r.cone(x, 0, z, sz, sz * 2.2, ['#4f5a2a', '#5a6630', '#46502a'][Math.floor(rnd() * 3)], { shadow: false, rough: 1 });
+    // chão de terra batida em volta e faixas do campo
+    r.plane(700, -1.5, cy, 3600, 2400, '#3a3122', { tex: 'concreto' });
+    for (let i = 0; i < 6; i++) r.plane(fx0 + fieldW / 2, 0, y0 + ((y1 - y0) / 6) * (i + 0.5), fieldW, (y1 - y0) / 6 + 0.5, i % 2 ? '#3d3424' : '#352d1f', { rough: 1 });
+    // tufos de mato e pedras soltas (só enfeite; mesma semente do 2D)
+    for (let i = 0; i < 80; i++) {
+      const x = fx0 + rnd() * (fieldW - 6), z = y0 + 4 + rnd() * (y1 - y0 - 8), sz = 3 + rnd() * 4, k = rnd();
+      if (k < 0.82) r.cone(x, 0, z, sz, sz * 2.2, ['#4f5a2a', '#5a6630', '#46502a'][Math.floor(rnd() * 3)], { shadow: false, rough: 1 });
+      else r.box(x, 0, z, sz * 1.6, sz * 0.6, sz * 1.3, '#57554f', { rotY: rnd() * 3, tex: 'concreto' });
     }
-    // largada de concreto + faixa de perigo
-    r.box(a.x + 35, -2, a.y + a.h / 2, 70, 4, a.h, '#4a4f55', { rough: 0.9 });
-    for (let z = a.y; z < a.y + a.h; z += 35) r.plane(a.x + 35, 2.2, z, 70, 1.5, '#3a3e43');
-    const stripes = (x, y) => { for (let k = 0; k < 14; k++) r.box(x, y, a.y + (k + 0.5) * (a.h / 14), 6, 1.2, a.h / 14, k % 2 ? '#141414' : '#f5c400', { shadow: false }); };
-    stripes(a.x + 67, 2);
-    // linha da metade (tracejada, brilhante)
-    for (let z = a.y + 10; z < a.y + a.h; z += 24) r.plane(d.midX, 0.6, z + 6, 3, 12, '#cfd6c0', { glow: true, opacity: 0.45 });
-    r.label(d.midX, 4, a.y - 6, 'METADE +1', 'rgba(255,255,255,0.7)', 12);
-    // chegada: faixa e área verde
-    stripes(d.goalX - 1, 0.4);
-    r.plane((d.goalX + a.x + a.w) / 2, 0.3, a.y + a.h / 2, a.x + a.w - d.goalX, a.h, '#9be04a', { glow: true, opacity: 0.12 });
-    // cerca de arame nas duas laterais (a câmera olha ao longo delas) e holofotes nos postes
-    for (const z of [a.y - 14, a.y + a.h + 14]) {
-      for (let x = a.x - 200; x <= a.x + a.w; x += 110) r.box(x, 0, z, 4, 40, 4, '#5a4a3a', { rough: 1 });
-      r.beam(a.x - 200, 30, z, a.x + a.w, 30, z, 1.2, '#8a8f96', { metal: 0.7, shadow: false });
-      r.beam(a.x - 200, 18, z, a.x + a.w, 18, z, 1.2, '#8a8f96', { metal: 0.7, shadow: false });
-      const zp = z < a.y ? z - 26 : z + 26;
-      for (let x = a.x + 120; x < a.x + a.w; x += 300) {
-        r.cyl(x, 0, zp, 3, 130, '#3a3d40', { metal: 0.6 });
-        r.box(x, 128, zp - Math.sign(zp - 275) * 10, 10, 6, 22, '#2a2d30', { metal: 0.5 });
-        r.box(x, 126, zp - Math.sign(zp - 275) * 12, 7, 2, 18, '#ffe2b0', { glow: true });
+    // muro da cadeia com o rombo: dois trechos de concreto claro, pontas quebradas em degrau e arame no topo
+    const MX = 104, MH = 170, MURO = '#8a8880';
+    for (const sd of [-1, 1]) {
+      const zi = sd < 0 ? y0 - 6 : y1 + 6, ze = zi + sd * 520, zc = (zi + ze) / 2;
+      r.box(MX, 0, zc + sd * 40, 22, MH, 440, MURO, { tex: 'concreto' });
+      r.box(MX, 0, zi + sd * 20, 22, MH * 0.55, 40, MURO, { tex: 'concreto' });   // ponta quebrada
+      r.box(MX, MH * 0.55, zi + sd * 36, 22, MH * 0.25, 8, MURO, { tex: 'concreto' });
+      for (let k = 0; k < 4; k++) r.box(MX + 30 + k * 9, 0, zi + sd * (14 + k * 11), 14, 6, 12, '#77756d', { rotY: k, tex: 'concreto' });   // cacos
+      for (let k = 0; k < 9; k++) r.box(MX, MH, zi + sd * (60 + k * 50), 24, 4, 3, '#55534e', { metal: 0.5 });
+      r.beam(MX, MH + 14, zi + sd * 60, MX, MH + 14, ze, 1.4, '#6a6c6e', { metal: 0.7, shadow: false });
+      for (let k = 0; k < 9; k++) r.ring(MX, MH + 4, zi + sd * (70 + k * 48), 7, 9, "#6a6c6e", { rotX: Math.PI / 2, tex: false });
+    }
+    // cercas de arame (postes enferrujados, tela e fios) nas duas laterais, do muro à van
+    for (const z of [y0 - 14, y1 + 14]) {
+      const x0 = MX + 12, x1 = d.endX + 30;
+      for (let x = x0; x <= x1; x += 110) { r.box(x, 0, z, 5, 92, 5, '#5a4030', { metal: 0.4 }); r.beam(x, 92, z, x, 104, z + (z < cy ? -10 : 10), 2, '#5a4030'); }
+      r.box((x0 + x1) / 2, 0, z, x1 - x0, 88, 1, '#8a8f96', { opacity: 0.15, tex: false, shadow: false });
+      for (const hy of [30, 60, 88]) r.beam(x0, hy, z, x1, hy, z, 1.1, '#8a8f96', { metal: 0.7, shadow: false });
+      r.beam(x0, 102, z + (z < cy ? -9 : 9), x1, 102, z + (z < cy ? -9 : 9), 1.1, '#6a6c6e', { metal: 0.7, shadow: false });
+      // holofotes nos postes, virados para dentro
+      const zp = z < cy ? z - 26 : z + 26;
+      for (let x = MX + 260; x < x1; x += 320) {
+        r.cyl(x, 0, zp, 3, 140, '#3a3d40', { metal: 0.6 });
+        r.box(x, 138, zp - Math.sign(zp - cy) * 10, 10, 6, 22, '#2a2d30', { metal: 0.5 });
+        r.box(x, 136, zp - Math.sign(zp - cy) * 12, 7, 2, 18, '#ffe2b0', { glow: true });
       }
     }
+    // muro desabado (laje caída) e árvores secas do lado de fora das cercas
+    r.box(560, 0, y1 + 80, 220, 18, 70, '#7d7b74', { rotY: 0.25, rotX: 0.12, tex: 'concreto' });
+    r.box(470, 0, y1 + 120, 26, 110, 70, '#85837b', { rotY: 0.25, tex: 'concreto' });
+    for (const [tx, tz, th] of [[430, y0 - 120, 210], [880, y1 + 110, 260], [1050, y0 - 90, 170], [300, y1 + 190, 190]]) {
+      r.tube(tx, 0, tz, tx + 6, th, tz + 4, 7, '#2e2620', { rough: 1 });
+      for (let k = 0; k < 4; k++) { const by = th * (0.45 + k * 0.13), ang = k * 1.9; r.tube(tx + 3, by, tz, tx + 3 + Math.cos(ang) * 60, by + 40, tz + Math.sin(ang) * 60, 3, '#2e2620', { rough: 1 }); }
+    }
+    // placa de aviso (amarela, caveira e ossos) no rombo do muro, como a "DANGER MINEFIELD"
+    const PX = MX + 26, PZ = y1 + 26;
+    r.box(PX, 0, PZ, 4, 66, 4, '#5a4030');
+    r.box(PX - 3, 50, PZ, 2, 34, 50, '#e8c200', { rotX: 0.15 });
+    r.box(PX - 4.5, 70, PZ, 1, 8, 8, '#141414', { tex: false });
+    for (const k of [-1, 1]) r.box(PX - 4.5, 58, PZ, 1, 3, 26, '#141414', { tex: false, rotX: k * 0.6 });
+    // cerca de fora atrás da van (o portão aberto) e morros escuros ao fundo
+    for (let z = y0 - 400; z <= y1 + 400; z += 110) if (Math.abs(z - cy) > 140) r.box(d.endX + 60, 0, z, 5, 92, 5, '#5a4030', { metal: 0.4 });
+    for (const hy of [30, 60, 88]) for (const sd of [-1, 1]) r.beam(d.endX + 60, hy, cy + sd * 140, d.endX + 60, hy, cy + sd * 520, 1.1, '#8a8f96', { metal: 0.7, shadow: false });
+    for (let i = 0; i < 7; i++) r.cone(d.endX + 380 + (i % 2) * 160, 0, cy - 900 + i * 300, 260, 160 + (i % 3) * 50, '#17150f', { tex: false, shadow: false });
+  },
+
+  draw3d(g, r) {
+    const U = TN.util, a = this.limites(g), d = g.data;
+    const q = (v) => Math.round(U.clamp(v, 0, 1) * 10) / 10;           // opacidade em degraus (poucos materiais)
+    const y0 = d.fy0, y1 = d.fy1, H = y1 - y0;
+    this.drawTerreno3d(g, r);
+    // largada de concreto + faixa de perigo
+    r.box(a.x + 35, -2, (y0 + y1) / 2, 70, 4, H, '#4a4f55', { rough: 0.9 });
+    for (let z = y0; z < y1; z += 35) r.plane(a.x + 35, 2.2, z, 70, 1.5, '#3a3e43');
+    const stripes = (x, y) => { for (let k = 0; k < 12; k++) r.box(x, y, y0 + (k + 0.5) * (H / 12), 6, 1.2, H / 12, k % 2 ? '#141414' : '#f5c400', { shadow: false }); };
+    stripes(a.x + 67, 2);
+    // linha da metade (tracejada, brilhante)
+    for (let z = y0 + 10; z < y1; z += 24) r.plane(d.midX, 0.6, z + 6, 3, 12, '#cfd6c0', { glow: true, opacity: 0.45 });
+    r.label(d.midX, 4, y0 - 6, 'METADE +1', 'rgba(255,255,255,0.7)', 12);
+    // chegada: faixa e área verde
+    stripes(d.goalX - 1, 0.4);
+    r.plane((d.goalX + d.endX) / 2, 0.3, (y0 + y1) / 2, d.endX - d.goalX, H, '#9be04a', { glow: true, opacity: 0.12 });
     // marcas de explosão, rastro de óleo
     for (const sc of d.scorch) { r.disc(sc.x, 0.5, sc.y, sc.r * 1.5, '#0a0806', { opacity: 0.6 }); r.disc(sc.x, 0.6, sc.y, sc.r * 0.8, '#050403', { opacity: 0.9 }); }
     for (const t of d.trail) r.disc(t.x, 0.7, t.y, 3, '#2a0a06', { opacity: q(Math.min(1, t.t / 2) * 0.8) });
@@ -319,7 +366,7 @@ TN.registerMinigame({
   },
 
   drawVan3d(g, r) {
-    const a = g.arena, d = g.data;
+    const a = this.limites(g), d = g.data;
     const x0 = d.goalX + 6, w = a.x + a.w - x0, cx = x0 + w / 2, z0 = a.y + a.h / 2 - 110, z1 = z0 + 220;
     const body = '#d8dde2', o = { metal: 0.35, rough: 0.45 };
     // rodas
@@ -385,8 +432,11 @@ TN.registerMinigame({
   },
 
   draw(g, c) {
-    const U = TN.util, a = g.arena, d = g.data, D = TN.draw;
+    const U = TN.util, a = this.limites(g), d = g.data, D = TN.draw;
     c.fillStyle = '#0b0d10'; c.fillRect(0, 0, g.W, g.H);
+    // o campo é mais comprido que a tela: escala uniforme para caber na largura da arena
+    const k = g.arena.w / a.w;
+    c.save(); c.translate(a.x, g.arena.y + g.arena.h / 2); c.scale(k, k); c.translate(-a.x, -(a.y + a.h / 2));
     // chão de terra + mato
     c.fillStyle = '#3a3122'; c.fillRect(a.x, a.y, a.w, a.h);
     for (let i = 0; i < 9; i++) { c.fillStyle = i % 2 ? '#3d3424' : '#372f20'; c.fillRect(a.x + 70, a.y + (a.h / 9) * i, d.goalX - a.x - 70, a.h / 9); }
@@ -458,10 +508,11 @@ TN.registerMinigame({
       }
     }
     this.drawCaes2d(g, c);
+    c.restore();
   },
 
   drawVan(g, c) {
-    const a = g.arena, d = g.data, D = TN.draw;
+    const a = this.limites(g), d = g.data, D = TN.draw;
     const x = d.goalX + 6, y = a.y + a.h / 2 - 110, w = a.x + a.w - x, h = 220;
     c.fillStyle = 'rgba(0,0,0,0.4)'; c.fillRect(x + 6, y + 8, w, h);
     c.fillStyle = '#d8dde2'; c.strokeStyle = '#222'; c.lineWidth = 3;
@@ -482,7 +533,7 @@ TN.registerMinigame({
 
   // 2D (de cima): a matilha como manchas pretas com olhos, e dois cães sobre cada mordido
   drawCaes2d(g, c) {
-    const a = g.arena, h = g.data.caes;
+    const a = this.limites(g), h = g.data.caes;
     const cao = (x, y, ang) => {
       c.save(); c.translate(x, y); c.rotate(ang);
       c.fillStyle = '#111214'; c.beginPath(); c.ellipse(0, 0, 13, 7, 0, 0, Math.PI * 2); c.fill();
