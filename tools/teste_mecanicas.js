@@ -9,6 +9,13 @@ function com3d(g, fn) { const u = g.uses3d, pr = TN.R3.project; g.uses3d = () =>
 function secaoPularCorda() {
   const def = TN.minigames.pular_corda;
   ok(def.ALTO_AT === 12 && def.ALTO_Y === 34 && def.CROUCH === 0.45 && def.CROUCH_SPEED === 70 && def.CROUCH_CD === 0.25 && def.controls.b === 'agachar', 'corda: constantes do laser alto e do agachar');
+  {
+    // a velocidade nunca para de subir, nem depois do teto (com e sem o laser alto)
+    const v = rodada('pular_corda'), vel = (t) => { v.time = t; return def.speedAt(v); };
+    const sobe = (a) => a.every((x, i) => i === 0 || x > a[i - 1]);
+    const sem = [20, 40, 50, 60, 74].map(vel); v.data.alto = { theta: 0, on: true }; const com = [20, 30, 40, 60, 74].map(vel);
+    ok(sobe(sem) && sobe(com), `corda: o laser sempre acelera (sem alto ${sem.map((x) => x.toFixed(2)).join(' → ')}; com alto ${com.map((x) => x.toFixed(2)).join(' → ')})`);
+  }
   const g = rodada('pular_corda'), d = g.data, P = g.players;
   segundos(g, 0.7);   // antes de o laser começar a cortar (0,8 s)
   ok(!d.alto, 'corda: o laser alto ainda não existe no começo');

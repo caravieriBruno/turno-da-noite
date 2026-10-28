@@ -34,10 +34,10 @@ function secaoMotor() {
 // --- pisa leve: câmera pelas costas e cães de guarda ---
 function secaoPisaLeve() {
   const def = TN.minigames.pisa_leve;
-  ok(def.REVEAL === 1.4 && def.CAES_DELAY === 5 && def.CAES_VMAX >= 0.85 * def.SPEED && def.CAES_VMAX <= def.SPEED && def.curvaCaes(0) === 0.5 && def.curvaCaes(0.2) === 1 && def.CAES_PERTO === 80 && !def.drawHarvester3d, 'pisa leve: REVEAL 1,4 s, cães até ~1× o jogador com a curva da colheitadeira, sem colheitadeira');
+  ok(def.REVEAL === 1.4 && def.CAES_DELAY === 9 && def.CAES_VMAX >= 0.85 * def.SPEED && def.CAES_VMAX <= def.SPEED && def.curvaCaes(0) === 0.5 && def.curvaCaes(0.2) === 1 && def.CAES_PERTO === 80 && !def.drawHarvester3d, 'pisa leve: REVEAL 1,4 s, cães soltos aos 9 s, até ~1× o jogador com a curva da colheitadeira, sem colheitadeira');
   ok(/cães/i.test(def.brief.join(' ')) && !/colheitadeira/i.test(def.brief.join(' ')), 'pisa leve: o briefing fala dos cães');
   const g = rodada('pisa_leve'), d = g.data, P = g.players;
-  ok(def.camera.pos[0] < d.startX && def.camera.target[0] > def.camera.pos[0] && def.camera.pos[1] < 300, 'pisa leve: câmera atrás da largada, baixa, olhando para a van');
+  ok(def.camera.pos[0] < d.startX && def.camera.target[0] > def.camera.pos[0] && def.camera.pos[1] >= 380 && def.camera.pos[1] < 450, 'pisa leve: câmera atrás da largada, alta o bastante para ver o fundo, olhando para a van');
   ok(d.caes && !d.caes.on && d.harv === undefined, 'pisa leve: a matilha começa presa; não há mais colheitadeira');
   const sons = {}, ganhos = []; g.sfx = (n, v) => { sons[n] = (sons[n] || 0) + 1; if (n === 'latido') ganhos.push(v === undefined ? 1 : v); };
   for (const m of d.mines) m.dead = true;   // sem minas: os jogadores do teste ficam parados onde são postos

@@ -24,7 +24,7 @@ TN.registerMinigame({
   CX: 480, CY: 276, R: 196, HUB: 40, BEAM_W: 4,
   SPEED: 150, AIR_SPEED: 95,
   AIR: 0.5, JUMP_CD: 0.22, JUMP_H: 22,
-  OMEGA0: 1.5, OMEGA_ACC: 0.05, OMEGA_MAX1: 3.6, OMEGA_MAX2: 3.0, WARMUP: 1.6,
+  OMEGA0: 1.5, OMEGA_ACC: 0.05, OMEGA_MAX1: 3.6, OMEGA_MAX2: 3.0, OMEGA_ACC_TETO: 0.5, WARMUP: 1.6,
   ALTO_AT: 12, ALTO_Y: 34,   // laser alto: entra aos 12 s, a 34 de altura, no mesmo sentido e meia volta atrás do baixo
   // (em sentido oposto os dois se cruzariam a cada ~1 s e passariam quase juntos: impossível pular e agachar a tempo)
   CROUCH: 0.45, CROUCH_SPEED: 70, CROUCH_CD: 0.25,   // agachar (EXTRA): só escapa do laser alto
@@ -55,7 +55,9 @@ TN.registerMinigame({
   speedAt(g) {
     const d = g.data, max = d.alto ? this.OMEGA_MAX2 : this.OMEGA_MAX1;
     const warm = TN.util.clamp(g.time / this.WARMUP, 0, 1);
-    return Math.min(max, this.OMEGA0 + this.OMEGA_ACC * g.time) * warm;
+    // sobe OMEGA_ACC/s até o teto e, depois dele, continua subindo à metade do ritmo: nunca para de acelerar
+    const w = this.OMEGA0 + this.OMEGA_ACC * g.time;
+    return (w <= max ? w : max + (w - max) * this.OMEGA_ACC_TETO) * warm;
   },
 
   armAngles(g) { return g.data.arms.map((o) => g.data.theta + o); },

@@ -17,7 +17,7 @@ TN.registerMinigame({
   //      quem empurra fica 0,5 s parado. Aspirador: no original 2,5× o jogador (437) e entrada 1,5× (262); aqui
   //      2× (350) e 1,25× (220), a pedido de quem jogou ("muito rápidos"). O empurrão decai linear como no original,
   //      mas menor: lá ele cruza 2/3 da arena; aqui ~180 px e ~0,8 s sem controle, para não arremessar longe) ----
-  SPEED: 175, ROOMBA_SPEED: 350, WARMUP_SPEED: 220, ROOMBA_R: 22,
+  SPEED: 175, ROOMBA_SPEED: 350, WARMUP_SPEED: 220, ROOMBA_R: 16,   // raio 22 → 16: grande demais parecia impossível de desviar
   SPAWN_FIRST: 0.5, SPAWN_EVERY: 5, MAX_ROOMBAS: 5, SHOVE: 400, SHOVE_DECAY: 444, SHOVE_LOCK: 0.5, TOMBO: 1.1,   // empurrado cai e levanta (1,1 s sem controle)
 
   // ---- mapa (o do original: sala de 27,8 × 23 m, proporção 1,21; aqui 1 m = 23 px, com a mesma área do antigo
@@ -238,10 +238,10 @@ TN.registerMinigame({
       r.cyl(rb.x, 12, rb.y, rb.r * 0.55, 3, '#2a2d31', { metal: 0.5 });
       for (let k = 0; k < 6; k++) {
         const ang = rb.spin + (k * Math.PI) / 3;
-        r.box(rb.x + Math.cos(ang) * (rb.r + 3), 3, rb.y + Math.sin(ang) * (rb.r + 3), 16, 3, 5, '#e8e8e8', { rotY: -ang, metal: 0.9, rough: 0.2 });
+        r.box(rb.x + Math.cos(ang) * (rb.r + 2), 3, rb.y + Math.sin(ang) * (rb.r + 2), 10, 3, 4, '#e8e8e8', { rotY: -ang, metal: 0.9, rough: 0.2 });
       }
       const col = rb.warm ? '#ffcc00' : '#ff2020';
-      r.sphere(rb.x, 17, rb.y, 4, col, { glow: true });
+      r.sphere(rb.x, 15, rb.y, 3, col, { glow: true });
       r.light(rb.x, 30, rb.y, col, 0.6, 140);
     }
     // jogadores

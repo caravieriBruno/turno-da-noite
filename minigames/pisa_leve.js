@@ -4,7 +4,7 @@
 // liga o sonar (parado), que revela as minas por um instante. Encostar numa mina (andando ou
 // correndo: a checagem é pelo trecho percorrido no quadro) arma o pavio de 0,5 s; armou, explode,
 // mesmo que o jogador saia de cima (dá para fugir do raio se reagir rápido). A explosão derruba.
-// Depois de 5 s soltam os cães de guarda por trás da largada: a matilha atravessa o campo quase na
+// Depois de 9 s soltam os cães de guarda por trás da largada: a matilha atravessa o campo quase na
 // velocidade do jogador, estourando as minas por onde passa, e morde quem fica para trás.
 // Controles relativos à câmera (pelas costas): CIMA leva para a van, ESQUERDA/DIREITA andam de lado.
 TN.registerMinigame({
@@ -12,7 +12,7 @@ TN.registerMinigame({
   title: 'PISA LEVE',
   inspiredBy: 'Minefield (exploding_collar_race)',
   tagline: 'SONDE ANTES. PISE DEPOIS.',
-  brief: ['Atravesse o campo minado até a van.', 'Segure AÇÃO para o sonar revelar as minas.', 'A coleira fica vermelha perto de uma mina.', 'Em 5 s soltam os cães. Não olhe para trás.'],
+  brief: ['Atravesse o campo minado até a van.', 'Segure AÇÃO para o sonar revelar as minas.', 'A coleira fica vermelha perto de uma mina.', 'Em 9 s soltam os cães. Não olhe para trás.'],
   controls: { move: 'andar', a: 'sonar (segure, fica parado)' },
   icon: '✱',
   color: '#9be04a',
@@ -31,10 +31,10 @@ TN.registerMinigame({
   SONAR_R: 120, SONAR_TIME: 2.0, REVEAL: 1.4,
   // explosão derruba (g.derrubar, como o empurrão dos aspiradores): impulso, decaimento linear e tempo no chão
   SHOVE: 300, SHOVE_DECAY: 444, TOMBO: 1.1,
-  // cães de guarda: soltos aos 5 s, correm a CAES_VMAX × curva da colheitadeira original (0,5 → 1 → 0,1 no
+  // cães de guarda: soltos aos 9 s (o original solta aos 5; adiado a pedido), correm a CAES_VMAX × curva da colheitadeira original (0,5 → 1 → 0,1 no
   // fim; 0,9× a velocidade do jogador no pico) e estouram as minas a menos de CAES_ALCANCE à frente da matilha.
   // Latem a cada LATIDO_LONGE..PERTO s.
-  CAES_DELAY: 5, CAES_VMAX: 90, CAES_ALCANCE: 14, CAES_PERTO: 80, LATIDO_LONGE: 1.6, LATIDO_PERTO: 0.35,
+  CAES_DELAY: 9, CAES_VMAX: 90, CAES_ALCANCE: 14, CAES_PERTO: 80, LATIDO_LONGE: 1.6, LATIDO_PERTO: 0.35,
   CAES_CURVA: [[0, 0.5], [0.2, 1], [0.314, 0.779], [0.396, 0.909], [0.524, 0.627], [0.624, 0.97], [0.707, 0.726], [0.8, 1], [1, 0.1]],
   // campo no formato do original (16 × 80 m: estreito e comprido). Na escala das minas (3,5 m = 78 px) a
   // largura dá 360 px; o comprimento ficou em 1180 px (o original daria ~1800, que a câmera fixa não lê).
@@ -292,7 +292,7 @@ TN.registerMinigame({
   // câmera fica atrás do rombo no muro (a largada), alta, olhando ao longo do corredor estreito até a van
   // no portão da cerca; cercas de arame nas laterais, entulho, árvores secas e a placa de aviso. A matilha
   // entra por baixo da tela (de trás da largada) e cruza o campo; dois cães ficam em cima de quem foi mordido.
-  camera: { pos: [-330, 295, 275], target: [560, 0, 275], fov: 44 },
+  camera: { pos: [-330, 400, 275], target: [600, 0, 275], fov: 44 },
   env: { bg: '#05070a', fog: [1500, 2900], ambient: 0.42, sun: 0.9, sunDir: [0.35, 1, -0.5], sunColor: '#a9c1ff', hemiSky: '#6f86b0', hemiGround: '#1a140c' },
 
   // muro da cadeia com o rombo da largada, cercas, entulho, árvores secas, placa e morros ao fundo
