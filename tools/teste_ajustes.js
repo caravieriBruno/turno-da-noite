@@ -28,7 +28,7 @@ function secaoContramao() {
 //     congelamento de 5 s e portador escondido ---
 function secaoServicoInterno() {
   const def = TN.minigames.servico_interno, g = rodada('servico_interno'), d = g.data, P = g.players;
-  ok(def.HOLDER_MULT <= 1 && def.HUNTER_MULT <= 1, `serviço interno: portador ${def.HOLDER_MULT}× e infectado ${def.HUNTER_MULT}× (nunca mais rápidos que os fugitivos)`);
+  ok(def.HOLDER_MULT === 1.05 && def.HUNTER_MULT === 1.05, `serviço interno: portador ${def.HOLDER_MULT}× e infectado ${def.HUNTER_MULT}× (5% mais rápidos que os fugitivos)`);
   ok(def.INFECT_RANGE === 56 && def.FREEZE === 5, 'serviço interno: alcance 56 e congelamento 5 s (original)');
   ok(def.LAYOUT.length >= 24 && def.LAYOUT.length <= 28, `serviço interno: ${def.LAYOUT.length} móveis revistáveis (24 a 28; original 26)`);
   const tipos = new Set(def.LAYOUT.map((f) => f[0]));
@@ -72,11 +72,11 @@ function secaoServicoInterno() {
   ok(!def.visivel(g, P[0], P[1]) && def.bloqueia(540, 618, 680, 618), 'serviço interno: pilar/parede corta o facho da lanterna');
   pos(P[1], 740, 470);
   ok(def.visivel(g, P[0], P[1]), 'serviço interno: quem está colado em você aparece mesmo no escuro');
-  // ritmo: o portador anda igual a um fugitivo
+  // ritmo: o portador anda 5% mais rápido que um fugitivo
   pos(P[0], 300, 260); pos(P[1], 300, 960); P[1].data.infected = false; P[1].data.frozen = 0;
   for (const p of P) { p.vx = 0; p.vy = 0; }
   aperta(0, { x: 1 }); aperta(1, { x: 1 }); segundos(g, 0.5); solta();
-  ok(Math.abs((P[0].x - 300) - (P[1].x - 300)) < 1, `serviço interno: portador e fugitivo andam o mesmo (${(P[0].x - 300).toFixed(0)} × ${(P[1].x - 300).toFixed(0)} px)`);
+  ok(Math.abs((P[0].x - 300) - 1.05 * (P[1].x - 300)) < 1.5, `serviço interno: portador anda 5% mais que o fugitivo (${(P[0].x - 300).toFixed(0)} × ${(P[1].x - 300).toFixed(0)} px)`);
   // golpe: tranco curto para a frente, infecta e congela 5 s
   pos(P[0], 700, 470, 0); pos(P[1], 770, 470); pos(P[2], 1500, 900); pos(P[3], 1200, 900);
   for (const p of P) { p.vx = 0; p.vy = 0; p.data.cd = 0; }

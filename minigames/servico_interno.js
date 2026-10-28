@@ -69,7 +69,7 @@ TN.registerMinigame({
   //      lanterna começa apagada e é um holofote de ~58°) ----
   // Ritmo: aqui o caçador anda IGUAL aos fugitivos (antes: portador 1,3× e infectado 1,15×); a vantagem dele é
   // um tranco curto ao golpear (TRANCO, com recarga), não a velocidade.
-  SPEED: 175, HOLDER_MULT: 1.0, HUNTER_MULT: 1.0,
+  SPEED: 175, HOLDER_MULT: 1.05, HUNTER_MULT: 1.05,   // caçadores 5% mais rápidos que os fugitivos
   SEARCH_TIME: 1.0, REACH: 14,            // distância (px) da borda do móvel para conseguir revistar
   INFECT_RANGE: 56, INFECT_CD: 0.5, FREEZE: 5, SWING: 0.2,
   TRANCO: 300, TRANCO_CD: 2.5, TRANCO_DECAY: 7,

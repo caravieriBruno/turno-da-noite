@@ -104,10 +104,10 @@ function secaoPisaLeveMecanica() {
   // correndo por cima: o trecho do quadro conta, mesmo num quadro longo que salta a mina inteira
   {
     const { g, m, P } = campo(400);
-    P[0].x = 370; P[0].y = 275;
+    P[0].x = 384; P[0].y = 275;
     const sons = {}; g.sfx = (n) => { sons[n] = (sons[n] || 0) + 1; };
-    aperta(0, { y: -1 }); passo(g, 0.6); solta();
-    ok(P[0].x > 400 + def.TRIG && m.arm >= 0 && !m.dead && sons.tick >= 1, `pisa leve: correndo por cima (370 → ${P[0].x.toFixed(0)} num quadro) a mina arma e apita (arm ${m.arm})`);
+    aperta(0, { y: -1 }); passo(g, 0.45); solta();
+    ok(P[0].x > 400 + def.TRIG && m.arm >= 0 && !m.dead && sons.tick >= 1, `pisa leve: correndo por cima (384 → ${P[0].x.toFixed(0)} num quadro) a mina arma e apita (arm ${m.arm})`);
   }
   {
     const { g, m, P } = campo(400);
@@ -135,13 +135,13 @@ function secaoPisaLeveMecanica() {
     ok(armou && meio && m.dead, `pisa leve: pisou arma; explode só depois do pavio de ${def.FUSE} s (armou ${armou}, inteira na metade ${meio}, explodiu ${m.dead})`);
     ok(P[0].data.lives === def.LIVES - 1 && P[0].tombo > 0 && P[0].x < 385, `pisa leve: a explosão fere e derruba para longe (vidas ${P[0].data.lives}, tombo ${P[0].tombo.toFixed(2)}, x ${P[0].x.toFixed(0)})`);
   }
-  // saiu de cima a tempo: armada continua armada (explode), mas quem fugiu do raio não se fere
+  // armada continua armada (sair de cima não desarma); quem está fora do raio não se fere
   {
     const { g, m, P } = campo(400);
-    P[0].x = 385; P[0].y = 275;
+    P[0].x = 385; P[0].y = 275; P[1].x = 400 + def.BLAST + 30; P[1].y = 275;
     passo(g);
     aperta(0, { y: 1 }); segundos(g, def.FUSE + 0.1); solta();
-    ok(m.dead && P[0].data.lives === def.LIVES, `pisa leve: recuar a tempo escapa do raio (mina ${m.dead ? 'explodiu' : 'inteira'}, vidas ${P[0].data.lives})`);
+    ok(m.dead && P[1].data.lives === def.LIVES, `pisa leve: saiu de cima e a mina explodiu mesmo assim; quem está fora do raio sai ileso (mina ${m.dead ? 'explodiu' : 'inteira'}, vidas ${P[1].data.lives})`);
   }
   // cães: soltos andam de verdade (até ~1× o jogador), estouram minas no caminho sem ferir quem está longe
   {

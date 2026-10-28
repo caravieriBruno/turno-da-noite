@@ -2,7 +2,7 @@
 // Atravesse o campo minado até a van, visto pelas costas dos detentos. As minas são invisíveis:
 // a coleira de cada um vai do verde ao vermelho conforme a mina mais próxima. Segurar AÇÃO
 // liga o sonar (parado), que revela as minas por um instante. Encostar numa mina (andando ou
-// correndo: a checagem é pelo trecho percorrido no quadro) arma o pavio de 1 s; armou, explode,
+// correndo: a checagem é pelo trecho percorrido no quadro) arma o pavio de 0,5 s; armou, explode,
 // mesmo que o jogador saia de cima (dá para fugir do raio se reagir rápido). A explosão derruba.
 // Depois de 5 s soltam os cães de guarda por trás da largada: a matilha atravessa o campo quase na
 // velocidade do jogador, estourando as minas por onde passa, e morde quem fica para trás.
@@ -26,8 +26,8 @@ TN.registerMinigame({
   SPACING: 112,      // distância mínima entre minas (Poisson-disc): 5 m da cena original (16 m = 360 px → 22,5 px/m)
   TRIG: 26,          // raio do gatilho (centro do jogador até a mina), testado contra o trecho andado no quadro
   DETECT: 110,       // a coleira começa a reagir a partir daqui
-  BLAST: 90,         // raio da explosão (correndo reto por cima, o pavio de 1 s ainda pega quem armou)
-  FUSE: 1.0,         // pavio: armou, explode depois disso (sair de cima não desarma)
+  BLAST: 90,         // raio da explosão (correndo reto por cima, o pavio de 0,5 s ainda pega quem armou)
+  FUSE: 0.5,         // pavio: armou, explode depois disso (sair de cima não desarma)
   SONAR_R: 120, SONAR_TIME: 2.0, REVEAL: 1.4,
   // explosão derruba (g.derrubar, como o empurrão dos aspiradores): impulso, decaimento linear e tempo no chão
   SHOVE: 300, SHOVE_DECAY: 444, TOMBO: 1.1,
