@@ -1,7 +1,7 @@
 // PULAR CORDA — a corda virou um laser industrial preso num eixo no meio da sala.
 // O laser gira como um ponteiro de relógio; pule (AÇÃO) quando ele passar por você.
 // Acelera com o tempo, aos 12 s ganha um laser alto (agache com EXTRA) meia volta atrás do baixo,
-// e às vezes inverte o sentido (com aviso).
+// e às vezes inverte o sentido (com aviso: freia, para desligado um instante e volta acelerando).
 TN.registerMinigame({
   id: 'pular_corda',
   title: 'PULAR CORDA',
@@ -10,7 +10,7 @@ TN.registerMinigame({
   brief: [
     'Um laser gira em volta do eixo central.',
     'Pule (AÇÃO) quando ele passar por você.',
-    'Ele acelera e muda de sentido.',
+    'Ele acelera e, às vezes, para e volta no outro sentido.',
     'O laser alto passa por cima: agache (EXTRA). Não dá para pular dele.',
     'Laser em cima de você = fim.',
   ],
@@ -29,6 +29,10 @@ TN.registerMinigame({
   // (em sentido oposto os dois se cruzariam a cada ~1 s e passariam quase juntos: impossível pular e agachar a tempo)
   CROUCH: 0.45, CROUCH_SPEED: 70, CROUCH_CD: 0.25,   // agachar (EXTRA): só escapa do laser alto
   REV_FIRST: 27, REV_WARN: 0.8,
+  // inversão em etapas (antes era instantânea, e quem o laser acabara de cruzar morria na hora): depois do aviso o
+  // laser freia até parar (REV_FREIA), fica parado e desligado (REV_SEGURA) com as setas já no sentido novo, e
+  // acelera de novo (REV_ACELERA). Abaixo de REV_DESLIGA da velocidade ele não corta (devagar demais para pular).
+  REV_FREIA: 0.5, REV_SEGURA: 0.5, REV_ACELERA: 0.7, REV_DESLIGA: 0.4,
   SAFETY: 75,        // segurança: depois disso a rodada acaba e quem estiver vivo ganha
 
   init(g) {
@@ -41,6 +45,8 @@ TN.registerMinigame({
     d.altoWarn = false;
     d.nextRev = this.REV_FIRST + TN.util.rand(0, 4);
     d.revWarn = 0;             // > 0 durante o aviso de inversão
+    d.rev = null;              // { fase: 'freia' | 'segura' | 'acelera', t } durante a inversão
+    d.revK = 1;                // fator da velocidade (1 fora da inversão)
     d.over = false;
     g.placeInCircle(this.CX, this.CY, 130);
     for (const p of g.players) { p.data.air = 0; p.data.cd = 0; p.data.jumps = 0; p.data.crouch = 0; p.data.crouchCd = 0; }
@@ -60,6 +66,19 @@ TN.registerMinigame({
     return lista;
   },
   ativarAlto(g) { const d = g.data; d.alto = { theta: d.theta + Math.PI, on: true }; },
+  // o laser corta? (na inversão, devagar demais ele fica desligado)
+  cortando(g) { return g.data.revK >= this.REV_DESLIGA; },
+  // fator de velocidade e se o sentido já terá virado, daqui a `s` segundos (usado pelo bot para prever o laser)
+  revAdiante(g, s) {
+    const d = g.data;
+    let fase, t;
+    if (d.rev) { fase = d.rev.fase; t = d.rev.t + s; }
+    else { const falta = d.nextRev - g.time; if (s < falta) return { k: 1, vira: false }; fase = 'freia'; t = s - falta; }
+    const viraNaFreada = fase === 'freia';
+    if (fase === 'freia') { if (t < this.REV_FREIA) return { k: 1 - t / this.REV_FREIA, vira: false }; t -= this.REV_FREIA; fase = 'segura'; }
+    if (fase === 'segura') { if (t < this.REV_SEGURA) return { k: 0, vira: viraNaFreada }; t -= this.REV_SEGURA; }
+    return { k: Math.min(1, t / this.REV_ACELERA), vira: viraNaFreada };
+  },
 
   update(g, dt) {
     const U = TN.util, d = g.data;
@@ -73,13 +92,23 @@ TN.registerMinigame({
     // inversões de sentido, sempre com aviso
     if (g.time >= d.nextRev - this.REV_WARN && d.revWarn <= 0 && g.time < d.nextRev) { d.revWarn = this.REV_WARN; g.sfx('buzz'); }
     if (d.revWarn > 0) d.revWarn -= dt;
-    if (g.time >= d.nextRev) {
-      d.sign *= -1; d.revWarn = 0;
-      d.nextRev = g.time + U.rand(5, 9);
-      g.sfx('whoosh'); g.flash('#ffd23f', 0.12);
-      g.message('INVERTENDO.', 0.8, '#ffd23f');
+    if (!d.rev && g.time >= d.nextRev) {   // freia → para (e vira) → segura → acelera no sentido novo
+      d.rev = { fase: 'freia', t: 0 }; d.revWarn = 0; d.nextRev = Infinity;
+      g.sfx('whoosh'); g.message('INVERTENDO.', 1.6, '#ffd23f');
     }
-    d.omega = this.speedAt(g) * d.sign;
+    if (d.rev) {
+      const rv = d.rev; rv.t += dt;
+      if (rv.fase === 'freia' && rv.t >= this.REV_FREIA) {
+        rv.fase = 'segura'; rv.t = 0; d.sign *= -1;
+        g.sfx('buzz'); g.flash('#ffd23f', 0.12);
+      } else if (rv.fase === 'segura' && rv.t >= this.REV_SEGURA) {
+        rv.fase = 'acelera'; rv.t = 0; g.sfx('laser');
+      } else if (rv.fase === 'acelera' && rv.t >= this.REV_ACELERA) {
+        d.rev = null; d.nextRev = g.time + U.rand(5, 9);
+      }
+    }
+    d.revK = !d.rev ? 1 : d.rev.fase === 'freia' ? 1 - d.rev.t / this.REV_FREIA : d.rev.fase === 'segura' ? 0 : d.rev.t / this.REV_ACELERA;
+    d.omega = this.speedAt(g) * d.sign * d.revK;
     d.theta += d.omega * dt;
     if (d.alto) d.alto.theta += d.omega * dt;   // acompanha o baixo: as passagens alternam baixo/alto a cada meia volta (~1 s)
 
@@ -107,7 +136,7 @@ TN.registerMinigame({
     }
 
     // laser x jogadores: o baixo pega quem está no chão (agachado também); o alto pega quem não agachou (em pé ou no ar)
-    if (g.time < this.WARMUP * 0.5) return;
+    if (g.time < this.WARMUP * 0.5 || !this.cortando(g)) return;
     for (const { ang, alto } of this.bracos(g)) {
       const x1 = this.CX + Math.cos(ang) * this.HUB, y1 = this.CY + Math.sin(ang) * this.HUB;
       const x2 = this.CX + Math.cos(ang) * (this.R + 8), y2 = this.CY + Math.sin(ang) * (this.R + 8);
@@ -143,16 +172,40 @@ TN.registerMinigame({
     }
     // pulo ou agachamento: olha o braço que chega primeiro; o baixo pede pulo, o alto pede agachar
     let jump = false, crouch = false;
-    const w0 = Math.abs(d.omega);
-    if (w0 > 0.05 && pd.air <= 0 && pd.crouch <= 0) {
-      const hw = Math.asin(Math.min(1, (p.r - 4 + this.BEAM_W) / r));   // meia largura angular do robô
+    const hw = Math.asin(Math.min(1, (p.r - 4 + this.BEAM_W) / r));   // meia largura angular do robô
+    const wrap = (v) => Math.atan2(Math.sin(v), Math.cos(v));
+    // laser parado/desligado na inversão: sai de cima dele, para o lado de onde ele já passou no sentido novo
+    if (!this.cortando(g)) {
+      const novo = d.rev && d.rev.fase === 'freia' ? -d.sign : d.sign;
+      for (const br of this.bracos(g)) {
+        const diff = wrap(phi - br.ang);
+        if (Math.abs(diff) < hw + 0.35 && novo * diff >= -hw) { mx += (dy / r) * novo * 1.2; my -= (dx / r) * novo * 1.2; }
+      }
+    }
+    if (pd.air <= 0 && pd.crouch <= 0) {
+      // prevê quando cada braço entra no robô, simulando a velocidade adiante (inclusive a freada/retomada da inversão)
+      const base = d.revK > 0.05 ? Math.abs(d.omega) / d.revK : this.speedAt(g), h = 1 / 60, H = 2.2;
+      const constante = !d.rev && d.nextRev - g.time > H;   // nenhuma inversão à vista: conta direta
       let melhor = null;
       for (const br of this.bracos(g)) {
-        const w = w0;
-        let delta = br.sign > 0 ? phi - br.ang : br.ang - phi;
-        delta = ((delta % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-        const tEnter = (delta - hw) / w;
-        if (!melhor || tEnter < melhor.tEnter) melhor = { tEnter, w, alto: br.alto };
+        if (constante) {
+          if (base <= 0.05) continue;
+          let delta = br.sign > 0 ? phi - br.ang : br.ang - phi;
+          delta = ((delta % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+          const tEnter = (delta - hw) / base;
+          if (!melhor || tEnter < melhor.tEnter) melhor = { tEnter, w: base, alto: br.alto };
+          continue;
+        }
+        let a = br.ang;
+        if (this.cortando(g) && Math.abs(wrap(phi - a)) < hw) { melhor = { tEnter: 0, w: Math.abs(d.omega), alto: br.alto }; continue; }
+        for (let s = 0; s < H; s += h) {
+          const st = this.revAdiante(g, s + h), w = base * st.k;
+          a += (st.vira ? -d.sign : d.sign) * w * h;
+          if (st.k >= this.REV_DESLIGA && w > 0.05 && Math.abs(wrap(phi - a)) < hw) {
+            if (!melhor || s + h < melhor.tEnter) melhor = { tEnter: s + h, w, alto: br.alto };
+            break;
+          }
+        }
       }
       if (melhor) {
         const overlap = (2 * hw) / melhor.w, dur = melhor.alto ? this.CROUCH : this.AIR;
@@ -194,8 +247,9 @@ TN.registerMinigame({
 
   draw3d(g, r) {
     const d = g.data, cx = this.CX, cy = this.CY, R = this.R, t = g.time;
-    const warn = d.revWarn > 0 && Math.floor(t * 12) % 2 === 0;
+    const warn = (d.revWarn > 0 || d.rev) && Math.floor(t * 12) % 2 === 0;
     const col = warn ? '#ffd23f' : '#ff3b6b';
+    const desligado = !this.cortando(g);   // inversão: laser parado e desligado (só o fantasma piscando)
     // casa de máquinas do subsolo: laje em volta de um poço (a plataforma fica suspensa no meio)
     const PX0 = cx - R - 70, PX1 = cx + R + 70, PZ0 = cy - R - 70, PZ1 = cy + R + 70, lj = '#2b2c2b', lo = { tex: 'piso', texWorld: true };
     r.room(-20, -70, 980, 560, { estilo: 'subsolo', floor: false });
@@ -264,7 +318,7 @@ TN.registerMinigame({
     }
     // lasers: os baixos, o alto (ciano, a 34 de altura) e o fantasma do alto antes de ele entrar
     if (d.altoWarn && !d.alto && Math.floor(t * 8) % 2 === 0) this.drawLaser3d(r, d, d.theta + Math.PI, '#3fd6ff', true, this.ALTO_Y, d.sign);
-    for (const br of this.bracos(g)) this.drawLaser3d(r, d, br.ang, br.alto ? '#3fd6ff' : col, false, br.alto ? this.ALTO_Y : this.LASER_Y, br.sign);
+    for (const br of this.bracos(g)) this.drawLaser3d(r, d, br.ang, br.alto ? '#3fd6ff' : col, desligado, br.alto ? this.ALTO_Y : this.LASER_Y, br.sign);
     // eixo central com engrenagem girando e setas do sentido
     const H = this.HUB;
     r.cyl(cx, 0, cy, H, 24, '#3a4048', { metal: 0.6, rough: 0.4, sides: 16 });
@@ -287,7 +341,8 @@ TN.registerMinigame({
     const D = TN.draw, d = g.data;
     const rpm = Math.round(Math.abs(d.omega) * 60 / (Math.PI * 2));
     D.text(c, `ROTAÇÃO ${String(rpm).padStart(2, '0')} RPM`, 24, 510, { size: 14, color: '#ff3b6b' });
-    D.text(c, d.sign > 0 ? 'SENTIDO: HORÁRIO' : 'SENTIDO: ANTI-HORÁRIO', 24, 490, { size: 12, color: d.revWarn > 0 ? '#ffd23f' : '#889' });
+    D.text(c, d.sign > 0 ? 'SENTIDO: HORÁRIO' : 'SENTIDO: ANTI-HORÁRIO', 24, 490, { size: 12, color: d.revWarn > 0 || d.rev ? '#ffd23f' : '#889' });
+    if (d.rev && d.rev.fase !== 'freia') D.text(c, d.rev.fase === 'segura' ? 'LASER PARADO: SAIA DA LINHA' : 'RELIGANDO...', 24, 470, { size: 12, color: '#ffd23f' });
     const left = Math.max(0, this.SAFETY - g.time);
     D.text(c, `RECREIO TERMINA EM ${Math.ceil(left)} s`, g.W - 24, 510, { size: 12, color: '#667', align: 'right' });
   },
@@ -322,14 +377,15 @@ TN.registerMinigame({
 
     // corpos, sombras, robôs no chão e depois os que estão no ar
     for (const p of g.players) if (!p.alive) g.drawPlayer(c, p);
-    const warn = d.revWarn > 0 && Math.floor(g.time * 12) % 2 === 0;
+    const warn = (d.revWarn > 0 || d.rev) && Math.floor(g.time * 12) % 2 === 0;
     const ground = g.alive().filter((p) => p.data.air <= 0), airborne = g.alive().filter((p) => p.data.air > 0);
     for (const p of ground) {
       g.drawPlayer(c, p);
       if (p.data.cd > 0) { c.strokeStyle = '#fff6'; c.lineWidth = 2; c.beginPath(); c.arc(p.x, p.y, p.r + 5, 0, (p.data.cd / this.JUMP_CD) * Math.PI * 2); c.stroke(); }
     }
-    for (const ang of this.armAngles(g)) this.drawBeam(c, ang, warn ? '#ffd23f' : '#ff3b6b');
-    if (d.alto) this.drawBeam(c, d.alto.theta, '#3fd6ff', false);   // o laser alto, em ciano
+    const desligado = !this.cortando(g);   // inversão: laser parado e desligado
+    for (const ang of this.armAngles(g)) this.drawBeam(c, ang, warn ? '#ffd23f' : '#ff3b6b', desligado);
+    if (d.alto) this.drawBeam(c, d.alto.theta, '#3fd6ff', desligado);   // o laser alto, em ciano
     this.drawHub(g, c, warn);
     for (const p of airborne) {
       const k = Math.sin(Math.PI * (1 - p.data.air / this.AIR));   // 0 → 1 → 0
@@ -339,7 +395,8 @@ TN.registerMinigame({
     // painel de rotação
     const rpm = Math.round(Math.abs(d.omega) * 60 / (Math.PI * 2));
     D.text(c, `ROTAÇÃO ${String(rpm).padStart(2, '0')} RPM`, 24, 510, { size: 14, color: '#ff3b6b' });
-    D.text(c, d.sign > 0 ? 'SENTIDO: HORÁRIO' : 'SENTIDO: ANTI-HORÁRIO', 24, 490, { size: 12, color: d.revWarn > 0 ? '#ffd23f' : '#889' });
+    D.text(c, d.sign > 0 ? 'SENTIDO: HORÁRIO' : 'SENTIDO: ANTI-HORÁRIO', 24, 490, { size: 12, color: d.revWarn > 0 || d.rev ? '#ffd23f' : '#889' });
+    if (d.rev && d.rev.fase !== 'freia') D.text(c, d.rev.fase === 'segura' ? 'LASER PARADO: SAIA DA LINHA' : 'RELIGANDO...', 24, 470, { size: 12, color: '#ffd23f' });
     const left = Math.max(0, this.SAFETY - g.time);
     D.text(c, `RECREIO TERMINA EM ${Math.ceil(left)} s`, g.W - 24, 510, { size: 12, color: '#667', align: 'right' });
   },

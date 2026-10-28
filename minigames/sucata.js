@@ -14,18 +14,24 @@ TN.registerMinigame({
   rounds: 3,
   scoring: 'survival',
 
-  // ---- constantes (originais: intervalo 3,0 → 1,0 s nos primeiros 10 s, máx. 40 cubos, >5 cubos por 0,5 s desaba,
-  //      impulso 15 (×1,4 arremessado)) ----
-  SPEED: 175, CUBE: 24, MAX_CUBES: 40, LIMIT: 5, COLLAPSE_T: 0.5,
-  DROP_Z: 320, GRAV: 900, THROW_V: 420, THROW_VZ: 270, THROW_Z: 26, THROW_DIST: 280,
-  HIT_PUSH: 420, THROW_PUSH: 590, STUN: 0.6, PICK_R: 38, FALL_T: 0.55,
-  HURRY_AT: 45, HARD_END: 110,
+  // ---- constantes. Escala: 1 m do original = 21 px (a mesma do jogador: cápsula de 0,7 m ↔ raio 16 px).
+  //      Original (junk_platform.tscn): queda de cubos 2,0 → 1,0 s nos primeiros 10 s, máx. 40 cubos, >5 cubos
+  //      por 0,5 s desaba, jogador a 6 m/s (126 px/s), cubo arremessado a ~25 m/s com 20° de elevação (alcance
+  //      ~31 m ≈ 660 px: chega nos vizinhos e também na diagonal), pancada 10 m/s (×1,5 arremessado) com
+  //      decaimento 20 m/s². Aqui, a pedido de quem jogou ("cai muita caixa, corre muito"): jogador a 130 px/s e
+  //      queda 3,0 → 2,0 s em 20 s (1,2 s a partir dos 60 s, para a rodada acabar). Pancada pelo padrão do
+  //      empurrão (g.derrubar + decaimento linear 444, 1,1 s no chão): 200 px/s (cubo caindo, desliza ~45 px) e
+  //      280 (arremessado, ~88 px: no centro do pilar ainda dá para ficar; na beirada, cai). ----
+  SPEED: 130, CUBE: 24, MAX_CUBES: 40, LIMIT: 5, COLLAPSE_T: 0.5,
+  DROP_Z: 320, GRAV: 900, THROW_V: 520, THROW_VZ: 190, THROW_GRAV: 330, THROW_Z: 26, THROW_DIST: 680,
+  DROP_FIRST: 3.0, DROP_MIN: 2.0, DROP_RAMP: 20, HURRY_AT: 60, DROP_HURRY: 1.2, HARD_END: 110,
+  HIT_PUSH: 200, THROW_PUSH: 280, PUSH_DECAY: 444, TOMBO: 1.1, PICK_R: 38, FALL_T: 0.55,
 
   // ---- mapa (o do original: 4 pilares redondos em 2×2 sobre o poço da casa de máquinas, de raio 6 m e a 26 m
-  //      um do outro). O raio dá a mesma área das antigas chapas de 290 × 150; o vão entre pilares vizinhos
-  //      (156 px) fica no alcance do arremesso, já o vão na diagonal não (como no original, que é bem mais largo).
-  //      Com menos de 4 jogadores os pilares sobrando ficam vazios, só de cenário. ----
-  PLAT_R: 110, PLAT_GAP: 310, CX: 480, CZ: 282,
+  //      um do outro, na escala de 21 px/m). O arremesso alcança os vizinhos (vão de 294 px entre as bordas) e,
+  //      parando na beirada, a diagonal, como no original. Com menos de 4 jogadores os pilares sobrando ficam
+  //      vazios, só de cenário. ----
+  PLAT_R: 126, PLAT_GAP: 546, CX: 480, CZ: 282,
   // ordem dos pilares: fundo-esq., fundo-dir., frente-dir., frente-esq.; 2 jogadores ficam lado a lado na frente
   SLOTS: [[-1, -1], [1, -1], [1, 1], [-1, 1]],
   slotsFor(n) { return n === 2 ? [3, 2] : n === 3 ? [0, 3, 2] : [0, 1, 2, 3].slice(0, n); },
@@ -35,11 +41,11 @@ TN.registerMinigame({
     const d = g.data, n = g.playerCount;
     d.plats = this.slotsFor(n).map((s, i) => ({ ...this.slotPos(s), r: this.PLAT_R, slot: s, owner: g.players[i].id, over: 0, dead: false, fallT: 0, shakeT: 0 }));
     d.cubes = []; d.nextCubeId = 1;
-    d.nextDrop = 1.2;
+    d.nextDrop = 2.0;   // a primeira leva (no original, um intervalo inteiro depois da largada)
     g.players.forEach((p, i) => {
       const pl = d.plats[i];
       p.x = pl.x; p.y = pl.y; p.dir = Math.PI / 2;
-      p.data = { held: -1, stun: 0, falling: 0 };
+      p.data = { held: -1, falling: 0 };
     });
   },
 
@@ -61,11 +67,10 @@ TN.registerMinigame({
     d.cubes.push(cb);
     return cb;
   },
-  // derruba o jogador: impulso, atordoamento e larga o cubo que segurava
+  // derruba o jogador (padrão do empurrão: cai, desliza e levanta) e larga o cubo que segurava.
+  // Quem já está no chão não é derrubado de novo (como o is_hit do original).
   knock(g, p, ix, iy, big) {
-    const pd = p.data;
-    g.push(p, ix, iy);
-    pd.stun = this.STUN * (big ? 1.3 : 1);
+    if (!g.derrubar(p, ix, iy, this.TOMBO)) return;
     this.dropHeld(g, p);
     g.sfx('hit'); g.shake(big ? 6 : 4);
     g.particles(p.x, p.y, '#ffd28a', 10, 180);
@@ -82,7 +87,7 @@ TN.registerMinigame({
 
     // ---- sucata despencando nas plataformas vivas ----
     if (g.time >= d.nextDrop) {
-      const interval = g.time > this.HURRY_AT ? 0.6 : U.lerp(3.0, 1.0, Math.min(1, g.time / 10));
+      const interval = g.time > this.HURRY_AT ? this.DROP_HURRY : U.lerp(this.DROP_FIRST, this.DROP_MIN, Math.min(1, g.time / this.DROP_RAMP));
       d.nextDrop = g.time + interval;
       for (const pl of d.plats) {
         const owner = g.players.find((o) => o.id === pl.owner);
@@ -103,13 +108,12 @@ TN.registerMinigame({
         if (pd.falling <= 0) g.eliminate(p, { sound: 'lose', particles: false, msg: 'CAIU!' });
         continue;
       }
-      pd.stun -= dt;
-      if (pd.stun > 0) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt, null); p.input = save; }
-      else g.movePlayer(p, this.SPEED, dt, null);
-      g.decayPush(p, dt, 5);
+      const caido = p.tombo > 0;   // derrubado (g.derrubar): sem controle até levantar
+      g.movePlayer(p, caido ? 0 : this.SPEED, dt, null);
+      g.decayPushLinear(p, dt, this.PUSH_DECAY);
       p.x = U.clamp(p.x, -200, g.W + 200); p.y = U.clamp(p.y, -200, g.H + 260);   // (fora das plataformas ele cai antes)
 
-      if (pd.stun <= 0 && p.input.aPressed) {
+      if (!caido && p.input.aPressed) {
         const held = this.cubeById(g, pd.held);
         if (held) { // arremessa na direção em que olha
           const fx = Math.cos(p.dir), fy = Math.sin(p.dir);
@@ -137,7 +141,7 @@ TN.registerMinigame({
     for (const cb of d.cubes) {
       cb.age += dt;
       if (cb.state === 'drop' || cb.state === 'air') {
-        cb.vz -= this.GRAV * dt; cb.z += cb.vz * dt;
+        cb.vz -= (cb.state === 'air' ? this.THROW_GRAV : this.GRAV) * dt; cb.z += cb.vz * dt;   // arremesso: arco longo e baixo
         cb.x += cb.vx * dt; cb.y += cb.vy * dt; cb.ang += cb.spin * dt;
         // cubo arremessado acerta alguém no caminho
         if (cb.state === 'air' && cb.z < 42) {
@@ -193,7 +197,7 @@ TN.registerMinigame({
   // ---------- bot ----------
   bot(g, p, dt) {
     const U = TN.util, d = g.data, pd = p.data;
-    if (pd.falling > 0 || pd.stun > 0) return { x: 0, y: 0 };
+    if (pd.falling > 0 || p.tombo > 0) return { x: 0, y: 0 };
     const home = this.platAt(g, p.x, p.y) || this.platOf(g, p);
     const M = 28;
     const inside = (x, y, m = M) => {   // ponto mais próximo dentro do disco (com margem)
@@ -217,7 +221,9 @@ TN.registerMinigame({
         pd.bAim = { cube: held.id, slot: best ? best.slot : -1, ox: U.rand(-0.4, 0.4), oy: U.rand(-0.4, 0.4), wait: U.rand(0.35, 1.1) };
       }
       const target = d.plats.find((pl) => pl.slot === pd.bAim.slot && !pl.dead && pl !== home) || null;
-      if (target) {
+      const aperto = this.countOn(g, home) >= this.LIMIT;   // pilar no limite: livra-se do cubo já, para qualquer lado
+      if (target && aperto) { face = U.norm(target.x - p.x, target.y - p.y); act = true; }
+      else if (target) {
         // ponto de mira com erro e um tempinho de "pontaria" antes de arremessar; arremessa da beirada
         const T = { x: target.x + target.r * pd.bAim.ox, y: target.y + target.r * pd.bAim.oy };
         const n = U.norm(T.x - p.x, T.y - p.y);
@@ -252,6 +258,14 @@ TN.registerMinigame({
       const dx = p.x - cb.x, dy = p.y - cb.y, dd = Math.hypot(dx, dy) || 1;
       if (dd < 44) { fx += (dx / dd) * 2; fy += (dy / dd) * 2; }
     }
+    // sai da linha de um cubo arremessado que vem na sua direção (nem sempre percebe: ~70% das vezes)
+    for (const cb of d.cubes) {
+      if (cb.state !== 'air' || cb.thrower === p.id || (cb.id * 7 + p.id * 13) % 10 >= 7) continue;
+      const v = Math.hypot(cb.vx, cb.vy); if (v < 80) continue;
+      const ux = cb.vx / v, uy = cb.vy / v, rx = p.x - cb.x, ry = p.y - cb.y;
+      const ao = rx * ux + ry * uy, lado = rx * -uy + ry * ux;   // à frente do cubo / de lado
+      if (ao > -10 && ao < 420 && Math.abs(lado) < 42) { const s = Math.sign(lado) || 1; fx += -uy * s * 3; fy += ux * s * 3; }
+    }
     if (fx || fy) { const s = inside(p.x + fx * 30, p.y + fy * 30); const n = U.norm(s.x - p.x, s.y - p.y); return { x: n.x, y: n.y }; }
     if (face) return { x: face.x, y: face.y, a: pulse(act) };
     const dx = goal.x - p.x, dy = goal.y - p.y, dd = Math.hypot(dx, dy);
@@ -277,7 +291,7 @@ TN.registerMinigame({
   // original. O topo tem os anéis concêntricos do original, que aqui são o marcador de cubos: acendem de
   // dentro para fora (verde → vermelho) e piscam acima do limite. A borda acende na cor do dono. Ao desabar,
   // a prensa da oficina desce sobre o pilar e o tampo despenca no poço.
-  camera: { pos: [480, 396, 730], target: [480, 0, 396], fov: 50 },
+  camera: { pos: [480, 820, 1000], target: [480, 0, 334], fov: 41 },
   env: { bg: '#161922', fog: [700, 1700], ambient: 0.75, sun: 2.1, sunDir: [-0.2, 1, 0.35], sunColor: '#dfe9ea' },
   RING_COLORS: ['#3cff5a', '#9dff3c', '#e6ff3c', '#ffd23c', '#ff8a2c', '#ff2a2a'],
 
@@ -385,7 +399,7 @@ TN.registerMinigame({
         r.character(p, { pose: 'fall', y: -0.5 * 900 * t * t });
         continue;
       }
-      r.character(p, { pose: pd.held >= 0 ? 'hold' : 'auto', flash: pd.stun > 0 && Math.floor(g.time * 12) % 2 === 0 });
+      r.character(p, { pose: pd.held >= 0 ? 'hold' : 'auto', flash: p.tombo > 0 && Math.floor(g.time * 12) % 2 === 0 });
     }
   },
 
@@ -442,7 +456,7 @@ TN.registerMinigame({
       if (p.data.falling > 0) {
         const k = p.data.falling / this.FALL_T;
         c.globalAlpha = k; D.robot(c, p.x, p.y, p.r * (0.3 + 0.7 * k), p.color, { dir: p.dir }); c.globalAlpha = 1;
-      } else g.drawPlayer(c, p, { flash: p.data.stun > 0 && Math.floor(g.time * 12) % 2 === 0 });
+      } else g.drawPlayer(c, p, { flash: p.tombo > 0 && Math.floor(g.time * 12) % 2 === 0 });
     }
     // cubos no ar e segurados (por cima de tudo, com altura falsa)
     for (const cb of d.cubes) {

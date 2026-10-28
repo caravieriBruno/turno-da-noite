@@ -336,14 +336,23 @@ secaoNomes();
 secaoRoda();
 secaoMenusComNome();
 secaoNomesRevisao();
-// roundsPerPlayer: uma rodada por jogador (temporada de caça: cada um é o guarda uma vez)
+// roundsPerPlayer: uma rodada por jogador (papel rotativo). Nenhum minigame real usa hoje: o teste registra
+// um fictício, que sai do registro no fim
 (function secaoRodadasPorJogador() {
-  for (const n of [2, 3, 4]) {
-    const slots = [0, 1, 2, 3].map((i) => (i < n ? { device: 'kb' + (i + 1) } : null));
-    const roster = I.buildRoster(slots, false);
-    I.newSession(roster, [{ id: 'temporada_de_caca', rounds: 1 }, { id: 'cinzel', rounds: 1 }]);
-    const pl = TN.session.playlist;
-    ok(pl[0].rounds === n && pl[1].rounds === 1, `rodadas por jogador: ${n} jogadores → temporada ${pl[0].rounds} rodadas, cinzel mantém 1`);
+  const ID = '_rodizio_teste';
+  TN.registerMinigame({ id: ID, title: 'RODÍZIO', rounds: 1, roundsPerPlayer: true, init() {}, update() {}, draw() {} });
+  try {
+    ok(TN.minigames[ID].fixedRounds === true, 'rodadas por jogador: roundsPerPlayer implica fixedRounds');
+    for (const n of [2, 3, 4]) {
+      const slots = [0, 1, 2, 3].map((i) => (i < n ? { device: 'kb' + (i + 1) } : null));
+      const roster = I.buildRoster(slots, false);
+      I.newSession(roster, [{ id: ID, rounds: 1 }, { id: 'cinzel', rounds: 1 }]);
+      const pl = TN.session.playlist;
+      ok(pl[0].rounds === n && pl[1].rounds === 1, `rodadas por jogador: ${n} jogadores → rodízio ${pl[0].rounds} rodadas, cinzel mantém 1`);
+    }
+  } finally {
+    delete TN.minigames[ID];
+    const k = TN.minigameOrder.indexOf(ID); if (k >= 0) TN.minigameOrder.splice(k, 1);
   }
 })();
 // CHAMADAS EXTRAS (as tarefas seguintes acrescentam aqui)

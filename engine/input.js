@@ -1,5 +1,7 @@
 // Entrada: 3 esquemas de teclado (o 1º inclui o mouse) + gamepads. Cada jogador é ligado a um "dispositivo".
 // Estado por dispositivo: { x, y (−1..1), a, b (segurando), aPressed, bPressed (apertou neste frame) }
+// O dispositivo com mouse (kb1 local, ou um remoto que mande px/py) ganha também
+// `ponteiro: { x, y, clique, cliquePressed }`, em coordenadas da tela do jogo (TN.W×TN.H).
 (function () {
   const KB_SCHEMES = [
     { id: 'kb1', label: 'WASD/SETAS · Ação: ESPAÇO/CLIQUE · Extra: SHIFT/G/BOTÃO DIR.',
@@ -12,6 +14,8 @@
   ];
 
   const down = new Set();
+  const mouse = { x: 0, y: 0, visto: false };   // só vira ponteiro depois que o mouse se mexe sobre a página
+  const MOUSE_DEV = 'kb1';                        // o esquema de teclado que tem o mouse
   const pressedThisFrame = new Set();
   const blockKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab']);
 
@@ -32,6 +36,16 @@
       TN.audio && TN.audio.unlock();
     });
     window.addEventListener('mouseup', (e) => down.delete('Mouse' + e.button));
+    // ponteiro do mouse em coordenadas da tela do jogo (TN.W×TN.H), convertido pelo tamanho do canvas na página
+    window.addEventListener('mousemove', (e) => {
+      const cv = document.getElementById && document.getElementById('game');
+      if (!cv || !cv.getBoundingClientRect) return;
+      const r = cv.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      mouse.x = (e.clientX - r.left) * TN.W / r.width;
+      mouse.y = (e.clientY - r.top) * TN.H / r.height;
+      mouse.visto = true;
+    });
     window.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('pointerdown', () => TN.audio && TN.audio.unlock());
   }
@@ -70,8 +84,9 @@
     },
     // Entrada vinda da rede (usado por engine/net.js no host)
     setRemote(id, raw) {
-      const r = remote[id] || (remote[id] = { raw: {}, latchA: false, latchB: false, latchStart: false });
+      const r = remote[id] || (remote[id] = { raw: {}, latchA: false, latchB: false, latchStart: false, latchClique: false });
       r.raw = raw;
+      if (raw.pc) r.latchClique = true;
       if (raw.a) r.latchA = true;
       if (raw.b) r.latchB = true;
       if (raw.start) r.latchStart = true;
@@ -94,14 +109,18 @@
       const pads = (navigator.getGamepads ? navigator.getGamepads() : []) || [];
       const raw = {};
       for (const s of KB_SCHEMES) raw[s.id] = readKeyboard(s);
+      if (mouse.visto) raw[MOUSE_DEV].ponteiro = { x: mouse.x, y: mouse.y, clique: down.has('Mouse0') };
       for (const gp of pads) if (gp && gp.connected) raw['gp' + gp.index] = readGamepad(gp);
       for (const id in remote) {
-        const r = remote[id];
-        raw[id] = { x: Number(r.raw.x) || 0, y: Number(r.raw.y) || 0, a: !!r.raw.a || r.latchA, b: !!r.raw.b || r.latchB, start: !!r.raw.start || r.latchStart };
-        r.latchA = r.latchB = r.latchStart = false;
+        const r = remote[id], q = r.raw;
+        raw[id] = { x: Number(q.x) || 0, y: Number(q.y) || 0, a: !!q.a || r.latchA, b: !!q.b || r.latchB, start: !!q.start || r.latchStart };
+        // ponteiro do cliente (campos px/py/pc; cliente antigo não manda → sem ponteiro)
+        if (q.px != null && q.py != null) raw[id].ponteiro = { x: Number(q.px) || 0, y: Number(q.py) || 0, clique: !!q.pc || r.latchClique };
+        r.latchA = r.latchB = r.latchStart = r.latchClique = false;
       }
       for (const id in raw) {
         const r = raw[id], p = prev[id] || {};
+        if (r.ponteiro) r.ponteiro.cliquePressed = r.ponteiro.clique && !(p.ponteiro && p.ponteiro.clique);
         state[id] = { ...r, aPressed: r.a && !p.a, bPressed: r.b && !p.b, startPressed: r.start && !p.start,
           upPressed: r.y < -0.5 && !(p.y < -0.5), downPressed: r.y > 0.5 && !(p.y > 0.5),
           leftPressed: r.x < -0.5 && !(p.x < -0.5), rightPressed: r.x > 0.5 && !(p.x > 0.5) };

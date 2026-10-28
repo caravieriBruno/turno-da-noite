@@ -179,7 +179,11 @@
       for (const id of TN.input.devices()) {
         const s = TN.input.get(id);
         if (s.x || s.y || s.a || s.b || s.start) this._touched.add(id);
-        if (this._touched.has(id)) devices[id] = { x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100, a: s.a ? 1 : 0, b: s.b ? 1 : 0, start: s.start ? 1 : 0 };
+        if (this._touched.has(id)) {
+          const d = devices[id] = { x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100, a: s.a ? 1 : 0, b: s.b ? 1 : 0, start: s.start ? 1 : 0 };
+          // ponteiro do mouse (coordenadas da tela do jogo, iguais no host): px/py/pc — host antigo só ignora
+          if (s.ponteiro) { d.px = Math.round(s.ponteiro.x); d.py = Math.round(s.ponteiro.y); d.pc = s.ponteiro.clique ? 1 : 0; }
+        }
       }
       const text = JSON.stringify(devices), now = performance.now();
       if (text !== this._lastSent || now - this._lastSentAt > 250) { this.send({ t: 'input', devices }); this._lastSent = text; this._lastSentAt = now; }

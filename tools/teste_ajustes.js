@@ -24,15 +24,75 @@ function secaoContramao() {
   ok(def.brief.some((b) => /cair/i.test(b) && /0/.test(b)), 'contramão: brief avisa que cair é 0');
 }
 
-// --- serviço interno: portador mais rápido, planta aberta, arena maior ---
+// --- serviço interno: pavilhão grande de celas, lanterna (EXTRA), caçador sem vantagem de velocidade,
+//     congelamento de 5 s e portador escondido ---
 function secaoServicoInterno() {
-  const def = TN.minigames.servico_interno, g = rodada('servico_interno');
-  ok(def.HOLDER_MULT === 1.3 && def.HUNTER_MULT === 1.15, 'serviço interno: portador 1,3× e infectado 1,15×');
-  ok(def.INFECT_RANGE === 56 && def.LIGHT_R === 95 && def.FREEZE === 3, 'serviço interno: alcance 56, lanterna 95, congelamento 3 s');
-  ok(def.LAYOUT.length >= 16 && def.LAYOUT.length <= 18, `serviço interno: ${def.LAYOUT.length} móveis (16 a 18)`);
-  ok(g.arena.w >= 920 && g.arena.h >= 480, `serviço interno: arena ${g.arena.w}×${g.arena.h}`);
+  const def = TN.minigames.servico_interno, g = rodada('servico_interno'), d = g.data, P = g.players;
+  ok(def.HOLDER_MULT <= 1 && def.HUNTER_MULT <= 1, `serviço interno: portador ${def.HOLDER_MULT}× e infectado ${def.HUNTER_MULT}× (nunca mais rápidos que os fugitivos)`);
+  ok(def.INFECT_RANGE === 56 && def.FREEZE === 5, 'serviço interno: alcance 56 e congelamento 5 s (original)');
+  ok(def.LAYOUT.length >= 24 && def.LAYOUT.length <= 28, `serviço interno: ${def.LAYOUT.length} móveis revistáveis (24 a 28; original 26)`);
+  const tipos = new Set(def.LAYOUT.map((f) => f[0]));
+  ok(['cama', 'armario', 'mesa'].every((k) => tipos.has(k)) && tipos.size === 4 && tipos.has('armarinho'), `serviço interno: revista-se cama, armário(inho) e mesa (${[...tipos]})`);
+  ok(g.arena.w >= 1600 && g.arena.h >= 1100, `serviço interno: pavilhão ${g.arena.w}×${g.arena.h} (antes 920×480)`);
+  ok(def.CELAS.length === 18, `serviço interno: ${def.CELAS.length} celas`);
   const dentro = (x, y) => x >= g.arena.x && x <= g.arena.x + g.arena.w && y >= g.arena.y && y <= g.arena.y + g.arena.h;
-  ok(def.SPAWNS.every(([x, y]) => dentro(x, y)) && g.players.every((p) => dentro(p.x, p.y)), 'serviço interno: nascimentos dentro da arena nova');
+  ok(def.SPAWNS.every(([x, y]) => dentro(x, y)) && P.every((p) => dentro(p.x, p.y)), 'serviço interno: nascimentos dentro do pavilhão');
+  ok(P.every((p) => def.solidos(g).every((f) => def.rectGap(p, f) > 0)), 'serviço interno: ninguém nasce dentro de parede ou móvel');
+  // todo móvel revistável é alcançável andando a partir do pátio
+  const dist = def.bfs([def.cell(P[0].x, P[0].y)]), N = def.nav();
+  ok(N.serve.every((ks) => ks.some((k) => dist[k] >= 0)), 'serviço interno: os bots alcançam todos os móveis pelo caminho');
+  ok(N.celas.length === 18 && N.celas.every((k) => dist[k] >= 0), 'serviço interno: todas as celas têm porta (esconderijos alcançáveis)');
+  // paredes têm colisão
+  P[0].x = 100; P[0].y = 260; aperta(0, { y: -1 }); segundos(g, 1); solta();
+  ok(P[0].y - P[0].r >= 222 - 0.5, `serviço interno: a parede da frente das celas segura quem anda contra ela (y ${P[0].y.toFixed(0)})`);
+  // lanterna: não faz nada com luz; no apagão todas acendem; EXTRA apaga/acende
+  aperta(1, { b: true }); passo(g); solta(); passo(g);
+  ok(!P[1].data.lant, 'serviço interno: com as luzes acesas, EXTRA não mexe na lanterna');
+  def.foundSyringe(g, P[0]);
+  ok(d.phase === 'grace' && P.every((p) => p.data.lant), 'serviço interno: no apagão as lanternas de todos acendem');
+  aperta(1, { b: true }); passo(g); solta(); passo(g);
+  ok(!P[1].data.lant, 'serviço interno: EXTRA apaga a lanterna');
+  aperta(1, { b: true }); passo(g); solta(); passo(g);
+  ok(P[1].data.lant, 'serviço interno: EXTRA de novo acende');
+  // portador escondido: ponto só no fim e painel sem nome
+  ok(P[0].score === 0 && P[0].data.pts === 1, 'serviço interno: o +1 de quem achou a seringa só aparece no fim');
+  ok(!textos((c) => def.drawStatus(g, c)).includes(P[0].label), 'serviço interno: o painel não diz quem está com a seringa');
+  // visão no escuro: lanterna apagada some; acesa aparece; o facho de outro revela; parede bloqueia o facho
+  d.phase = 'hunt'; d.phaseT = 0;
+  const pos = (p, x, y, dir = 0) => { p.x = x; p.y = y; p.dir = dir; };
+  pos(P[0], 700, 470, Math.PI); pos(P[1], 1300, 470); pos(P[2], 1500, 900); pos(P[3], 1200, 900);
+  P[1].data.lant = false; P[2].data.lant = false; P[0].data.lant = false; P[3].data.lant = false;
+  ok(!def.visivel(g, P[0], P[1]), 'serviço interno: no escuro, de lanterna apagada e longe, ninguém te vê');
+  P[1].data.lant = true;
+  ok(def.visivel(g, P[0], P[1]), 'serviço interno: de lanterna acesa, você aparece para todos');
+  P[1].data.lant = false; pos(P[3], 1100, 470, 0);
+  P[3].data.lant = true;
+  ok(def.visivel(g, P[0], P[1]), 'serviço interno: quem cai no facho aceso de alguém aparece');
+  pos(P[3], 540, 618, 0); pos(P[1], 680, 618);
+  ok(!def.visivel(g, P[0], P[1]) && def.bloqueia(540, 618, 680, 618), 'serviço interno: pilar/parede corta o facho da lanterna');
+  pos(P[1], 740, 470);
+  ok(def.visivel(g, P[0], P[1]), 'serviço interno: quem está colado em você aparece mesmo no escuro');
+  // ritmo: o portador anda igual a um fugitivo
+  pos(P[0], 300, 260); pos(P[1], 300, 960); P[1].data.infected = false; P[1].data.frozen = 0;
+  for (const p of P) { p.vx = 0; p.vy = 0; }
+  aperta(0, { x: 1 }); aperta(1, { x: 1 }); segundos(g, 0.5); solta();
+  ok(Math.abs((P[0].x - 300) - (P[1].x - 300)) < 1, `serviço interno: portador e fugitivo andam o mesmo (${(P[0].x - 300).toFixed(0)} × ${(P[1].x - 300).toFixed(0)} px)`);
+  // golpe: tranco curto para a frente, infecta e congela 5 s
+  pos(P[0], 700, 470, 0); pos(P[1], 770, 470); pos(P[2], 1500, 900); pos(P[3], 1200, 900);
+  for (const p of P) { p.vx = 0; p.vy = 0; p.data.cd = 0; }
+  P[0].data.tranco = 0; P[0].data.frozen = 0;
+  aperta(0, { a: true }); passo(g);
+  ok(P[0].vx > 100, `serviço interno: o golpe dá um tranco para a frente (vx ${P[0].vx.toFixed(0)})`);
+  solta(); passo(g, 1 / 60, 6);
+  ok(P[1].data.infected && P[1].data.frozen > 4.5, 'serviço interno: o tranco alcança quem estava a 70 px e infecta');
+  ok(P[0].score === 0, 'serviço interno: o ponto da infecção também só aparece no fim');
+  segundos(g, 4.6);
+  ok(P[1].data.frozen > 0, 'serviço interno: o infectado ainda está congelado aos 4,7 s');
+  segundos(g, 0.4);
+  ok(P[1].data.frozen <= 0, 'serviço interno: e volta a caçar depois de 5 s');
+  // termina sozinho (todos parados) e soma os pontos no fim
+  segundos(g, 40);
+  ok(g.finished && P[0].score === 2 && P[2].score === 1 && P[3].score === 1, `serviço interno: fim pelo tempo; portador 1+1, quem escapou +1 (${P.map((p) => p.score)})`);
 }
 
 // --- triagem: pausa com contagem 3-2-1 entre os turnos ---
@@ -256,7 +316,7 @@ function secaoEmpurroes() {
     ok(Math.abs(b.x - bx) < 1, `aspiradores: quem empurra fica parado (andou ${(b.x - bx).toFixed(1)} px em 0,4 s)`);
     segundos(g2, 0.3);
     ok(b.x - bx > 10, 'aspiradores: depois de 0,5 s volta a andar');
-    ok(TN.minigames.aspiradores.ROOMBA_SPEED / TN.minigames.aspiradores.SPEED === 437 / 175, 'aspiradores: aspirador a 2,5× o jogador');
+    ok(TN.minigames.aspiradores.ROOMBA_SPEED / TN.minigames.aspiradores.SPEED === 2 && TN.minigames.aspiradores.WARMUP_SPEED === 220, 'aspiradores: aspirador a 2× o jogador (original 2,5×, reduzido a pedido), entrada 220');
     // derrubado: cai de costas virado para quem empurrou, sem controle por 1,1 s, e não cai de novo enquanto está no chão
     const g3 = rodada('aspiradores'), [e, w] = g3.players; g3.data.nextSpawn = Infinity;
     e.x = g3.arena.x + 150; e.y = g3.arena.y + g3.arena.h / 2; w.x = e.x + 40; w.y = e.y; e.dir = 0;
@@ -267,6 +327,59 @@ function secaoEmpurroes() {
     ok(w.vx === 0 || w.x > e.x + 40, `aspiradores: no chão o controle não move (x ${(w.x - e.x).toFixed(0)} px à frente)`);
     const wx = w.x; segundos(g3, 0.3);
     ok(w.tombo === 0 && w.x < wx - 10, 'aspiradores: depois de levantar volta a andar');
+    solta();
+  }
+  // dança das cadeiras: o empurrão do EXTRA segue o padrão dos aspiradores
+  {
+    const def = TN.minigames.danca_das_cadeiras, g = rodada('danca_das_cadeiras'), d = g.data, [a, v, x3, x4] = g.players;
+    ok(def.SHOVE === 400 && def.SHOVE_DECAY === 444 && def.TOMBO === 1.1 && def.SHOVE_LOCK === 0.5, 'dança: empurrão 400, decaimento 444, 1,1 s no chão, 0,5 s parado');
+    x3.x = d.cx; x3.y = d.cy + 150; x4.x = d.cx; x4.y = d.cy - 150;
+    a.x = d.cx - 80; a.y = d.cy; v.x = a.x + 40; v.y = a.y; a.dir = 0; v.dir = Math.PI;   // de frente (sem bônus pelas costas)
+    aperta(0, { b: true, x: 1 }); passo(g);
+    const ax = a.x, vx0 = v.x;
+    ok(Math.abs(v.tombo - 1.1) < 0.05 && Math.abs(Math.hypot(v.vx, v.vy) - 400) < 15, `dança: empurrado cai (tombo ${v.tombo.toFixed(2)} s, ${Math.hypot(v.vx, v.vy).toFixed(0)} px/s)`);
+    ok(!g.derrubar(v, 400, 0), 'dança: quem está no chão não é derrubado de novo');
+    segundos(g, 0.4);
+    ok(Math.abs(a.x - ax) < 1, `dança: quem empurra fica parado (andou ${(a.x - ax).toFixed(1)} px em 0,4 s)`);
+    solta(); segundos(g, 1.0);
+    const des = v.x - vx0;
+    ok(des > 120 && des < 230 && Math.hypot(v.vx, v.vy) === 0, `dança: o empurrão decai linear e para (~180 px; andou ${des.toFixed(0)} px)`);
+  }
+  // sucata: queda de cubo e arremesso derrubam (g.derrubar); pilares na proporção do original; alcance do arremesso
+  {
+    const def = TN.minigames.sucata;
+    ok(Math.abs(def.PLAT_GAP / def.PLAT_R - 26 / 6) < 0.05, `sucata: pilares na proporção do original (raio ${def.PLAT_R}, ${def.PLAT_GAP} px entre centros)`);
+    ok(def.SPEED <= 140 && def.DROP_MIN >= 1.8 && def.DROP_FIRST >= 3, `sucata: jogador mais lento (${def.SPEED}) e menos cubos (${def.DROP_FIRST} → ${def.DROP_MIN} s)`);
+    // alcance: arremesso a partir de um ponto, na direção (fx, fy); devolve a plataforma onde o cubo parou
+    const arremessa = (sx, sy, fx, fy) => {
+      const g = rodada('sucata'), d = g.data, [p, ...outros] = g.players; d.nextDrop = Infinity;
+      outros.forEach((o, i) => { const pl = d.plats[i + 1]; o.x = pl.x; o.y = pl.y + 95; });
+      p.x = sx; p.y = sy; p.dir = Math.atan2(fy, fx);
+      const cb = def.newCube(g, p.x, p.y, 30, 'held'); p.data.held = cb.id;
+      aperta(0, { a: true }); passo(g); solta();
+      let n = 0; while (cb.state === 'air' && n < 300) { passo(g); n++; }
+      solta();
+      return { pl: cb.state === 'ground' ? def.platAt(g, cb.x, cb.y) : null, dist: Math.hypot(cb.x - sx, cb.y - sy), d };
+    };
+    const c0 = def.slotPos(0), c1 = def.slotPos(1), c2 = def.slotPos(2);
+    const viz = arremessa(c0.x - 100, c0.y, 1, 0);
+    ok(viz.pl && viz.pl.slot === 1, `sucata: da beirada de trás, o arremesso cai no vizinho (alcance ${viz.dist.toFixed(0)} px)`);
+    const dg = Math.SQRT1_2, diag = arremessa(c0.x + 40 * dg, c0.y + 40 * dg, dg, dg);
+    ok(diag.pl && diag.pl.slot === 2, `sucata: da beirada da frente, alcança a diagonal, como no original (alcance ${diag.dist.toFixed(0)} px)`);
+    // queda de cubo em cima: derruba (1,1 s), larga o cubo e desliza pouco; no chão não é derrubado de novo
+    const g = rodada('sucata'), d = g.data, p = g.players[0]; d.nextDrop = Infinity;
+    const pl = d.plats[0]; p.x = pl.x; p.y = pl.y;
+    const seg = def.newCube(g, p.x, p.y, 30, 'held'); p.data.held = seg.id;
+    const cb = def.newCube(g, p.x - 5, p.y, 5, 'drop'); cb.vz = -400;
+    passo(g);
+    ok(Math.abs(p.tombo - 1.1) < 0.05 && p.data.held === -1, `sucata: cubo caindo em cima derruba (tombo ${p.tombo.toFixed(2)} s) e larga o que segurava`);
+    const x0 = p.x;
+    const cb2 = def.newCube(g, p.x - 5, p.y, 5, 'drop'); cb2.vz = -400; passo(g);
+    ok(Math.abs(p.tombo - 1.1) > 0.01, 'sucata: no chão, outro cubo não derruba de novo');
+    aperta(0, { x: 1 }); segundos(g, 0.9);
+    ok(p.x - x0 > 25 && p.x - x0 < 70 && p.alive, `sucata: a pancada desliza ~45 px e o controle não move enquanto está no chão (${(p.x - x0).toFixed(0)} px)`);
+    segundos(g, 0.5);
+    ok(p.tombo === 0 && p.x - x0 > 80, 'sucata: depois de levantar volta a andar');
     solta();
   }
   {

@@ -141,9 +141,12 @@
         } else {
           const s = TN.input.get(p.device);
           raw = { x: s.x, y: s.y, a: s.a, b: s.b };
+          // ponteiro (só quem tem mouse): coordenadas da tela do jogo + clique, com a borda calculada aqui
+          if (s.ponteiro) raw.ponteiro = { x: s.ponteiro.x, y: s.ponteiro.y, clique: !!s.ponteiro.clique };
         }
         // bordas ("apertou neste frame") calculadas igual para humanos e bots
         const prev = p._prevRaw || {};
+        if (raw.ponteiro) raw.ponteiro.cliquePressed = raw.ponteiro.clique && !(prev.ponteiro && prev.ponteiro.clique);
         raw.aPressed = raw.a && !prev.a; raw.bPressed = raw.b && !prev.b;
         raw.aReleased = !raw.a && !!prev.a; raw.bReleased = !raw.b && !!prev.b;
         raw.upPressed = raw.y < -0.5 && !(prev.y < -0.5); raw.downPressed = raw.y > 0.5 && !(prev.y > 0.5);

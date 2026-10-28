@@ -1,9 +1,12 @@
 // PISA LEVE — inspirado em "MINEFIELD" (exploding_collar_race) de Machine Party.
 // Atravesse o campo minado até a van, visto pelas costas dos detentos. As minas são invisíveis:
 // a coleira de cada um vai do verde ao vermelho conforme a mina mais próxima. Segurar AÇÃO
-// liga o sonar (parado), que revela as minas por um instante. Parar em cima de uma mina arma
-// um pavio de 1 s; sair a tempo cancela. Depois de 5 s soltam os cães de guarda por trás: não
-// aparecem (vêm de trás da câmera), só se ouvem os latidos cada vez mais perto.
+// liga o sonar (parado), que revela as minas por um instante. Encostar numa mina (andando ou
+// correndo: a checagem é pelo trecho percorrido no quadro) arma o pavio de 1 s; armou, explode,
+// mesmo que o jogador saia de cima (dá para fugir do raio se reagir rápido). A explosão derruba.
+// Depois de 5 s soltam os cães de guarda por trás da largada: a matilha atravessa o campo quase na
+// velocidade do jogador, estourando as minas por onde passa, e morde quem fica para trás.
+// Controles relativos à câmera (pelas costas): CIMA leva para a van, ESQUERDA/DIREITA andam de lado.
 TN.registerMinigame({
   id: 'pisa_leve',
   title: 'PISA LEVE',
@@ -20,14 +23,19 @@ TN.registerMinigame({
   // ---- constantes (original: campo 16×80, espaçamento 3,5, gatilho 1,0, detecção/explosão 5,
   //      sonar raio 4 em 2 s, pavio 1 s, 2 vidas, −25% vel. ferido, colheitadeira após 5 s: aqui são cães) ----
   SPEED: 100, HURT_MULT: 0.75, LIVES: 2,
-  SPACING: 78,       // distância mínima entre minas (Poisson-disc)
-  TRIG: 26,          // raio do gatilho (centro do jogador até a mina)
+  SPACING: 112,      // distância mínima entre minas (Poisson-disc): 5 m da cena original (16 m = 360 px → 22,5 px/m)
+  TRIG: 26,          // raio do gatilho (centro do jogador até a mina), testado contra o trecho andado no quadro
   DETECT: 110,       // a coleira começa a reagir a partir daqui
-  BLAST: 82,         // raio da explosão
-  FUSE: 1.0,         // pavio
+  BLAST: 90,         // raio da explosão (correndo reto por cima, o pavio de 1 s ainda pega quem armou)
+  FUSE: 1.0,         // pavio: armou, explode depois disso (sair de cima não desarma)
   SONAR_R: 120, SONAR_TIME: 2.0, REVEAL: 1.4,
-  // cães de guarda: soltos aos 5 s, avançam com a curva da antiga colheitadeira; latem a cada LATIDO_LONGE..PERTO s
-  CAES_DELAY: 5, CAES_V0: 16, CAES_V1: 56, CAES_PERTO: 80, LATIDO_LONGE: 1.6, LATIDO_PERTO: 0.35,
+  // explosão derruba (g.derrubar, como o empurrão dos aspiradores): impulso, decaimento linear e tempo no chão
+  SHOVE: 300, SHOVE_DECAY: 444, TOMBO: 1.1,
+  // cães de guarda: soltos aos 5 s, correm a CAES_VMAX × curva da colheitadeira original (0,5 → 1 → 0,1 no
+  // fim; 0,9× a velocidade do jogador no pico) e estouram as minas a menos de CAES_ALCANCE à frente da matilha.
+  // Latem a cada LATIDO_LONGE..PERTO s.
+  CAES_DELAY: 5, CAES_VMAX: 90, CAES_ALCANCE: 14, CAES_PERTO: 80, LATIDO_LONGE: 1.6, LATIDO_PERTO: 0.35,
+  CAES_CURVA: [[0, 0.5], [0.2, 1], [0.314, 0.779], [0.396, 0.909], [0.524, 0.627], [0.624, 0.97], [0.707, 0.726], [0.8, 1], [1, 0.1]],
   // campo no formato do original (16 × 80 m: estreito e comprido). Na escala das minas (3,5 m = 78 px) a
   // largura dá 360 px; o comprimento ficou em 1180 px (o original daria ~1800, que a câmera fixa não lê).
   CAMPO: { y0: 95, y1: 455, goalX: 1250 },
@@ -42,7 +50,7 @@ TN.registerMinigame({
     d.midX = (d.startX + d.goalX) / 2;
     d.mines = this.makeMines(g);
     d.scorch = []; d.trail = []; d.rings = [];
-    d.caes = { x: a.x - 30, on: false, latidoT: 1 };
+    d.caes = { x: a.x - 30, x0: a.x - 30, on: false, latidoT: 1, tickT: 0 };
     d.firstDone = false; d.vanSeats = 0;
     d.seed = U.randInt(1, 1e6);                // semente dos tufos de mato (decoração gerada no draw)
     g.players.forEach((p, i) => {
@@ -60,8 +68,31 @@ TN.registerMinigame({
       const m = { x: U.rand(x0, x1), y: U.rand(y0, y1) };
       if (mines.every((o) => (o.x - m.x) ** 2 + (o.y - m.y) ** 2 >= this.SPACING ** 2)) mines.push(m);
     }
-    for (const m of mines) Object.assign(m, { reveal: 0, known: false, dead: false });
+    for (const m of mines) Object.assign(m, { reveal: 0, known: false, dead: false, arm: -1 });   // arm: s desde que armou (−1 = intacta)
     return mines;
+  },
+
+  // ---- controles relativos à câmera (pelas costas): o input da tela vira direção no chão ----
+  // frente = da câmera para o alvo (no chão); direita da tela = frente girada 90° (+z quando a câmera olha +x)
+  eixos() {
+    const c = this.camera, fx = c.target[0] - c.pos[0], fz = c.target[2] - c.pos[2], l = Math.hypot(fx, fz) || 1;
+    return { fx: fx / l, fy: fz / l, rx: -fz / l, ry: fx / l };
+  },
+  // input (x: direita, y: baixo da tela) → direção no plano da lógica
+  paraMundo(inp) {
+    const e = this.eixos(), fr = -(inp.y || 0), di = inp.x || 0;
+    return { x: e.fx * fr + e.rx * di, y: e.fy * fr + e.ry * di };
+  },
+  // inverso (usado pelo bot, que pensa no plano da lógica)
+  paraInput(wx, wy) {
+    const e = this.eixos();
+    return { x: wx * e.rx + wy * e.ry, y: -(wx * e.fx + wy * e.fy) };
+  },
+  // curva de velocidade da matilha (pontos da colheitadeira original, interpolação linear)
+  curvaCaes(t) {
+    const C = this.CAES_CURVA;
+    for (let i = 1; i < C.length; i++) if (t <= C[i][0]) { const [x0, y0] = C[i - 1], [x1, y1] = C[i]; return y0 + (y1 - y0) * ((t - x0) / (x1 - x0)); }
+    return C[C.length - 1][1];
   },
 
   active(g) { return g.players.filter((p) => p.data.active); },
@@ -75,7 +106,7 @@ TN.registerMinigame({
     if (!p.data.active || p.data.inv > 0) return;
     p.data.lives--; p.data.hurt = true; p.data.inv = 0.6;
     const n = TN.util.norm(p.x - mx, p.y - my);
-    g.push(p, n.x * 260, n.y * 260);
+    if (p.data.lives > 0) g.derrubar(p, n.x * this.SHOVE, n.y * this.SHOVE, this.TOMBO);   // jogado longe: cai deitado e levanta
     if (p.data.lives <= 0) {
       p.data.active = false;
       g.eliminate(p, { sound: 'boom', msg: 'BUM!' });
@@ -83,14 +114,26 @@ TN.registerMinigame({
     } else g.popup('FERIDO!', p.x, p.y - 40, '#f80');
   },
 
-  explode(g, m) {
+  // `pelosCaes`: estourada pela matilha (sem pavio; efeito menor, como o explode(false) da colheitadeira)
+  explode(g, m, pelosCaes = false) {
     if (m.dead) return;
-    m.dead = true;
+    m.dead = true; m.arm = -1;
     g.data.scorch.push({ x: m.x, y: m.y, r: TN.util.rand(18, 26) });
     g.data.rings.push({ x: m.x, y: m.y, t: 0 });
-    g.sfx('boom'); g.shake(10);
-    g.particles(m.x, m.y, '#ffb020', 30, 300); g.particles(m.x, m.y, '#555', 16, 160, 1.0, 5);
+    g.sfx('boom', pelosCaes ? 0.5 : undefined); g.shake(pelosCaes ? 4 : 10);
+    g.particles(m.x, m.y, '#ffb020', pelosCaes ? 14 : 30, 300); g.particles(m.x, m.y, '#555', pelosCaes ? 8 : 16, 160, 1.0, 5);
+    // estourada pelos cães não fere ninguém: a matilha corre quase na velocidade do jogador e o raio da
+    // explosão viraria uma zona de morte 90 px à frente dela (no original a colheitadeira é bem mais lenta)
+    if (pelosCaes) return;
     for (const p of this.active(g)) if (TN.util.dist(p.x, p.y, m.x, m.y) < this.BLAST) this.damage(g, p, m.x, m.y);
+  },
+
+  // pisou: a mina arma (aparece piscando, apita) e explode FUSE s depois, saia o jogador de cima ou não
+  armar(g, m) {
+    if (m.dead || m.arm >= 0) return;
+    m.arm = 0; m.reveal = this.REVEAL; m.known = true;
+    g.sfx('tick'); g.sfx('buzz', 0.5);
+    g.popup('!', m.x, m.y - 30, '#ff3c28');
   },
 
   reachGoal(g, p) {
@@ -103,19 +146,15 @@ TN.registerMinigame({
   },
 
   update(g, dt) {
-    const U = TN.util, a = g.arena, d = g.data;
-    const live = d.mines.filter((m) => !m.dead);
-    // ---- cães de guarda (invisíveis: vêm de trás da câmera; o jogador só ouve) ----
+    const U = TN.util, d = g.data;
+    // ---- cães de guarda: saem de trás da largada e atravessam o campo ----
     const h = d.caes;
     if (!h.on && g.time >= this.CAES_DELAY) { h.on = true; g.sfx('buzz'); g.sfx('latido'); g.message('SOLTARAM OS CÃES!', 1.5, '#f55'); }
     if (h.on && h.x < d.goalX) {
-      const prog = U.clamp((h.x - (a.x - 30)) / (d.goalX - a.x + 30), 0, 1);
-      h.x = Math.min(d.goalX, h.x + (this.CAES_V0 + (this.CAES_V1 - this.CAES_V0) * prog) * dt);
-      // a matilha estoura as minas por onde passa (atrás da câmera: só o som avisa onde ela está)
-      for (const m of live) if (!m.dead && m.x < h.x + 6) {
-        m.dead = true; d.scorch.push({ x: m.x, y: m.y, r: 14 });
-        g.particles(m.x, m.y, '#777', 10, 120, 0.8, 4); g.sfx('hit');
-      }
+      const prog = U.clamp((h.x - h.x0) / (d.goalX - h.x0), 0, 1);
+      h.x = Math.min(d.goalX, h.x + this.CAES_VMAX * this.curvaCaes(prog) * dt);
+      // a matilha estoura as minas por onde passa
+      for (const m of d.mines) if (!m.dead && m.x < h.x + this.CAES_ALCANCE) this.explode(g, m, true);
       // latidos: mais altos e mais frequentes conforme a matilha se aproxima de quem está mais atrás
       h.latidoT -= dt;
       if (h.latidoT <= 0) {
@@ -129,35 +168,38 @@ TN.registerMinigame({
     for (const p of this.active(g)) {
       const b = p.data;
       b.inv -= dt;
-      const sonar = p.input.a;
+      const sonar = p.input.a && !(p.tombo > 0);   // derrubado não usa o rádio
       if (sonar) {
         b.sonarT += dt;
         const r = ((b.sonarT % this.SONAR_TIME) / this.SONAR_TIME) * this.SONAR_R;
-        for (const m of live) if (!m.dead && U.dist(p.x, p.y, m.x, m.y) <= r) { if (m.reveal <= 0) g.sfx('blip'); m.reveal = this.REVEAL; m.known = true; }
+        for (const m of d.mines) if (!m.dead && U.dist(p.x, p.y, m.x, m.y) <= r) { if (m.reveal <= 0) g.sfx('blip'); m.reveal = Math.max(m.reveal, this.REVEAL); m.known = true; }
         b.distSinceSonar = 0;
       } else b.sonarT = 0;
       const ox = p.x, oy = p.y;
       const spd = this.SPEED * (b.lives < this.LIVES ? this.HURT_MULT : 1);
-      const lim = this.limites(g);
-      if (sonar) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt, lim); p.input = save; }
-      else g.movePlayer(p, spd, dt, lim);
-      g.decayPush(p, dt, 7);
+      // input relativo à câmera; com o sonar fica parado (o empurrão da explosão ainda desliza)
+      const mv = sonar ? { x: 0, y: 0 } : this.paraMundo(p.input), save = p.input;
+      p.input = { ...save, x: mv.x, y: mv.y };
+      g.movePlayer(p, spd, dt, this.limites(g));
+      p.input = save;
+      g.decayPushLinear(p, dt, this.SHOVE_DECAY);
       const mx = p.x - ox, my = p.y - oy, moved = Math.hypot(mx, my);
       if (moved > 0.5) { b.lastMx = mx / moved; b.lastMy = my / moved; }
       b.distSinceSonar += moved;
       // rastro de óleo quando ferido
       if (b.lives < this.LIVES) { b.trailAcc += moved; if (b.trailAcc > 9) { b.trailAcc = 0; d.trail.push({ x: Math.round(p.x + U.rand(-4, 4)), y: Math.round(p.y + U.rand(-4, 4)), t: 4 }); } }
-      // coleira: proximidade da mina mais próxima (0 = em cima, 1 = longe)
-      let near = null, nd = 1e9;
-      for (const m of live) { if (m.dead) continue; const dd = U.dist(p.x, p.y, m.x, m.y); if (dd < nd) { nd = dd; near = m; } }
+      // gatilho: o trecho andado neste quadro (não só a posição final) encostou numa mina? arma
+      for (const m of d.mines) if (!m.dead && m.arm < 0 && U.segCircle(ox, oy, p.x, p.y, m.x, m.y, this.TRIG)) this.armar(g, m);
+      // coleira: proximidade da mina mais próxima (0 = em cima, 1 = longe); pavio = mina armada mais
+      // adiantada dentro do raio de explosão (a coleira pisca)
+      let nd = 1e9; b.fuse = 0;
+      for (const m of d.mines) {
+        if (m.dead) continue;
+        const dd = U.dist(p.x, p.y, m.x, m.y);
+        if (dd < nd) nd = dd;
+        if (m.arm >= 0 && dd < this.BLAST) b.fuse = Math.max(b.fuse, Math.max(1e-3, m.arm));
+      }
       b.prox = U.clamp((nd - this.TRIG) / (this.DETECT - this.TRIG), 0, 1);
-      // pavio: acumula enquanto estiver dentro do gatilho de alguma mina; sair cancela
-      if (near && nd < this.TRIG) {
-        if (b.fuse === 0) g.sfx('tick');
-        b.fuse += dt;
-        if (b.fuse >= this.FUSE) { b.fuse = 0; this.explode(g, near); }
-      } else b.fuse = 0;
-      if (!b.active) continue;
       // metade e chegada
       if (!b.half && p.x >= d.midX) { b.half = true; g.addScore(p, 1); g.sfx('pickup'); }
       if (p.x >= d.goalX) { this.reachGoal(g, p); continue; }
@@ -169,6 +211,14 @@ TN.registerMinigame({
       }
     }
     U.separate(this.active(g));
+    // minas armadas: apitam cada vez mais rápido e explodem ao fim do pavio
+    let armadas = false;
+    for (const m of d.mines) {
+      if (m.dead || m.arm < 0) continue;
+      armadas = true; m.arm += dt; m.reveal = Math.max(m.reveal, 0.6);
+      if (m.arm >= this.FUSE) this.explode(g, m);
+    }
+    if (armadas) { h.tickT -= dt; if (h.tickT <= 0) { g.sfx('tick', 0.6); h.tickT = 0.2; } } else h.tickT = 0.2;
     for (const m of d.mines) m.reveal -= dt;
     for (const t of d.trail) t.t -= dt;
     d.trail = d.trail.filter((t) => t.t > 0);
@@ -178,14 +228,27 @@ TN.registerMinigame({
     if (this.active(g).length === 0) g.finish(1.5);
   },
 
-  // Bot: anda para a direita, sonda quando a coleira esquenta, desvia das minas reveladas,
-  // recua se o pavio armar e corre sem sondar quando os cães encostam.
+  // Bot: anda rumo à van, sonda quando a coleira esquenta, desvia das minas reveladas, foge do
+  // raio se armar uma mina e corre sem sondar quando os cães encostam. Pensa no plano da lógica e
+  // devolve o input já convertido para os controles relativos à câmera (paraInput).
   bot(g, p, dt) {
-    const U = TN.util, a = g.arena, d = g.data, b = p.data;
+    const b = p.data;
     if (!b.active) return {};
+    const o = this.botMundo(g, p, dt);
+    return o.x === undefined ? o : { ...this.paraInput(o.x, o.y), a: o.a };
+  },
+  botMundo(g, p, dt) {
+    const U = TN.util, d = g.data, b = p.data;
     const caesGap = this.gapCaes(g, p);
-    // pavio armado: recua pelo caminho de onde veio e sonda depois
-    if (b.fuse > 0) { b.wantSonar = true; return { x: -b.lastMx, y: -b.lastMy }; }
+    // pavio armado perto: foge da mina (de lado/para trás, nunca para dentro dos cães) e sonda depois
+    if (b.fuse > 0) {
+      let ax = 0, ay = 0;
+      for (const m of d.mines) if (!m.dead && m.arm >= 0) { const n = U.norm(p.x - m.x, p.y - m.y); ax += n.x; ay += n.y; }
+      if (caesGap < 120) ax = Math.max(ax, 0.3);
+      b.wantSonar = true;
+      const n = U.norm(ax || -b.lastMx, ay || -b.lastMy);
+      return { x: n.x, y: n.y };
+    }
     // sonar em andamento: segura até o anel quase completar
     if (b.sonarT > 0) {
       if (b.sonarT < 1.45 && caesGap > 90) return { a: true };
@@ -202,7 +265,7 @@ TN.registerMinigame({
       b.wantSonar = false;
       return { a: true };
     }
-    // direção: para a direita, desviando das minas conhecidas e das bordas
+    // direção: rumo à van (+x), desviando das minas conhecidas e das bordas
     let fx = 1, fy = 0;
     for (const m of d.mines) {
       if (m.dead || !m.known) continue;
@@ -227,8 +290,8 @@ TN.registerMinigame({
   // ---------------- 3D (câmera fixa) ----------------
   // Terreno baldio entre o muro da cadeia e a cerca de fora, visto pelas costas como no original: a
   // câmera fica atrás do rombo no muro (a largada), alta, olhando ao longo do corredor estreito até a van
-  // no portão da cerca; cercas de arame nas laterais, entulho, árvores secas e a placa de aviso; os cães
-  // não aparecem (só os dois em cima de quem foi mordido).
+  // no portão da cerca; cercas de arame nas laterais, entulho, árvores secas e a placa de aviso. A matilha
+  // entra por baixo da tela (de trás da largada) e cruza o campo; dois cães ficam em cima de quem foi mordido.
   camera: { pos: [-330, 295, 275], target: [560, 0, 275], fov: 44 },
   env: { bg: '#05070a', fog: [1500, 2900], ambient: 0.42, sun: 0.9, sunDir: [0.35, 1, -0.5], sunColor: '#a9c1ff', hemiSky: '#6f86b0', hemiGround: '#1a140c' },
 
@@ -312,14 +375,21 @@ TN.registerMinigame({
     for (const sc of d.scorch) { r.disc(sc.x, 0.5, sc.y, sc.r * 1.5, '#0a0806', { opacity: 0.6 }); r.disc(sc.x, 0.6, sc.y, sc.r * 0.8, '#050403', { opacity: 0.9 }); }
     for (const t of d.trail) r.disc(t.x, 0.7, t.y, 3, '#2a0a06', { opacity: q(Math.min(1, t.t / 2) * 0.8) });
     // minas reveladas
-    const blink = Math.sin(g.time * 14) > 0;
+    const blink = Math.sin(g.time * 14) > 0, lightsArm = [];
     for (const m of d.mines) {
       if (m.dead || m.reveal <= 0) continue;
       const k = q(Math.min(1, m.reveal / 0.6));
       r.ring(m.x, 0.8, m.y, this.TRIG - 2, this.TRIG, '#ff3c28', { glow: true, opacity: q(k * 0.5) });
       r.cyl(m.x, 0, m.y, 9, 4, '#2a2a2a', { metal: 0.6, rough: 0.4, opacity: k });
       r.cyl(m.x, 4, m.y, 4, 2, '#555', { metal: 0.7, opacity: k });
-      r.sphere(m.x, 7, m.y, 2.6, blink ? '#ff3030' : '#600', { glow: true, opacity: k });
+      // armada: luz piscando bem rápido, raio da explosão no chão e o arco do pavio
+      if (m.arm >= 0) {
+        const fast = Math.sin(g.time * 40) > 0, f = Math.min(1, m.arm / this.FUSE);
+        r.sphere(m.x, 7, m.y, 4, fast ? '#ffffff' : '#ff2020', { glow: true });
+        r.ring(m.x, 1, m.y, this.BLAST - 4, this.BLAST, '#ff3c28', { glow: true, opacity: fast ? 0.7 : 0.3 });
+        r.ring(m.x, 1.1, m.y, this.TRIG + 4, this.TRIG + 9, '#ffffff', { glow: true, arc: Math.max(0.02, f) });
+        lightsArm.push([m.x, 30, m.y, '#ff3020', fast ? 1.6 : 0.6, 200]);
+      } else r.sphere(m.x, 7, m.y, 2.6, blink ? '#ff3030' : '#600', { glow: true, opacity: k });
     }
     // anéis de explosão (+ clarão)
     const lights = [];
@@ -331,7 +401,8 @@ TN.registerMinigame({
     }
     // ---- van (caçamba aberta) ----
     this.drawVan3d(g, r);
-    // ---- cães em cima de quem foi mordido ----
+    // ---- matilha cruzando o campo e cães em cima de quem foi mordido ----
+    this.drawMatilha3d(g, r);
     this.drawCaes3d(g, r);
     // poste de luz quente na largada e na chegada
     for (const [x, z] of [[a.x + 20, a.y - 30], [d.goalX + 40, a.y + a.h + 34]]) {
@@ -361,8 +432,8 @@ TN.registerMinigame({
       if (b.fuse > 0) r.ring(p.x, 1.6, p.y, p.r + 7, p.r + 11, '#ffffff', { glow: true, arc: Math.min(1, b.fuse / this.FUSE) });
       r.character(p, { pose: p.input.a && b.sonarT > 0 ? 'crouch' : 'auto', flash: b.inv > 0 && Math.sin(g.time * 40) > 0 });
     }
-    // luzes: as mais importantes primeiro (máx. 6)
-    for (const l of lights.slice(0, 6)) r.light(...l);
+    // luzes: as mais importantes primeiro (máx. 6): minas armadas, explosões, sonar, postes
+    for (const l of lightsArm.slice(0, 2).concat(lights).slice(0, 6)) r.light(...l);
   },
 
   drawVan3d(g, r) {
@@ -395,17 +466,40 @@ TN.registerMinigame({
     }
   },
 
-  // dois cães (caixas pretas baixas com olhos) em cima de cada jogador mordido; a matilha em si não é desenhada
+  // um cão (caixas pretas baixas com olhos vermelhos) virado para `ang` (0 = +x); `passo` anima as patas
+  cao3d(r, x, z, ang, passo = null, alt = 0) {
+    const c = Math.cos(ang), s = Math.sin(ang);
+    r.box(x, 8 + alt, z, 28, 12, 12, '#2a221c', { rotY: ang, rough: 0.9 });
+    r.box(x + c * 16, 12 + alt, z - s * 16, 10, 9, 9, '#1c1712', { rotY: ang, rough: 0.9 });   // cabeça
+    for (const k of [-1, 1]) r.box(x + c * 14 + s * k * 3, 21 + alt, z - s * 14 + c * k * 3, 3, 6, 2, '#1c1712', { rotY: ang, shadow: false });   // orelhas em pé
+    r.box(x + c * 11, 10 + alt, z - s * 11, 3, 10, 13, '#b02020', { rotY: ang, shadow: false });   // coleira vermelha da guarda
+    r.box(x + c * 22, 13 + alt, z - s * 22, 6, 4, 6, '#0c0d0f', { rotY: ang, shadow: false });   // focinho
+    r.box(x - c * 16, 16 + alt, z + s * 16, 9, 2, 2, '#111214', { rotY: ang, shadow: false });   // cauda
+    for (const k of [-1, 1]) r.sphere(x + c * 20 + s * k * 2.6, 15 + alt, z - s * 20 + c * k * 2.6, 1.3, '#ff3030', { glow: true });
+    if (passo !== null) for (const [fx, fz, fase] of [[9, 4, 0], [9, -4, Math.PI], [-9, 4, Math.PI], [-9, -4, 0]]) {
+      const sw = Math.sin(passo + fase) * 4;   // patas indo e voltando
+      r.box(x + c * (fx + sw) + s * fz, 0, z - s * (fx + sw) + c * fz, 3, 8 + alt, 3, '#0c0d0f', { rotY: ang, shadow: false });
+    }
+  },
+
+  // a matilha: uma fileira de cães de cerca a cerca na frente de h.x, galopando (só depois de soltos)
+  drawMatilha3d(g, r) {
+    const d = g.data, h = d.caes;
+    if (!h.on) return;
+    const n = 6, H = d.fy1 - d.fy0;
+    for (let i = 0; i < n; i++) {
+      const passo = g.time * 18 + i * 1.7, pulo = Math.abs(Math.sin(passo / 2)) * 4;
+      const x = h.x - 14 - (i % 2) * 20 + Math.sin(g.time * 3 + i * 2) * 4;
+      const z = d.fy0 + (i + 0.5) * (H / n) + Math.sin(g.time * 5 + i) * 6;
+      this.cao3d(r, x, z, 0.12 * Math.sin(g.time * 7 + i), passo, pulo);
+    }
+  },
+
+  // dois cães em cima de cada jogador mordido
   drawCaes3d(g, r) {
     for (const p of g.players) {
       if (!p.data.mordido) continue;
-      for (const [ox, oz, ang] of [[-14, -12, 0.5], [16, 10, -0.9]]) {
-        const x = p.x + ox, z = p.y + oz;
-        r.box(x, 6, z, 26, 12, 12, '#111214', { rotY: ang, rough: 0.9 });
-        r.box(x + Math.cos(ang) * 15, 10, z - Math.sin(ang) * 15, 9, 8, 8, '#0c0d0f', { rotY: ang, rough: 0.9 });   // cabeça
-        r.box(x - Math.cos(ang) * 15, 14, z + Math.sin(ang) * 15, 8, 2, 2, '#111214', { rotY: ang, shadow: false });   // cauda
-        for (const s of [-1, 1]) r.sphere(x + Math.cos(ang) * 19 + Math.sin(ang) * s * 2.5, 12, z - Math.sin(ang) * 19 + Math.cos(ang) * s * 2.5, 1.2, '#ff3030', { glow: true });
-      }
+      for (const [ox, oz, ang] of [[-14, -12, 0.5], [16, 10, -0.9]]) this.cao3d(r, p.x + ox, p.y + oz, ang);
     }
   },
 
@@ -471,6 +565,10 @@ TN.registerMinigame({
       c.fillStyle = '#222'; c.strokeStyle = '#777'; c.lineWidth = 2;
       c.beginPath(); c.arc(m.x, m.y, 9, 0, Math.PI * 2); c.fill(); c.stroke();
       c.fillStyle = Math.sin(g.time * 14) > 0 ? '#f33' : '#600'; c.beginPath(); c.arc(m.x, m.y, 3.5, 0, Math.PI * 2); c.fill();
+      if (m.arm >= 0) {   // armada: raio da explosão piscando
+        c.globalAlpha = 1; c.strokeStyle = Math.sin(g.time * 40) > 0 ? '#ff3c28' : '#ffffff'; c.lineWidth = 2;
+        c.beginPath(); c.arc(m.x, m.y, this.BLAST, 0, Math.PI * 2); c.stroke();
+      }
       c.globalAlpha = 1;
     }
     // anéis de explosão

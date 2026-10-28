@@ -57,17 +57,18 @@
     tagline: 'MEMORIZE. ESCULPA. ENVIE.',
     brief: [
       'Memorize quais pedaços somem do bloco no telão.',
-      'Esculpa igual no seu bloco e aperte ENVIAR.',
+      'Esculpa igual (mouse ou setas) e aperte ENVIAR: ela some até o veredito.',
       'Errou ou não enviou a tempo: eliminado.',
       'Cada ciclo tem mais cortes e menos tempo.',
     ],
-    controls: { move: 'mover o cinzel', a: 'remover pedaço / ENVIAR / RESETAR' },
+    controls: { move: 'mover o cinzel (ou o mouse)', a: 'remover pedaço / ENVIAR / RESETAR (ou clique)' },
     icon: '⬢',
     color: '#d9b77e',
     rounds: 2,
     scoring: 'survival',      // ordem de eliminação; empates no mesmo ciclo (ver results)
 
     // ---- constantes (originais: memorizar 4 s, esculpir 15 s −1/ciclo (mín. 5), cortes 4 → 9) ----
+    CELLS, NODES, SEND, RESET,   // geometria exposta (testes)
     MEMO: 4, SHOW_FULL: 1.0, CARVE_START: 15, CARVE_MIN: 5, CUT_START: 4, CUT_MAX: 9,
     REVEAL: 2.6, ELIM_AT: 1.1, MAX_CYCLES: 12,
 
@@ -83,6 +84,23 @@
       else { x = xs[i % 2]; y = ys[Math.floor(i / 2)]; if (n === 3 && i === 2) x = 480 - w / 2; }
       return { x, y, w, h, S: 17, overlay: true };
     },
+    // retângulo onde o bloco de `p` aparece na tela: painel por cima do 3D ou quadrante do 2D
+    rectDe(g, p) { return g.uses3d() ? this.painel(g, p) : this.quad(p.id); },
+    // centro do bloco e tamanho da célula dentro do retângulo (o mesmo do desenho)
+    origem(q) { return { bx: q.x + q.w / 2 - 65, by: q.y + q.h / 2 + 10, S: q.S || 19 }; },
+    // nó (célula, ENVIAR ou RESETAR) sob o ponteiro (x, y) no painel de `p`; -1 se nenhum
+    noPonteiro(g, p, x, y) {
+      const { bx, by, S } = this.origem(this.rectDe(g, p));
+      for (const node of [SEND, RESET]) {
+        const n = NODES[node], nx = bx + n.x * S, ny = by + n.y * S;
+        if (Math.abs(x - nx) <= 38 && Math.abs(y - ny) <= 12) return node;
+      }
+      let best = -1, bd = S * 0.92;   // dentro do hexágono (raio interno ≈ 0,87·S, com folga)
+      CELLS.forEach((cell, i) => { const dd = Math.hypot(x - (bx + cell.x * S), y - (by + cell.y * S)); if (dd < bd) { bd = dd; best = i; } });
+      return best;
+    },
+    // quem já enviou neste ciclo tem a escultura escondida (2D e 3D) até o veredito, para ninguém copiar
+    escondido(g, p) { return g.data.phase === 'carve' && p.alive && p.data.sent; },
     cuts(cycle) { return Math.min(this.CUT_START + cycle - 1, this.CUT_MAX); },
     carveTime(cycle) { return Math.max(this.CARVE_START - (cycle - 1), this.CARVE_MIN); },
 
@@ -92,7 +110,7 @@
       g.players.forEach((p, i) => {
         const q = this.quad(i);
         p.x = q.x + 440; p.y = q.y + 200; p.dir = Math.PI;
-        p.data = { cells: new Array(19).fill(false), cursor: CENTER, sent: false, result: null, aliveAtElim: 0, bot: null, hold: 0, holdOut: null };
+        p.data = { cells: new Array(19).fill(false), cursor: CENTER, ptrX: null, ptrY: null, sent: false, result: null, aliveAtElim: 0, bot: null, hold: 0, holdOut: null };
       });
       this.startCycle(g);
     },
@@ -161,10 +179,20 @@
         for (const p of g.alive()) {
           const s = p.data;
           if (s.sent) continue;
-          const inp = p.input;
+          const inp = p.input, ptr = inp.ponteiro;
           const dir = inp.upPressed ? 'up' : inp.downPressed ? 'down' : inp.leftPressed ? 'left' : inp.rightPressed ? 'right' : null;
           if (dir) { const nx = ADJ[s.cursor][dir]; if (nx !== s.cursor) { s.cursor = nx; g.sfx('blip'); } }
-          if (inp.aPressed) {
+          // mouse: o cinzel segue o ponteiro (quando ele se mexe sobre um nó) e o clique age no nó sob ele
+          let agir = inp.aPressed;
+          if (ptr) {
+            const mexeu = ptr.x !== s.ptrX || ptr.y !== s.ptrY;
+            s.ptrX = ptr.x; s.ptrY = ptr.y;
+            const sob = mexeu || ptr.cliquePressed ? this.noPonteiro(g, p, ptr.x, ptr.y) : -1;
+            if (sob >= 0 && sob !== s.cursor) { s.cursor = sob; if (!ptr.cliquePressed) g.sfx('blip'); }
+            // o clique também é AÇÃO no esquema do mouse: fora de um nó, não faz nada
+            if (ptr.cliquePressed) agir = sob >= 0;
+          }
+          if (agir) {
             if (s.cursor === SEND) { s.sent = true; g.sfx('confirm'); }
             else if (s.cursor === RESET) { s.cells.fill(false); g.sfx('back'); }
             else if (!s.cells[s.cursor]) {
@@ -370,7 +398,8 @@
         r.box(fx, 2, fz, 200, 3, 3, p.alive ? p.color : '#333', { glow: p.alive, rotY: rot });   // faixa da cor do dono
         const compare = d.phase === 'reveal' ? d.target : null;
         const B = (lx, ly) => M(lx - 22, ly);
-        this.drawBlock3d(r, B, 43, s.cells, { compare });
+        if (this.escondido(g, p)) { const [tx, tz] = B(0, 0); r.box(tx, 43, tz, 96, 2, 84, '#1d2a21', { rotY: rot }); }   // enviado: o bloco some, fica só a tampa lacrada
+        else this.drawBlock3d(r, B, 43, s.cells, { compare });
         // botões ENVIAR / RESETAR na beirada direita
         const S = this.S3D, bS = B(NODES[SEND].x * S, NODES[SEND].y * S * 1.6), bR = B(NODES[RESET].x * S, NODES[RESET].y * S * 1.6);
         r.box(bS[0], 43, bS[1], 18, 6, 15, s.sent ? '#7dffaa' : '#1f8a45', { emissive: '#0b3d1e', rotY: rot });
@@ -495,12 +524,19 @@
     // o bloco de `p` num retângulo: o quadrante 2D (padrão) ou um painel por cima do 3D (rect.overlay, com rect.S)
     drawQuadrant(g, c, p, rect = this.quad(p.id)) {
       const D = TN.draw, d = g.data, s = p.data, q = rect;
-      const bx = q.x + q.w / 2 - 65, by = q.y + q.h / 2 + 10, S = q.S || 19;
+      const { bx, by, S } = this.origem(q);
       if (!q.overlay) { c.fillStyle = (p.id + Math.floor(p.id / 2)) % 2 ? '#171413' : '#1b1816'; c.fillRect(q.x, q.y, q.w, q.h); }
       c.strokeStyle = p.alive ? p.color : '#333'; c.lineWidth = 2; c.strokeRect(q.x + 3, q.y + 3, q.w - 6, q.h - 6);
       // no 2D, margens maiores do lado do relógio central
       const padL = !q.overlay && p.id % 2 ? 46 : 14, padR = !q.overlay && !(p.id % 2) ? 46 : 16;
       D.text(c, p.label + (p.isBot ? ' BOT' : ''), q.x + padL, q.y + 18, { size: 14, color: p.alive ? p.color : '#666', maxWidth: 150 });
+      // contra cópias: depois de ENVIAR, o bloco some da tela até o veredito
+      if (this.escondido(g, p)) {
+        D.text(c, 'ENVIADO ✔', q.x + q.w / 2, q.y + q.h / 2 + 4, { size: 30, color: '#46e27b', align: 'center' });
+        D.text(c, 'escultura lacrada até o veredito', q.x + q.w / 2, q.y + q.h / 2 + 34, { size: 11, color: '#8a7a62', align: 'center' });
+        if (!q.overlay) g.drawPlayer(c, p);
+        return;
+      }
       // estado
       let st = '', sc = '#aaa';
       if (!p.alive && !(d.phase === 'reveal' && s.result && s.result !== 'ok')) { st = 'ELIMINADO'; sc = '#f55'; }

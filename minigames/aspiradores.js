@@ -14,9 +14,10 @@ TN.registerMinigame({
   scoring: 'survival',       // ordem de eliminação vira pontos (padrão do motor)
 
   // ---- constantes (originais, na proporção da velocidade do jogador: spawn 0,5 s, +1 a cada 5 s, máx. 5;
-  //      aspirador 2,5×, entrada 1,5×; quem empurra fica 0,5 s parado. O empurrão decai linear como no original,
+  //      quem empurra fica 0,5 s parado. Aspirador: no original 2,5× o jogador (437) e entrada 1,5× (262); aqui
+  //      2× (350) e 1,25× (220), a pedido de quem jogou ("muito rápidos"). O empurrão decai linear como no original,
   //      mas menor: lá ele cruza 2/3 da arena; aqui ~180 px e ~0,8 s sem controle, para não arremessar longe) ----
-  SPEED: 175, ROOMBA_SPEED: 437, WARMUP_SPEED: 262, ROOMBA_R: 22,
+  SPEED: 175, ROOMBA_SPEED: 350, WARMUP_SPEED: 220, ROOMBA_R: 22,
   SPAWN_FIRST: 0.5, SPAWN_EVERY: 5, MAX_ROOMBAS: 5, SHOVE: 400, SHOVE_DECAY: 444, SHOVE_LOCK: 0.5, TOMBO: 1.1,   // empurrado cai e levanta (1,1 s sem controle)
 
   // ---- mapa (o do original: sala de 27,8 × 23 m, proporção 1,21; aqui 1 m = 23 px, com a mesma área do antigo

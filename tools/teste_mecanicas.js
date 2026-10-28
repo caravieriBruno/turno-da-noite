@@ -49,6 +49,27 @@ function secaoPularCorda() {
   z.data.arms = []; def.ativarAlto(z); z.data.alto.theta = -0.25; z.data.sign = 1; z.data.omega = 3;   // o alto vem de -0,25 para 0 (sentido do baixo)
   const dec = def.bot(z, bp, 1 / 60);
   ok(dec.b === true && !dec.a, `corda: o bot agacha para o laser alto (${JSON.stringify(dec)})`);
+  // inversão: freia até parar, vira, fica parado e desligado um instante, e volta acelerando no sentido novo
+  {
+    const v = rodada('pular_corda', { humanos: 0 }), vd = v.data; v.finish = () => {}; segundos(v, 5);
+    const w0 = Math.abs(vd.omega), s0 = vd.sign;
+    vd.nextRev = v.time + 0.01; passo(v, 1 / 60, 2);
+    ok(vd.rev && vd.rev.fase === 'freia' && vd.sign === s0, 'corda: a inversão começa freando, ainda no sentido antigo');
+    segundos(v, def.REV_FREIA * 0.5);
+    ok(Math.abs(vd.omega) < w0 * 0.6 && Math.sign(vd.omega) === s0, `corda: no meio da freada o laser está mais lento (${Math.abs(vd.omega).toFixed(2)} de ${w0.toFixed(2)} rad/s)`);
+    segundos(v, def.REV_FREIA * 0.5 + 0.05);
+    ok(vd.rev.fase === 'segura' && vd.omega === 0 && vd.sign === -s0, 'corda: parado, com o sentido já virado');
+    // parado e desligado: quem está em cima da linha não morre
+    const P = v.alive()[0] || v.players[0]; P.alive = true; const ang = vd.theta; P.x = def.CX + Math.cos(ang) * 120; P.y = def.CY + Math.sin(ang) * 120; P.data.air = 0; P.data.crouch = 0;
+    passo(v, 1 / 60, 5);
+    ok(P.alive && !def.cortando(v), 'corda: laser parado não corta quem está na linha');
+    P.x = def.CX - Math.cos(ang) * 120; P.y = def.CY - Math.sin(ang) * 120;   // tira de lá
+    segundos(v, def.REV_SEGURA + def.REV_ACELERA);
+    ok(!vd.rev && Math.sign(vd.omega) === -s0 && Math.abs(vd.omega) > w0 * 0.95, `corda: retoma a velocidade no sentido novo (${vd.omega.toFixed(2)} rad/s)`);
+    ok(vd.nextRev - v.time >= 4.9 && vd.nextRev - v.time <= 9, 'corda: a próxima inversão vem 5 a 9 s depois');
+    const pausa = def.REV_FREIA + def.REV_SEGURA + def.REV_ACELERA;
+    ok(def.REV_SEGURA >= 0.4 && def.REV_SEGURA <= 0.6 && pausa >= 1.5, `corda: segura ${def.REV_SEGURA} s parado; a virada inteira leva ${pausa.toFixed(1)} s`);
+  }
   // Review Focus 1: os bots sobrevivem aos dois braços — com o fim de rodada desligado (senão o motor
   // encerra 1,5 s depois de sobrar um e a curva não aparece), a maioria dos 24 bots ainda está viva aos 20 s
   let vivos20 = 0, vivos30 = 0;
@@ -205,6 +226,51 @@ function secaoEscultor() {
   ok(p3[0].y === p3[1].y && p3[2].y > p3[0].y && Math.abs(p3[2].x + p3[2].w / 2 - 480) < 1, 'escultor: 3 jogadores → dois em cima, um embaixo centralizado');
   const c3 = gravador(); com3d(g, () => def.drawOverlay(g, c3));
   ok(c3.log.filter((e) => e[0] === 'fillRect' && e[3] === 420 && e[4] === 220).length === 3, 'escultor: eliminado não ganha painel');
+  // mouse: hover move o cinzel, clique corta a célula sob o ponteiro, clique fora não faz nada, ENVIAR é clicável
+  const h = rodada('cinzel'); segundos(h, def.MEMO + 0.5);
+  const P0 = h.players[0], s0 = P0.data;
+  com3d(h, () => {
+    const { bx, by, S } = def.origem(def.painel(h, P0));
+    const em = (n) => ({ x: bx + def.NODES[n].x * S + 3, y: by + def.NODES[n].y * S - 2 });
+    const clica = (pt) => { aperta(0, { a: true, ponteiro: { ...pt, clique: true } }); passo(h); aperta(0, { ponteiro: { ...pt, clique: false } }); passo(h); };
+    clica(em(3));
+    ok(s0.cells[3] && s0.cells.filter(Boolean).length === 1, `escultor: clique com ponteiro corta a célula certa (${s0.cells.map(Number).join('')})`);
+    aperta(0, { ponteiro: { ...em(7), clique: false } }); passo(h);
+    ok(s0.cursor === 7 && !s0.cells[7], 'escultor: passar o mouse só destaca (o cinzel vai para a célula)');
+    clica({ x: 5, y: 5 });
+    ok(s0.cells.filter(Boolean).length === 1 && !s0.cells[7], 'escultor: clique fora do bloco não corta nada');
+    clica(em(def.SEND));
+    ok(s0.sent, 'escultor: ENVIAR é clicável');
+    // quem não tem mouse continua no teclado: AÇÃO corta a célula do cursor (centro)
+    const s1 = h.players[1].data; aperta(1, { a: true }); passo(h); solta();
+    ok(s1.cells.filter(Boolean).length === 1 && !h.players[1].input.ponteiro, 'escultor: sem ponteiro, AÇÃO corta pelo cursor como antes');
+    // contra cópias: quem enviou não tem mais o bloco visível (painel nem 3D)
+    const boards = []; const dbOrig = def.drawBoard, b3Orig = def.drawBlock3d; let blocos3d = 0;
+    def.drawBoard = function (c, x, y, S2, arr, o) { boards.push(arr); return dbOrig.apply(this, arguments); };
+    def.drawBlock3d = function () { blocos3d++; return b3Orig.apply(this, arguments); };
+    const nada = new Proxy({}, { get: () => () => {} });
+    try {
+      const tx = textos((c) => def.drawOverlay(h, c));
+      ok(/ENVIADO/.test(tx) && !boards.includes(s0.cells), 'escultor: painel de quem enviou mostra só ENVIADO, sem o bloco');
+      def.draw3d(h, nada);
+      ok(blocos3d === 3, `escultor: no 3D o bloco de quem enviou some (${blocos3d} blocos)`);
+      for (const p of h.players) p.data.sent = true;
+      segundos(h, 0.2);   // todos enviaram → veredito
+      boards.length = 0; blocos3d = 0;
+      textos((c) => def.drawOverlay(h, c)); def.draw3d(h, nada);
+      ok(h.data.phase === 'reveal' && boards.includes(s0.cells) && blocos3d === 4, 'escultor: no veredito a escultura volta a aparecer');
+    } finally { def.drawBoard = dbOrig; def.drawBlock3d = b3Orig; }
+  });
+  solta();
+  // motor: o ponteiro de um cliente de rede (px/py/pc) chega ao host; cliente antigo (sem px) fica sem ponteiro
+  TN.input.setRemote('n9:kb1', { x: 0, y: 0, px: 300, py: 120, pc: 1 }); TN.input.setRemote('n9:gp0', { x: 1, y: 0 });
+  TN.input.update();
+  const pr = TN.input.get('n9:kb1').ponteiro;
+  ok(pr && pr.x === 300 && pr.y === 120 && pr.clique && pr.cliquePressed && !TN.input.get('n9:gp0').ponteiro, `rede: ponteiro remoto chega ao host (${JSON.stringify(pr)})`);
+  TN.input.setRemote('n9:kb1', { x: 0, y: 0, px: 310, py: 120, pc: 0 }); TN.input.update();
+  const pr2 = TN.input.get('n9:kb1').ponteiro;
+  ok(pr2 && pr2.x === 310 && !pr2.clique && !pr2.cliquePressed, 'rede: soltar o clique remoto');
+  TN.input.removeRemote('n9:');
 }
 
 fim([secaoPularCorda, secaoBonsModos, secaoEmpilhadeira, secaoCorteExato, secaoEscultor]);

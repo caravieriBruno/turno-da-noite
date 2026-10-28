@@ -14,8 +14,10 @@ TN.registerMinigame({
   rounds: 2,
   scoring: 'survival',
 
-  // ---- constantes (original: 30 s por turno, empurrão 15, até ×1,5 pelas costas) ----
-  SPEED: 175, SUB_TIME: 18, GRAB: 30, SHOVE: 520, SHOVE_LOCK: 0.5, BACK_BONUS: 1.5,
+  // ---- constantes (original: 30 s por turno, empurrão 10 m/s com decaimento 20 m/s², ×1,5 pelas costas).
+  //      Empurrão no padrão dos aspiradores: derruba (1,1 s no chão), 400 px/s com decaimento linear 444 e quem
+  //      empurra fica 0,5 s parado. Pelas costas ×1,25 (×1,5 sobre 400 cruzaria a arena inteira) ----
+  SPEED: 175, SUB_TIME: 18, GRAB: 30, SHOVE: 400, SHOVE_DECAY: 444, SHOVE_LOCK: 0.5, TOMBO: 1.1, BACK_BONUS: 1.25,
   // arena redonda do original (raio 13 m ≈ 230 px): plataforma segura quadrada no MEIO (8,2 m ≈ 124 px),
   // piso em íris de 16 lâminas que recolhem para a borda, seis bancos baixos encostados na parede com os
   // itens em cima (12 vagas) e dois armários altos no fundo
@@ -94,13 +96,14 @@ TN.registerMinigame({
     for (const p of g.alive()) {
       const pd = p.data;
       pd.lock -= dt;
-      const stunned = Math.hypot(p.vx, p.vy) > 40;
+      const stunned = p.tombo > 0;   // derrubado (g.derrubar): sem controle até levantar
+      const shoving = pd.lock > 0;   // quem empurra fica parado enquanto o braço volta
       // sem o retângulo da arena: quem prende é a parede redonda (prender)
-      if (stunned || !playing) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt, null); p.input = save; }
+      if (stunned || shoving || !playing) { const save = p.input; p.input = { x: 0, y: 0 }; g.movePlayer(p, 0, dt, null); p.input = save; }
       else g.movePlayer(p, this.SPEED, dt, null);
-      g.decayPush(p, dt, 6);
+      g.decayPushLinear(p, dt, this.SHOVE_DECAY);
       this.prender(g, p);
-      if (!playing || stunned) continue;
+      if (!playing || stunned || shoving) continue;
       // AÇÃO: pega o item mais próximo (mãos vazias)
       if (p.input.aPressed && !pd.hold) {
         let best = null, bd = this.GRAB + p.r;
@@ -123,7 +126,7 @@ TN.registerMinigame({
             if (dist < 58 && (dx * fx + dy * fy) / dist > 0.2) {
               // pelas costas empurra mais forte
               const back = (Math.cos(o.dir) * dx + Math.sin(o.dir) * dy) / dist > 0.3 ? this.BACK_BONUS : 1;
-              g.push(o, (dx / dist) * this.SHOVE * back, (dy / dist) * this.SHOVE * back);
+              if (!g.derrubar(o, (dx / dist) * this.SHOVE * back, (dy / dist) * this.SHOVE * back, this.TOMBO)) continue;   // já no chão
               if (o.data.hold) { this.drop(g, o, (dx / dist) * 260, (dy / dist) * 260); g.popup('LARGOU!', o.x, o.y - 30, '#c77dff'); }
               g.sfx('hit'); g.shake(3);
             }
@@ -357,7 +360,7 @@ TN.registerMinigame({
         continue;
       }
       const it = p.data.hold;
-      r.character(p, { pose: it ? 'hold' : 'auto', flash: Math.hypot(p.vx, p.vy) > 40 });
+      r.character(p, { pose: it ? 'hold' : 'auto', flash: p.tombo > 0 });
       if (it) this.drawItem3d(r, it.kind, it.x, 36, it.y, 0.95, p.dir, {});
     }
   },
@@ -451,7 +454,7 @@ TN.registerMinigame({
         if (k > 0) TN.draw.robot(c, p.x, p.y, p.r * k, p.color, { dir: p.dir, dead: true });
         continue;
       }
-      g.drawPlayer(c, p, { flash: Math.hypot(p.vx, p.vy) > 40 });
+      g.drawPlayer(c, p, { flash: p.tombo > 0 });
       const it = p.data.hold;
       if (it) {
         c.fillStyle = 'rgba(0,0,0,0.5)'; c.beginPath(); c.arc(it.x, it.y, 15, 0, Math.PI * 2); c.fill();
